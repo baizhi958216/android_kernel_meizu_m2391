@@ -50,6 +50,14 @@ config PHY_QCOM_PCIE2
 	  Enable this to support the Qualcomm PCIe PHY, used with the Synopsys
 	  based PCIe controller.
 
+config PHY_QCOM_KALAMA_UFS
+	tristate "Qualcomm Kalama downstream UFS PHY"
+	depends on OF && ARCH_QCOM && COMMON_CLK && REGULATOR
+	select GENERIC_PHY
+	help
+	  Build the common UFS PHY module and the Kalama QMP module for the
+	  two-lane PHY described in the vendor board device tree.
+
 menuconfig PHY_QCOM_QMP
 	tristate "Qualcomm QMP PHY Drivers"
 	depends on OF && COMMON_CLK && (ARCH_QCOM || COMPILE_TEST)
