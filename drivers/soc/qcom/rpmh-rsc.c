@@ -957,13 +957,15 @@ static int rpmh_rsc_pd_attach(struct rsc_drv *drv, struct device *dev)
 	return ret;
 }
 
-static int rpmh_probe_tcs_config(struct platform_device *pdev, struct rsc_drv *drv)
+static int rpmh_probe_tcs_config(struct device_node *dn, struct device_node *channel,
+				 struct rsc_drv *drv)
 {
 	struct tcs_type_config {
 		u32 type;
 		u32 n;
 	} tcs_cfg[TCS_TYPE_NR] = { { 0 } };
-	struct device_node *dn = pdev->dev.of_node;
+	struct device_node *cfg = channel ?: dn;
+	u32 fast_type, fast_count = 0;
 	u32 config, max_tcs, ncpt, offset;
 	int i, ret, n, st = 0;
 	struct tcs_group *tcs;
@@ -982,19 +984,19 @@ static int rpmh_probe_tcs_config(struct platform_device *pdev, struct rsc_drv *d
 	ncpt = config & (DRV_NCPT_MASK << DRV_NCPT_SHIFT);
 	ncpt = ncpt >> DRV_NCPT_SHIFT;
 
-	n = of_property_count_u32_elems(dn, "qcom,tcs-config");
-	if (n != 2 * TCS_TYPE_NR)
+	n = of_property_count_u32_elems(cfg, "qcom,tcs-config");
+	if (n != 2 * (TCS_TYPE_NR + !!channel))
 		return -EINVAL;
 
 	for (i = 0; i < TCS_TYPE_NR; i++) {
-		ret = of_property_read_u32_index(dn, "qcom,tcs-config",
+		ret = of_property_read_u32_index(cfg, "qcom,tcs-config",
 						 i * 2, &tcs_cfg[i].type);
 		if (ret)
 			return ret;
 		if (tcs_cfg[i].type >= TCS_TYPE_NR)
 			return -EINVAL;
 
-		ret = of_property_read_u32_index(dn, "qcom,tcs-config",
+		ret = of_property_read_u32_index(cfg, "qcom,tcs-config",
 						 i * 2 + 1, &tcs_cfg[i].n);
 		if (ret)
 			return ret;
@@ -1023,14 +1025,52 @@ static int rpmh_probe_tcs_config(struct platform_device *pdev, struct rsc_drv *d
 		st += tcs->num_tcs;
 	}
 
+	/*
+	 * The single-channel AP binding puts the dedicated DCVS slot last.
+	 * Leave it outside the pool used for ordinary RPMh transactions.
+	 */
+	if (channel) {
+		ret = of_property_read_u32_index(cfg, "qcom,tcs-config",
+						 2 * TCS_TYPE_NR, &fast_type);
+		if (ret || fast_type != FAST_PATH_TCS)
+			return -EINVAL;
+		ret = of_property_read_u32_index(cfg, "qcom,tcs-config",
+						 2 * TCS_TYPE_NR + 1, &fast_count);
+		if (ret || fast_count > 1 || st + fast_count > max_tcs)
+			return -EINVAL;
+	}
+
 	drv->num_tcs = st;
 
 	return 0;
 }
 
+static void rpmh_unregister_drv(void *data)
+{
+	struct platform_device *child = data;
+
+	of_platform_device_destroy(&child->dev, NULL);
+}
+
+static void rpmh_remove_pd_notifier(void *data)
+{
+	struct device *dev = data;
+
+	dev_pm_genpd_remove_notifier(dev);
+	pm_runtime_disable(dev);
+}
+
+static void rpmh_remove_cpu_notifier(void *data)
+{
+	cpu_pm_unregister_notifier(data);
+}
+
 static int rpmh_rsc_probe(struct platform_device *pdev)
 {
 	struct device_node *dn = pdev->dev.of_node;
+	struct device_node *nested __free(device_node) = NULL;
+	struct device_node *channel __free(device_node) = NULL;
+	struct device *client_parent = &pdev->dev;
 	struct rsc_drv *drv;
 	char drv_id[10] = {0};
 	int ret, irq;
@@ -1050,9 +1090,40 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	if (!drv)
 		return -ENOMEM;
 
-	ret = of_property_read_u32(dn, "qcom,drv-id", &drv->id);
+	/*
+	 * The Kalama AP owns one DRV in a bank of three. Display and camera
+	 * controllers have independent clocks and a different channel layout.
+	 */
+	if (of_property_present(dn, "qcom,drv-count")) {
+		u32 count;
+
+		if (of_property_match_string(dn, "label", "apps_rsc") < 0 ||
+		    of_property_present(dn, "clocks") ||
+		    of_property_present(dn, "qcom,hw-channel"))
+			return -EOPNOTSUPP;
+		if (of_property_read_u32(dn, "qcom,drv-count", &count) ||
+		    count != 3 || of_get_available_child_count(dn) != 1)
+			return -EINVAL;
+		nested = of_get_next_available_child(dn, NULL);
+		if (!of_node_name_eq(nested, "drv"))
+			return -EINVAL;
+		for_each_available_child_of_node_scoped(nested, child) {
+			if (!of_node_name_eq(child, "channel"))
+				continue;
+			if (channel)
+				return -EINVAL;
+			channel = of_node_get(child);
+		}
+		if (!channel)
+			return -EINVAL;
+	}
+
+	ret = of_property_read_u32(nested ?: dn, "qcom,drv-id", &drv->id);
 	if (ret)
 		return ret;
+
+	if (nested && drv->id >= 3)
+		return -EINVAL;
 
 	drv->name = of_get_property(dn, "label", NULL);
 	if (!drv->name)
@@ -1074,7 +1145,7 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	else
 		drv->regs = rpmh_rsc_reg_offset_ver_2_7;
 
-	ret = rpmh_probe_tcs_config(pdev, drv);
+	ret = rpmh_probe_tcs_config(nested ?: dn, channel, drv);
 	if (ret)
 		return ret;
 
@@ -1092,6 +1163,11 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	drv->dev = &pdev->dev;
+	spin_lock_init(&drv->client.cache_lock);
+	INIT_LIST_HEAD(&drv->client.cache);
+	INIT_LIST_HEAD(&drv->client.batch_cache);
+
 	/*
 	 * CPU PM/genpd notification are not required for controllers that support
 	 * 'HW solver' mode where they can be in autonomous mode executing low
@@ -1100,35 +1176,43 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	solver_config = readl_relaxed(drv->base + drv->regs[DRV_SOLVER_CONFIG]);
 	solver_config &= DRV_HW_SOLVER_MASK << DRV_HW_SOLVER_SHIFT;
 	solver_config = solver_config >> DRV_HW_SOLVER_SHIFT;
-	if (!solver_config) {
+	if (!solver_config || (nested && pdev->dev.pm_domain)) {
 		if (pdev->dev.pm_domain) {
 			ret = rpmh_rsc_pd_attach(drv, &pdev->dev);
-			if (ret)
-				return ret;
+			if (!ret)
+				ret = devm_add_action_or_reset(&pdev->dev,
+						rpmh_remove_pd_notifier, &pdev->dev);
 		} else {
 			drv->rsc_pm.notifier_call = rpmh_rsc_cpu_pm_callback;
-			cpu_pm_register_notifier(&drv->rsc_pm);
+			ret = cpu_pm_register_notifier(&drv->rsc_pm);
+			if (!ret)
+				ret = devm_add_action_or_reset(&pdev->dev,
+						rpmh_remove_cpu_notifier, &drv->rsc_pm);
 		}
+		if (ret)
+			return ret;
 	}
 
 	/* Enable the active TCS to send requests immediately */
 	writel_relaxed(drv->tcs[ACTIVE_TCS].mask,
 		       drv->tcs_base + drv->regs[RSC_DRV_IRQ_ENABLE]);
 
-	spin_lock_init(&drv->client.cache_lock);
-	INIT_LIST_HEAD(&drv->client.cache);
-	INIT_LIST_HEAD(&drv->client.batch_cache);
+	if (nested) {
+		struct platform_device *child;
 
-	dev_set_drvdata(&pdev->dev, drv);
-	drv->dev = &pdev->dev;
-
-	ret = devm_of_platform_populate(&pdev->dev);
-	if (ret && pdev->dev.pm_domain) {
-		dev_pm_genpd_remove_notifier(&pdev->dev);
-		pm_runtime_disable(&pdev->dev);
+		child = of_platform_device_create(nested, NULL, &pdev->dev);
+		if (!child)
+			return -ENODEV;
+		ret = devm_add_action_or_reset(&pdev->dev, rpmh_unregister_drv, child);
+		if (ret)
+			return ret;
+		client_parent = &child->dev;
 	}
 
-	return ret;
+	dev_set_drvdata(client_parent, drv);
+	if (nested)
+		return of_platform_populate(nested, NULL, NULL, client_parent);
+	return devm_of_platform_populate(client_parent);
 }
 
 static const struct of_device_id rpmh_drv_match[] = {
