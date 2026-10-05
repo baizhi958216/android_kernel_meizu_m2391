@@ -657,6 +657,49 @@ static const struct clk_rpmh_desc clk_rpmh_sm8450 = {
 	.num_clks = ARRAY_SIZE(sm8450_rpmh_clocks),
 };
 
+/* Kalama exposes both the XO pad and its divided output to consumers. */
+DEFINE_CLK_RPMH_ARC(xo_pad, "xo.lvl", 0x3, 2);
+static CLK_FIXED_FACTOR(kalama_bi_tcxo, "bi_tcxo", "xo_pad", 2, 1, 0);
+static CLK_FIXED_FACTOR(kalama_bi_tcxo_ao, "bi_tcxo_ao", "xo_pad_ao", 2, 1, 0);
+DEFINE_CLK_RPMH_VRM(rf_clk1, _kalama, "clka1", 1);
+DEFINE_CLK_RPMH_VRM(rf_clk2, _kalama, "clka2", 1);
+DEFINE_CLK_RPMH_VRM(rf_clk3, _kalama, "clka3", 1);
+DEFINE_CLK_RPMH_VRM(rf_clk4, _kalama, "clka4", 1);
+DEFINE_CLK_RPMH_VRM(rf_clk5, _kalama, "clka5", 2);
+DEFINE_CLK_RPMH_VRM(ln_bb_clk1, _kalama, "clka6", 2);
+DEFINE_CLK_RPMH_VRM(ln_bb_clk2, _kalama, "clka7", 2);
+DEFINE_CLK_RPMH_VRM(ln_bb_clk3, _kalama, "clka8", 2);
+
+static struct clk_hw *kalama_rpmh_clocks[] = {
+	[RPMH_CXO_CLK] = &kalama_bi_tcxo.hw,
+	[RPMH_CXO_CLK_A] = &kalama_bi_tcxo_ao.hw,
+	[RPMH_CXO_PAD_CLK] = &clk_rpmh_xo_pad_2_div.hw,
+	[RPMH_CXO_PAD_CLK_A] = &clk_rpmh_xo_pad_2_div_ao.hw,
+	[RPMH_RF_CLK1] = &clk_rpmh_rf_clk1_kalama.hw,
+	[RPMH_RF_CLK1_A] = &clk_rpmh_rf_clk1_kalama_ao.hw,
+	[RPMH_RF_CLK2] = &clk_rpmh_rf_clk2_kalama.hw,
+	[RPMH_RF_CLK2_A] = &clk_rpmh_rf_clk2_kalama_ao.hw,
+	[RPMH_RF_CLK3] = &clk_rpmh_rf_clk3_kalama.hw,
+	[RPMH_RF_CLK3_A] = &clk_rpmh_rf_clk3_kalama_ao.hw,
+	[RPMH_RF_CLK4] = &clk_rpmh_rf_clk4_kalama.hw,
+	[RPMH_RF_CLK4_A] = &clk_rpmh_rf_clk4_kalama_ao.hw,
+	[RPMH_RF_CLK5] = &clk_rpmh_rf_clk5_kalama.hw,
+	[RPMH_RF_CLK5_A] = &clk_rpmh_rf_clk5_kalama_ao.hw,
+	[RPMH_LN_BB_CLK1] = &clk_rpmh_ln_bb_clk1_kalama.hw,
+	[RPMH_LN_BB_CLK1_A] = &clk_rpmh_ln_bb_clk1_kalama_ao.hw,
+	[RPMH_LN_BB_CLK2] = &clk_rpmh_ln_bb_clk2_kalama.hw,
+	[RPMH_LN_BB_CLK2_A] = &clk_rpmh_ln_bb_clk2_kalama_ao.hw,
+	[RPMH_LN_BB_CLK3] = &clk_rpmh_ln_bb_clk3_kalama.hw,
+	[RPMH_LN_BB_CLK3_A] = &clk_rpmh_ln_bb_clk3_kalama_ao.hw,
+	[RPMH_IPA_CLK] = &clk_rpmh_ipa.hw,
+};
+
+static const struct clk_rpmh_desc clk_rpmh_kalama = {
+	.clks = kalama_rpmh_clocks,
+	.num_clks = ARRAY_SIZE(kalama_rpmh_clocks),
+	.clka_optional = true,
+};
+
 static struct clk_hw *sm8550_rpmh_clocks[] = {
 	[RPMH_CXO_CLK]		= &clk_rpmh_bi_tcxo_div2.hw,
 	[RPMH_CXO_CLK_A]	= &clk_rpmh_bi_tcxo_div2_ao.hw,
@@ -938,6 +981,13 @@ static int clk_rpmh_probe(struct platform_device *pdev)
 
 		name = hw_clks[i]->init->name;
 
+		if (hw_clks[i]->init->ops == &clk_fixed_factor_ops) {
+			ret = devm_clk_hw_register(&pdev->dev, hw_clks[i]);
+			if (ret)
+				return dev_err_probe(&pdev->dev, ret, "Failed to register %s\n", name);
+			continue;
+		}
+
 		rpmh_clk = to_clk_rpmh(hw_clks[i]);
 		res_addr = cmd_db_read_addr(rpmh_clk->res_name);
 		if (!res_addr) {
@@ -989,6 +1039,7 @@ static int clk_rpmh_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id clk_rpmh_match_table[] = {
+	{ .compatible = "qcom,kalama-rpmh-clk", .data = &clk_rpmh_kalama },
 	{ .compatible = "qcom,glymur-rpmh-clk", .data = &clk_rpmh_glymur},
 	{ .compatible = "qcom,milos-rpmh-clk", .data = &clk_rpmh_milos},
 	{ .compatible = "qcom,qcs615-rpmh-clk", .data = &clk_rpmh_qcs615},
