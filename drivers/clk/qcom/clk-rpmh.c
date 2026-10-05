@@ -673,8 +673,8 @@ DEFINE_CLK_RPMH_VRM(ln_bb_clk3, _kalama, "clka8", 2);
 static struct clk_hw *kalama_rpmh_clocks[] = {
 	[RPMH_CXO_CLK] = &kalama_bi_tcxo.hw,
 	[RPMH_CXO_CLK_A] = &kalama_bi_tcxo_ao.hw,
-	[RPMH_CXO_PAD_CLK] = &clk_rpmh_xo_pad_2_div.hw,
-	[RPMH_CXO_PAD_CLK_A] = &clk_rpmh_xo_pad_2_div_ao.hw,
+	[RPMH_CXO_PAD_CLK] = &clk_rpmh_xo_pad_div2.hw,
+	[RPMH_CXO_PAD_CLK_A] = &clk_rpmh_xo_pad_div2_ao.hw,
 	[RPMH_RF_CLK1] = &clk_rpmh_rf_clk1_kalama.hw,
 	[RPMH_RF_CLK1_A] = &clk_rpmh_rf_clk1_kalama_ao.hw,
 	[RPMH_RF_CLK2] = &clk_rpmh_rf_clk2_kalama.hw,
