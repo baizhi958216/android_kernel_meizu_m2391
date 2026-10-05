@@ -1414,6 +1414,13 @@ config SM_LPASSCC_6115
 	  Say Y if you want to toggle LPASS-adjacent resets within
 	  this clock controller to reset the LPASS subsystem.
 
+config KALAMA_TCSRCC
+	tristate "Kalama downstream TCSR clock controller"
+	depends on ARM64 || COMPILE_TEST
+	help
+	  Reference clock gates for PCIe, UFS and USB on boards using the
+	  Qualcomm Kalama device tree without a parent clock specifier.
+
 config SM_TCSRCC_8550
 	tristate "SM8550 TCSR Clock Controller"
 	depends on ARM64 || COMPILE_TEST
