@@ -82,27 +82,9 @@ static int ufs_qcom_phy_qmp_v4_init(struct phy *generic_phy)
 {
 	struct ufs_qcom_phy_qmp_v4 *phy = phy_get_drvdata(generic_phy);
 	struct ufs_qcom_phy *phy_common = &phy->common_cfg;
-	int err;
 
-	err = ufs_qcom_phy_init_clks(phy_common);
-	if (err) {
-		dev_err(phy_common->dev, "%s: ufs_qcom_phy_init_clks() failed %d\n",
-			__func__, err);
-		goto out;
-	}
-
-	err = ufs_qcom_phy_init_vregulators(phy_common);
-	if (err) {
-		dev_err(phy_common->dev, "%s: ufs_qcom_phy_init_vregulators() failed %d\n",
-			__func__, err);
-		goto out;
-	}
-
-	/* Optional */
-	err = ufs_qcom_phy_get_reset(phy_common);
-
-out:
-	return err;
+	/* The host registers this reset controller after discovering the PHY. */
+	return ufs_qcom_phy_get_reset(phy_common);
 }
 
 static int ufs_qcom_phy_qmp_v4_exit(struct phy *generic_phy)
