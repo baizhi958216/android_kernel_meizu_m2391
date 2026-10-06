@@ -9,6 +9,7 @@
 #include <linux/export.h>
 
 #include "clk-regmap.h"
+#include "clk-regmap-vdd.h"
 
 /**
  * clk_is_enabled_regmap - standard is_enabled() for regmap users
@@ -100,6 +101,9 @@ int devm_clk_register_regmap(struct device *dev, struct clk_regmap *rclk)
 		rclk->regmap = dev_get_regmap(dev, NULL);
 	else if (dev && dev->parent)
 		rclk->regmap = dev_get_regmap(dev->parent, NULL);
+
+	if (rclk->vdd)
+		return devm_clk_register_regmap_vdd(dev, rclk);
 
 	return devm_clk_hw_register(dev, &rclk->hw);
 }

@@ -7,6 +7,7 @@
 #include <linux/clk-provider.h>
 
 struct regmap;
+struct clk_regmap_vdd;
 
 /**
  * struct clk_regmap - regmap supporting clock
@@ -16,6 +17,7 @@ struct regmap;
  * @enable_mask: mask when using regmap enable/disable ops
  * @enable_is_inverted: flag to indicate set enable_mask bits to disable
  *                      when using clock_enable_regmap and friends APIs.
+ * @vdd: optional regulator corner votes for this clock.
  */
 struct clk_regmap {
 	struct clk_hw hw;
@@ -23,6 +25,7 @@ struct clk_regmap {
 	unsigned int enable_reg;
 	unsigned int enable_mask;
 	bool enable_is_inverted;
+	struct clk_regmap_vdd *vdd;
 };
 
 static inline struct clk_regmap *to_clk_regmap(struct clk_hw *hw)
