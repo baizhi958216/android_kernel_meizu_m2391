@@ -1282,6 +1282,64 @@ int qcom_scm_ice_set_key(u32 index, const u8 *key, u32 key_size,
 }
 EXPORT_SYMBOL_GPL(qcom_scm_ice_set_key);
 
+/*
+ * Kalama's KeyMint provisions keys. Its UFS HWKM uses the six-argument
+ * ES key-programming service and the two-argument eviction service.
+ */
+bool qcom_scm_ice_hwkm_v2_available(void)
+{
+	return __qcom_scm_is_call_available(__scm->dev, QCOM_SCM_SVC_ES,
+					    QCOM_SCM_ES_CONFIG_SET_ICE_KEY_V2) &&
+	       __qcom_scm_is_call_available(__scm->dev, QCOM_SCM_SVC_ES,
+					    QCOM_SCM_ES_CLEAR_ICE_KEY_V2) &&
+	       __qcom_scm_is_call_available(__scm->dev, QCOM_SCM_SVC_ES,
+					    QCOM_SCM_ES_DERIVE_SW_SECRET);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_ice_hwkm_v2_available);
+
+int qcom_scm_ice_hwkm_v2_set_key(u32 slot, const u8 *key, size_t key_size)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_ES,
+		.cmd = QCOM_SCM_ES_CONFIG_SET_ICE_KEY_V2,
+		.arginfo = QCOM_SCM_ARGS(6, QCOM_SCM_VAL, QCOM_SCM_RW,
+					 QCOM_SCM_VAL, QCOM_SCM_VAL,
+					 QCOM_SCM_VAL, QCOM_SCM_VAL),
+		.args[0] = slot,
+		.args[2] = key_size,
+		/* HWKM uses zero for cipher, data unit size and storage type. */
+		.owner = ARM_SMCCC_OWNER_SIP,
+	};
+	void *buf __free(qcom_tzmem) =
+		qcom_tzmem_alloc(__scm->mempool, key_size, GFP_KERNEL);
+	int ret;
+
+	if (!buf)
+		return -ENOMEM;
+
+	memcpy(buf, key, key_size);
+	desc.args[1] = qcom_tzmem_to_phys(buf);
+	ret = qcom_scm_call(__scm->dev, &desc, NULL);
+	memzero_explicit(buf, key_size);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(qcom_scm_ice_hwkm_v2_set_key);
+
+int qcom_scm_ice_hwkm_v2_clear_key(u32 slot)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_ES,
+		.cmd = QCOM_SCM_ES_CLEAR_ICE_KEY_V2,
+		.arginfo = QCOM_SCM_ARGS(2),
+		.args[0] = slot,
+		.args[1] = 0,
+		.owner = ARM_SMCCC_OWNER_SIP,
+	};
+
+	return qcom_scm_call(__scm->dev, &desc, NULL);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_ice_hwkm_v2_clear_key);
+
 bool qcom_scm_has_wrapped_key_support(void)
 {
 	return __qcom_scm_is_call_available(__scm->dev, QCOM_SCM_SVC_ES,
