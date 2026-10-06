@@ -339,6 +339,13 @@ config QCOM_CPUCP_MBOX
 	  controller driver enables communication between AP and CPUCP. Say
 	  Y here if you want to build this driver.
 
+config QCOM_KALAMA_QMP
+	tristate "Qualcomm Kalama shared-memory QMP mailbox"
+	depends on OF && QCOM_SMEM && QCOM_IPCC
+	help
+	  Exchange packets with the trusted management engine through SMEM
+	  and an IPCC doorbell on Qualcomm Kalama.
+
 config QCOM_IPCC
 	tristate "Qualcomm Technologies, Inc. IPCC driver"
 	depends on ARCH_QCOM || COMPILE_TEST
