@@ -1130,6 +1130,14 @@ config REGULATOR_PROXY_CONSUMER
 	help
 	  Hold the regulator votes specified by firmware until consumers bind.
 
+config REGULATOR_KALAMA_RPMH
+	tristate "Qualcomm Kalama ARC, VRM and XOB regulators"
+	depends on OF && QCOM_RPMH && QCOM_COMMAND_DB
+	select REGULATOR_PROXY_CONSUMER
+	help
+	  Aggregate active and sleep votes from the separate regulator nodes
+	  in Qualcomm downstream device trees such as the Meizu m2391.
+
 config REGULATOR_QCOM_RPMH
 	tristate "Qualcomm Technologies, Inc. RPMh regulator driver"
 	depends on QCOM_RPMH || (QCOM_RPMH=n && COMPILE_TEST)
