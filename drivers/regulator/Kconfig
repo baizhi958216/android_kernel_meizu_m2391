@@ -1124,6 +1124,12 @@ config REGULATOR_QCOM_RPM
 	  Qualcomm RPM as a module. The module will be named
 	  "qcom_rpm-regulator".
 
+config REGULATOR_PROXY_CONSUMER
+	tristate "Qualcomm boot-time regulator proxy votes"
+	depends on OF
+	help
+	  Hold the regulator votes specified by firmware until consumers bind.
+
 config REGULATOR_QCOM_RPMH
 	tristate "Qualcomm Technologies, Inc. RPMh regulator driver"
 	depends on QCOM_RPMH || (QCOM_RPMH=n && COMPILE_TEST)
