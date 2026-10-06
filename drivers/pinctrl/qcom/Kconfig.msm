@@ -421,6 +421,13 @@ config PINCTRL_SM8450
 	  Qualcomm Technologies Inc TLMM block found on the Qualcomm
 	  Technologies Inc SM8450 platform.
 
+config PINCTRL_KALAMA
+	tristate "Qualcomm Kalama downstream TLMM pin controller"
+	depends on ARM64 || COMPILE_TEST
+	help
+	  Use the downstream TLMM register window, pin functions and
+	  silicon-specific PDC wake interrupt routing on Kalama devices.
+
 config PINCTRL_SM8550
 	tristate "Qualcomm Technologies Inc SM8550 pin controller driver"
 	depends on ARM64 || COMPILE_TEST

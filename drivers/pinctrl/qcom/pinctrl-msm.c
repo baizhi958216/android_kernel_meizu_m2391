@@ -736,6 +736,21 @@ static int msm_gpio_init_valid_mask(struct gpio_chip *gc,
 		return 0;
 	}
 
+	if (device_property_present(pctrl->dev, "qcom,gpios-reserved")) {
+		struct device_node *np = pctrl->dev->of_node;
+		u32 pin;
+
+		ret = of_property_count_u32_elems(np, "qcom,gpios-reserved");
+		if (ret <= 0 || ret > ngpios)
+			return -EINVAL;
+		of_property_for_each_u32(np, "qcom,gpios-reserved", pin) {
+			if (pin >= ngpios)
+				return -EINVAL;
+			clear_bit(pin, valid_mask);
+		}
+		return 0;
+	}
+
 	/* The number of GPIOs in the ACPI tables */
 	len = ret = device_property_count_u16(pctrl->dev, "gpios");
 	if (ret < 0)
@@ -1358,7 +1373,8 @@ static int msm_gpio_wakeirq(struct gpio_chip *gc,
 
 static bool msm_gpio_needs_valid_mask(struct msm_pinctrl *pctrl)
 {
-	if (pctrl->soc->reserved_gpios)
+	if (pctrl->soc->reserved_gpios ||
+	    device_property_present(pctrl->dev, "qcom,gpios-reserved"))
 		return true;
 
 	return device_property_count_u16(pctrl->dev, "gpios") > 0;
