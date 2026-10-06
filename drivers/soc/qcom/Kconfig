@@ -286,6 +286,13 @@ config QCOM_INLINE_CRYPTO_ENGINE
 	tristate
 	select QCOM_SCM
 
+config QCOM_KALAMA_HWKM
+	bool "Qualcomm Kalama UFS hardware-wrapped key protocol"
+	depends on QCOM_INLINE_CRYPTO_ENGINE && MAILBOX && OF
+	help
+	  Use the Kalama TME mailbox for transport key broadcasts and the
+	  UFS HWKM v2 secure monitor interface for KeyMint-provisioned keys.
+
 config QCOM_PBS
 	tristate "PBS trigger support for Qualcomm Technologies, Inc. PMICS"
 	depends on SPMI
