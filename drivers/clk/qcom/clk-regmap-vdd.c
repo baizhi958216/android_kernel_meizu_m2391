@@ -28,7 +28,8 @@ static int clk_vdd_find_corner(const struct clk_regmap_vdd *vdd, unsigned long r
 	/* Fractional PLLs can report a few Hz above the nominal rate. */
 	for (i = 0; i < vdd->num_rates; i++)
 		if (DIV_ROUND_CLOSEST(rate, 1000) <= DIV_ROUND_CLOSEST(vdd->rates[i].max_rate, 1000))
-			return vdd->rates[i].corner;
+			return vdd->autonomous_rate ? vdd->rates[vdd->num_rates - 1].corner :
+						      vdd->rates[i].corner;
 
 	return -ERANGE;
 }
@@ -173,3 +174,69 @@ int devm_clk_register_regmap_vdd(struct device *dev, struct clk_regmap *clkr)
 	s->notifier.notifier_call = clk_vdd_rate_change;
 	return devm_clk_notifier_register(dev, clk, &s->notifier);
 }
+
+struct qcom_clk_boot_vote {
+	unsigned int count;
+	unsigned int num_set;
+	bool enabled;
+	struct regulator_bulk_data supplies[];
+};
+
+void qcom_clk_vdd_drop_boot_vote(struct qcom_clk_boot_vote *vote)
+{
+	if (vote->enabled) {
+		if (regulator_bulk_disable(vote->count, vote->supplies))
+			return;
+		vote->enabled = false;
+	}
+	while (vote->num_set) {
+		if (regulator_set_voltage(vote->supplies[vote->num_set - 1].consumer, 0, INT_MAX))
+			return;
+		vote->num_set--;
+	}
+}
+EXPORT_SYMBOL_GPL(qcom_clk_vdd_drop_boot_vote);
+
+static void clk_vdd_boot_cleanup(void *data)
+{
+	qcom_clk_vdd_drop_boot_vote(data);
+}
+
+/* Cover firmware-enabled clocks until CCF has handed off all consumers. */
+struct qcom_clk_boot_vote *devm_qcom_clk_vdd_boot_vote(struct device *dev,
+			const char * const *supplies, unsigned int count, int corner)
+{
+	struct qcom_clk_boot_vote *vote;
+	int i, ret;
+
+	vote = devm_kzalloc(dev, struct_size(vote, supplies, count), GFP_KERNEL);
+	if (!vote)
+		return ERR_PTR(-ENOMEM);
+	vote->count = count;
+	for (i = 0; i < count; i++) {
+		vote->supplies[i].supply = supplies[i];
+		vote->supplies[i].consumer = devm_regulator_get_optional(dev, supplies[i]);
+		if (IS_ERR(vote->supplies[i].consumer))
+			return ERR_PTR(dev_err_probe(dev, PTR_ERR(vote->supplies[i].consumer),
+						     "failed to get %s\n", supplies[i]));
+	}
+	ret = devm_add_action_or_reset(dev, clk_vdd_boot_cleanup, vote);
+	if (ret)
+		return ERR_PTR(ret);
+	for (i = 0; i < count; i++) {
+		ret = regulator_set_voltage(vote->supplies[i].consumer, corner, INT_MAX);
+		if (ret)
+			goto release;
+		vote->num_set++;
+	}
+	ret = regulator_bulk_enable(count, vote->supplies);
+	if (ret)
+		goto release;
+	vote->enabled = true;
+	return vote;
+
+release:
+	devm_release_action(dev, clk_vdd_boot_cleanup, vote);
+	return ERR_PTR(ret);
+}
+EXPORT_SYMBOL_GPL(devm_qcom_clk_vdd_boot_vote);
