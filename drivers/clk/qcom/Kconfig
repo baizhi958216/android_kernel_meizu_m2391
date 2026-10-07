@@ -1414,6 +1414,14 @@ config SM_LPASSCC_6115
 	  Say Y if you want to toggle LPASS-adjacent resets within
 	  this clock controller to reset the LPASS subsystem.
 
+config KALAMA_GCC
+	tristate "Kalama downstream Global Clock Controller"
+	depends on ARM64 || COMPILE_TEST
+	depends on REGULATOR
+	help
+	  Clocks, resets and RPMh corner votes for boards with the Qualcomm
+	  Kalama GCC binding, including the v2 SDCC2 clock configuration.
+
 config KALAMA_TCSRCC
 	tristate "Kalama downstream TCSR clock controller"
 	depends on ARM64 || COMPILE_TEST
