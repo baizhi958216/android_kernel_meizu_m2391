@@ -7,6 +7,8 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/mailbox_client.h>
+#include <linux/mailbox/qmp.h>
+#include <linux/notifier.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/pm_domain.h>
@@ -86,6 +88,11 @@ struct qmp {
 
 	size_t offset;
 	size_t size;
+	size_t region_size;
+	size_t rx_offset;
+	size_t rx_size;
+	void *rx_buf;
+	struct atomic_notifier_head rx_notifiers;
 
 	wait_queue_head_t event;
 
@@ -142,9 +149,27 @@ static int qmp_open(struct qmp *qmp)
 
 	qmp->offset = readl(qmp->msgram + QMP_DESC_MCORE_MBOX_OFFSET);
 	qmp->size = readl(qmp->msgram + QMP_DESC_MCORE_MBOX_SIZE);
-	if (!qmp->size) {
-		dev_err(qmp->dev, "invalid mailbox size\n");
+	if (qmp->offset > qmp->region_size || !IS_ALIGNED(qmp->offset, 4) ||
+	    qmp->size < sizeof(u32) || qmp->size > qmp->region_size - qmp->offset)
 		return -EINVAL;
+
+	if (of_device_is_compatible(qmp->dev->of_node, "qcom,kalama-aoss-qmp")) {
+		size_t offset = readl(qmp->msgram + QMP_DESC_UCORE_MBOX_OFFSET);
+		size_t size = readl(qmp->msgram + QMP_DESC_UCORE_MBOX_SIZE);
+
+		if (size) {
+			if (!IS_ALIGNED(offset, 4) || offset < QMP_DESC_MCORE_MBOX_OFFSET + 4 ||
+			    !IS_ALIGNED(size, 4) || size < sizeof(u32) ||
+			    offset > qmp->region_size || size > qmp->region_size - offset ||
+			    (offset < qmp->offset + qmp->size && qmp->offset < offset + size))
+				return -EINVAL;
+			qmp->rx_buf = devm_kmalloc(qmp->dev, size, GFP_KERNEL);
+			if (!qmp->rx_buf)
+				return -ENOMEM;
+			qmp->rx_size = size;
+			/* Publish the window after the buffer is ready for the IRQ. */
+			smp_store_release(&qmp->rx_offset, offset);
+		}
 	}
 
 	/* Ack remote core's link state */
@@ -206,6 +231,22 @@ static irqreturn_t qmp_intr(int irq, void *data)
 {
 	struct qmp *qmp = data;
 
+	size_t offset = smp_load_acquire(&qmp->rx_offset);
+
+	if (offset) {
+		void __iomem *rx = qmp->msgram + offset;
+		struct qmp_pkt pkt = { .size = readl(rx), .data = qmp->rx_buf };
+
+		if (pkt.size) {
+			if (pkt.size <= qmp->rx_size - sizeof(u32)) {
+				__ioread32_copy(pkt.data, rx + sizeof(u32),
+						DIV_ROUND_UP(pkt.size, sizeof(u32)));
+				atomic_notifier_call_chain(&qmp->rx_notifiers, 0, &pkt);
+			}
+			writel(0, rx);
+			qmp_kick(qmp);
+		}
+	}
 	wake_up_all(&qmp->event);
 
 	return IRQ_HANDLED;
@@ -215,6 +256,38 @@ static bool qmp_message_empty(struct qmp *qmp)
 {
 	return readl(qmp->msgram + qmp->offset) == 0;
 }
+
+int qmp_register_rx_notifier(struct qmp *qmp, struct notifier_block *nb)
+{
+	return atomic_notifier_chain_register(&qmp->rx_notifiers, nb);
+}
+EXPORT_SYMBOL_GPL(qmp_register_rx_notifier);
+
+void qmp_unregister_rx_notifier(struct qmp *qmp, struct notifier_block *nb)
+{
+	atomic_notifier_chain_unregister(&qmp->rx_notifiers, nb);
+}
+EXPORT_SYMBOL_GPL(qmp_unregister_rx_notifier);
+
+int qmp_send_packet(struct qmp *qmp, const void *data, size_t len)
+{
+	long ret;
+
+	if (!data || !len || !IS_ALIGNED(len, 4) || len > qmp->size - sizeof(u32))
+		return -EMSGSIZE;
+
+	mutex_lock(&qmp->tx_lock);
+	__iowrite32_copy(qmp->msgram + qmp->offset + sizeof(u32), data, len / sizeof(u32));
+	writel(len, qmp->msgram + qmp->offset);
+	readl(qmp->msgram + qmp->offset);
+	qmp_kick(qmp);
+	ret = wait_event_timeout(qmp->event, qmp_message_empty(qmp), HZ);
+	if (!ret)
+		writel(0, qmp->msgram + qmp->offset);
+	mutex_unlock(&qmp->tx_lock);
+	return ret ? 0 : -ETIMEDOUT;
+}
+EXPORT_SYMBOL_GPL(qmp_send_packet);
 
 /**
  * qmp_send() - send a message to the AOSS
@@ -231,7 +304,6 @@ static bool qmp_message_empty(struct qmp *qmp)
 int __printf(2, 3) qmp_send(struct qmp *qmp, const char *fmt, ...)
 {
 	char buf[QMP_MSG_LEN];
-	long time_left;
 	va_list args;
 	int len;
 	int ret;
@@ -247,35 +319,9 @@ int __printf(2, 3) qmp_send(struct qmp *qmp, const char *fmt, ...)
 	if (WARN_ON(len >= sizeof(buf)))
 		return -EINVAL;
 
-	mutex_lock(&qmp->tx_lock);
-
 	trace_aoss_send(buf);
-
-	/* The message RAM only implements 32-bit accesses */
-	__iowrite32_copy(qmp->msgram + qmp->offset + sizeof(u32),
-			 buf, sizeof(buf) / sizeof(u32));
-	writel(sizeof(buf), qmp->msgram + qmp->offset);
-
-	/* Read back length to confirm data written in message RAM */
-	readl(qmp->msgram + qmp->offset);
-	qmp_kick(qmp);
-
-	time_left = wait_event_interruptible_timeout(qmp->event,
-						     qmp_message_empty(qmp), HZ);
-	if (!time_left) {
-		dev_err(qmp->dev, "ucore did not ack channel\n");
-		ret = -ETIMEDOUT;
-
-		/* Clear message from buffer */
-		writel(0, qmp->msgram + qmp->offset);
-	} else {
-		ret = 0;
-	}
-
+	ret = qmp_send_packet(qmp, buf, sizeof(buf));
 	trace_aoss_send_done(buf, ret);
-
-	mutex_unlock(&qmp->tx_lock);
-
 	return ret;
 }
 EXPORT_SYMBOL_GPL(qmp_send);
@@ -639,7 +685,7 @@ static ssize_t qmp_debugfs_write(struct file *file, const char __user *user_buf,
 			return -EINVAL;
 	}
 
-	ret = qmp_send(qmp, buf);
+	ret = qmp_send(qmp, "%s", buf);
 	if (ret < 0)
 		return ret;
 
@@ -671,6 +717,7 @@ static void qmp_debugfs_create(struct qmp *qmp)
 static int qmp_probe(struct platform_device *pdev)
 {
 	struct qmp *qmp;
+	struct resource *res;
 	int irq;
 	int ret;
 
@@ -682,9 +729,11 @@ static int qmp_probe(struct platform_device *pdev)
 	init_waitqueue_head(&qmp->event);
 	mutex_init(&qmp->tx_lock);
 
-	qmp->msgram = devm_platform_ioremap_resource(pdev, 0);
+	ATOMIC_INIT_NOTIFIER_HEAD(&qmp->rx_notifiers);
+	qmp->msgram = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(qmp->msgram))
 		return PTR_ERR(qmp->msgram);
+	qmp->region_size = resource_size(res);
 
 	qmp->mbox_client.dev = &pdev->dev;
 	qmp->mbox_client.knows_txdone = true;

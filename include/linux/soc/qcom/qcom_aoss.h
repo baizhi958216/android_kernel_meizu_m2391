@@ -10,9 +10,13 @@
 #include <linux/device.h>
 
 struct qmp;
+struct notifier_block;
 
 #if IS_ENABLED(CONFIG_QCOM_AOSS_QMP)
 
+int qmp_register_rx_notifier(struct qmp *qmp, struct notifier_block *nb);
+void qmp_unregister_rx_notifier(struct qmp *qmp, struct notifier_block *nb);
+int qmp_send_packet(struct qmp *qmp, const void *data, size_t len);
 int qmp_send(struct qmp *qmp, const char *fmt, ...);
 struct qmp *qmp_get(struct device *dev);
 void qmp_put(struct qmp *qmp);
