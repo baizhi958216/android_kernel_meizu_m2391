@@ -215,3 +215,4 @@ ccflags-$(CONFIG_REGULATOR_DEBUG) += -DDEBUG
 
 obj-$(CONFIG_REGULATOR_PROXY_CONSUMER) += proxy-consumer.o
 obj-$(CONFIG_REGULATOR_KALAMA_RPMH) += rpmh-regulator.o
+obj-$(CONFIG_REGULATOR_KALAMA_GDSC) += gdsc-regulator.o

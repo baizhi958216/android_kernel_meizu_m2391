@@ -1130,6 +1130,16 @@ config REGULATOR_PROXY_CONSUMER
 	help
 	  Hold the regulator votes specified by firmware until consumers bind.
 
+config REGULATOR_KALAMA_GDSC
+	tristate "Qualcomm Kalama GDSC regulators"
+	depends on ARCH_QCOM && OF && COMMON_CLK && INTERCONNECT
+	select MFD_SYSCON
+	select REGMAP_MMIO
+	select REGULATOR_PROXY_CONSUMER
+	help
+	  Control the power switches described as regulator supplies in
+	  downstream Kalama device trees, including the UFS host and PHY.
+
 config REGULATOR_KALAMA_RPMH
 	tristate "Qualcomm Kalama ARC, VRM and XOB regulators"
 	depends on OF && QCOM_RPMH && QCOM_COMMAND_DB
