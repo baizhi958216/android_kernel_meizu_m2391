@@ -21,6 +21,8 @@
 
 #include <soc/qcom/ice.h>
 
+#include "tme-hwkm.h"
+
 #define AES_256_XTS_KEY_SIZE			64   /* for raw keys only */
 #define QCOM_ICE_HWKM_WRAPPED_KEY_SIZE		100  /* assuming HWKM v2 */
 
@@ -85,6 +87,17 @@ union crypto_cfg {
 #define qcom_ice_readl(engine, reg)	\
 	readl((engine)->base + (reg))
 
+/* Offsets relative to the separate ufs_ice_hwkm range. */
+#define KALAMA_KM_CONTROL		0x1000
+#define KALAMA_KM_STATUS		0x1004
+#define KALAMA_TPKEY_RECEIVE_CTL	0x101c
+#define KALAMA_TPKEY_RECEIVE_ENABLE	BIT(8)
+#define KALAMA_TPKEY_RECEIVE_CONFIG	0x18c
+#define KALAMA_BANK_IRQ_STATUS		0x2008
+#define KALAMA_BANK_ACCESS_BASE		0x5000
+#define KALAMA_BANK_ACCESS_WORDS	5
+#define KALAMA_KM_BIST_ERRORS		(BIT(6) | BIT(8))
+
 static bool qcom_ice_use_wrapped_keys;
 module_param_named(use_wrapped_keys, qcom_ice_use_wrapped_keys, bool, 0660);
 MODULE_PARM_DESC(use_wrapped_keys,
@@ -94,7 +107,12 @@ struct qcom_ice {
 	struct device *dev;
 	void __iomem *base;
 
+	/* Kalama exposes the HWKM slave as a separate resource. */
+	void __iomem *kalama_hwkm;
+	resource_size_t ice_size;
+	struct mutex hwkm_lock;
 	struct clk *core_clk;
+	bool kalama_ever_ready;
 	bool use_hwkm;
 	bool hwkm_init_complete;
 };
@@ -124,6 +142,13 @@ static bool qcom_ice_check_supported(struct qcom_ice *ice)
 		      QCOM_ICE_FORCE_HW_KEY1_SETTING_MASK)) {
 		dev_warn(dev, "Fuses are blown; ICE is unusable!\n");
 		return false;
+	}
+
+	if (ice->kalama_hwkm) {
+		if (major != 4 || !qcom_scm_ice_hwkm_v2_available())
+			return false;
+		ice->use_hwkm = true;
+		return true;
 	}
 
 	/*
@@ -207,7 +232,7 @@ static int qcom_ice_wait_bist_status(struct qcom_ice *ice)
 		return err;
 	}
 
-	if (ice->use_hwkm &&
+	if (ice->use_hwkm && !ice->kalama_hwkm &&
 	    qcom_ice_readl(ice, QCOM_ICE_REG_HWKM_TZ_KM_STATUS) !=
 	    (QCOM_ICE_HWKM_KT_CLEAR_DONE |
 	     QCOM_ICE_HWKM_BOOT_CMD_LIST0_DONE |
@@ -227,7 +252,7 @@ static void qcom_ice_hwkm_init(struct qcom_ice *ice)
 {
 	u32 regval;
 
-	if (!ice->use_hwkm)
+	if (ice->kalama_hwkm || !ice->use_hwkm)
 		return;
 
 	BUILD_BUG_ON(QCOM_ICE_HWKM_WRAPPED_KEY_SIZE >
@@ -340,6 +365,83 @@ static int qcom_ice_program_wrapped_key(struct qcom_ice *ice, unsigned int slot,
 	return 0;
 }
 
+/*
+ * Open the transport-key receiver only around the TME broadcast. A failed
+ * exchange can be retried even when ICE has already left legacy mode.
+ */
+static int kalama_ice_init_hwkm(struct qcom_ice *ice)
+{
+	void __iomem *km = ice->kalama_hwkm;
+	const u32 bist_done = BIT(0) | BIT(1) | BIT(2) | BIT(7) | BIT(9);
+	u32 val = qcom_ice_readl(ice, QCOM_ICE_REG_CONTROL);
+	int i, ret;
+
+	if (ice->hwkm_init_complete && !(val & QCOM_ICE_LEGACY_MODE_ENABLED))
+		return 0;
+	ice->hwkm_init_complete = false;
+	qcom_ice_writel(ice, val & ~QCOM_ICE_LEGACY_MODE_ENABLED, QCOM_ICE_REG_CONTROL);
+
+	val = readl(km + KALAMA_KM_STATUS);
+	if ((val & bist_done) != bist_done || val & KALAMA_KM_BIST_ERRORS)
+		return -EIO;
+
+	/* Preserve the access bits while disabling the unused CRC check. */
+	val = readl(km + KALAMA_KM_CONTROL);
+	writel(val & ~BIT(0), km + KALAMA_KM_CONTROL);
+	for (i = 0; i < KALAMA_BANK_ACCESS_WORDS; i++)
+		writel(U32_MAX, km + KALAMA_BANK_ACCESS_BASE + i * sizeof(u32));
+	writel(BIT(3), km + KALAMA_BANK_IRQ_STATUS);
+
+	val = readl(km + KALAMA_TPKEY_RECEIVE_CTL);
+	writel(val & ~KALAMA_TPKEY_RECEIVE_ENABLE, km + KALAMA_TPKEY_RECEIVE_CTL);
+	writel(KALAMA_TPKEY_RECEIVE_CONFIG, km + KALAMA_TPKEY_RECEIVE_CTL);
+	readl(km + KALAMA_TPKEY_RECEIVE_CTL);
+	ret = qcom_tme_hwkm_broadcast();
+	val = readl(km + KALAMA_TPKEY_RECEIVE_CTL);
+	writel(val & ~KALAMA_TPKEY_RECEIVE_ENABLE, km + KALAMA_TPKEY_RECEIVE_CTL);
+	if (!ret) {
+		ice->hwkm_init_complete = true;
+		ice->kalama_ever_ready = true;
+	}
+	return ret;
+}
+
+int qcom_ice_program_ufs_key(struct qcom_ice *ice, unsigned int slot,
+			     const struct blk_crypto_key *key, u8 capidx)
+{
+	union crypto_cfg cfg = {
+		.dusize = key->crypto_cfg.data_unit_size / 512,
+		.capidx = capidx,
+		.cfge = QCOM_ICE_HWKM_CFG_ENABLE_VAL,
+	};
+	int ret;
+
+	if (!ice->kalama_hwkm)
+		return qcom_ice_program_key(ice, slot, key);
+	if (key->crypto_cfg.key_type != BLK_CRYPTO_KEY_TYPE_HW_WRAPPED ||
+	    key->crypto_cfg.crypto_mode != BLK_ENCRYPTION_MODE_AES_256_XTS ||
+	    key->size <= BLK_CRYPTO_SW_SECRET_SIZE ||
+	    key->size > BLK_CRYPTO_MAX_HW_WRAPPED_KEY_SIZE)
+		return -EINVAL;
+	if (slot > U8_MAX || QCOM_ICE_REG_CRYPTOCFG(slot) + sizeof(u32) > ice->ice_size)
+		return -ERANGE;
+
+	guard(mutex)(&ice->hwkm_lock);
+	ret = kalama_ice_init_hwkm(ice);
+	if (ret)
+		return ret;
+
+	qcom_ice_writel(ice, 0, QCOM_ICE_REG_CRYPTOCFG(slot));
+	ret = qcom_scm_ice_hwkm_v2_set_key(2 * slot, key->bytes, key->size);
+	if (ret) {
+		qcom_scm_ice_hwkm_v2_clear_key(2 * slot);
+		return ret;
+	}
+	qcom_ice_writel(ice, le32_to_cpu(cfg.regval), QCOM_ICE_REG_CRYPTOCFG(slot));
+	return 0;
+}
+EXPORT_SYMBOL_GPL(qcom_ice_program_ufs_key);
+
 int qcom_ice_program_key(struct qcom_ice *ice, unsigned int slot,
 			 const struct blk_crypto_key *blk_key)
 {
@@ -350,6 +452,9 @@ int qcom_ice_program_key(struct qcom_ice *ice, unsigned int slot,
 	} key;
 	int i;
 	int err;
+
+	if (ice->kalama_hwkm)
+		return -EOPNOTSUPP; /* UFS must supply its capability index. */
 
 	/* Only AES-256-XTS has been tested so far. */
 	if (blk_key->crypto_cfg.crypto_mode !=
@@ -389,6 +494,16 @@ EXPORT_SYMBOL_GPL(qcom_ice_program_key);
 
 int qcom_ice_evict_key(struct qcom_ice *ice, int slot)
 {
+	if (ice->kalama_hwkm) {
+		if (slot < 0 || slot > U8_MAX ||
+		    QCOM_ICE_REG_CRYPTOCFG(slot) + sizeof(u32) > ice->ice_size)
+			return -ERANGE;
+		guard(mutex)(&ice->hwkm_lock);
+		qcom_ice_writel(ice, 0, QCOM_ICE_REG_CRYPTOCFG(slot));
+		if (!ice->kalama_ever_ready)
+			return 0;
+		return qcom_scm_ice_hwkm_v2_clear_key(2 * slot);
+	}
 	if (ice->hwkm_init_complete)
 		slot = translate_hwkm_slot(ice, slot);
 	return qcom_scm_ice_invalidate_key(slot);
@@ -428,9 +543,20 @@ int qcom_ice_derive_sw_secret(struct qcom_ice *ice,
 			      const u8 *eph_key, size_t eph_key_size,
 			      u8 sw_secret[BLK_CRYPTO_SW_SECRET_SIZE])
 {
-	int err = qcom_scm_derive_sw_secret(eph_key, eph_key_size,
-					    sw_secret,
-					    BLK_CRYPTO_SW_SECRET_SIZE);
+	int err;
+
+	if (ice->kalama_hwkm) {
+		if (eph_key_size <= BLK_CRYPTO_SW_SECRET_SIZE ||
+		    eph_key_size > BLK_CRYPTO_MAX_HW_WRAPPED_KEY_SIZE)
+			return -EINVAL;
+		/* Older KeyMint envelopes carry the software secret as a prefix. */
+		if (eph_key_size <= 64) {
+			memcpy(sw_secret, eph_key, BLK_CRYPTO_SW_SECRET_SIZE);
+			return 0;
+		}
+	}
+	err = qcom_scm_derive_sw_secret(eph_key, eph_key_size, sw_secret,
+					BLK_CRYPTO_SW_SECRET_SIZE);
 	if (err == -EIO || err == -EINVAL)
 		err = -EBADMSG; /* probably invalid key */
 	return err;
@@ -450,6 +576,9 @@ int qcom_ice_generate_key(struct qcom_ice *ice,
 			  u8 lt_key[BLK_CRYPTO_MAX_HW_WRAPPED_KEY_SIZE])
 {
 	int err;
+
+	if (ice->kalama_hwkm)
+		return -EOPNOTSUPP; /* KeyMint manages persistent keys. */
 
 	err = qcom_scm_generate_ice_key(lt_key, QCOM_ICE_HWKM_WRAPPED_KEY_SIZE);
 	if (err)
@@ -476,6 +605,9 @@ int qcom_ice_prepare_key(struct qcom_ice *ice,
 			 u8 eph_key[BLK_CRYPTO_MAX_HW_WRAPPED_KEY_SIZE])
 {
 	int err;
+
+	if (ice->kalama_hwkm)
+		return -EOPNOTSUPP; /* KeyMint manages persistent keys. */
 
 	err = qcom_scm_prepare_ice_key(lt_key, lt_key_size,
 				       eph_key, QCOM_ICE_HWKM_WRAPPED_KEY_SIZE);
@@ -505,6 +637,9 @@ int qcom_ice_import_key(struct qcom_ice *ice,
 {
 	int err;
 
+	if (ice->kalama_hwkm)
+		return -EOPNOTSUPP; /* KeyMint manages persistent keys. */
+
 	err = qcom_scm_import_ice_key(raw_key, raw_key_size,
 				      lt_key, QCOM_ICE_HWKM_WRAPPED_KEY_SIZE);
 	if (err)
@@ -515,14 +650,15 @@ int qcom_ice_import_key(struct qcom_ice *ice,
 EXPORT_SYMBOL_GPL(qcom_ice_import_key);
 
 static struct qcom_ice *qcom_ice_create(struct device *dev,
-					void __iomem *base)
+					void __iomem *base, void __iomem *km,
+					resource_size_t ice_size)
 {
 	struct qcom_ice *engine;
 
 	if (!qcom_scm_is_available())
 		return ERR_PTR(-EPROBE_DEFER);
 
-	if (!qcom_scm_ice_available()) {
+	if (!km && !qcom_scm_ice_available()) {
 		dev_warn(dev, "ICE SCM interface not found\n");
 		return NULL;
 	}
@@ -533,6 +669,9 @@ static struct qcom_ice *qcom_ice_create(struct device *dev,
 
 	engine->dev = dev;
 	engine->base = base;
+	engine->kalama_hwkm = km;
+	engine->ice_size = ice_size;
+	mutex_init(&engine->hwkm_lock);
 
 	/*
 	 * Legacy DT binding uses different clk names for each consumer,
@@ -541,7 +680,10 @@ static struct qcom_ice *qcom_ice_create(struct device *dev,
 	 * Also, enable the clock before we check what HW version the driver
 	 * supports.
 	 */
-	engine->core_clk = devm_clk_get_optional_enabled(dev, "ice_core_clk");
+	if (km)
+		engine->core_clk = devm_clk_get_enabled(dev, "core_clk_ice");
+	else
+		engine->core_clk = devm_clk_get_optional_enabled(dev, "ice_core_clk");
 	if (!engine->core_clk)
 		engine->core_clk = devm_clk_get_optional_enabled(dev, "ice");
 	if (!engine->core_clk)
@@ -586,6 +728,25 @@ static struct qcom_ice *of_qcom_ice_get(struct device *dev)
 	 * to create the ICE instance using the consumer device and the reg
 	 * range called 'ice' it provides.
 	 */
+	if (IS_ENABLED(CONFIG_QCOM_KALAMA_HWKM) && of_machine_is_compatible("qcom,kalama")) {
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ufs_ice");
+		if (res) {
+			struct resource *kmres;
+			void __iomem *km;
+
+			kmres = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ufs_ice_hwkm");
+			if (!kmres || resource_size(kmres) < 0x5014 ||
+			    resource_size(res) < QCOM_ICE_REG_CRYPTOCFG(0) + sizeof(u32))
+				return ERR_PTR(-EINVAL);
+			km = devm_ioremap_resource(dev, kmres);
+			if (IS_ERR(km))
+				return ERR_CAST(km);
+			base = devm_ioremap_resource(dev, res);
+			if (IS_ERR(base))
+				return ERR_CAST(base);
+			return qcom_ice_create(dev, base, km, resource_size(res));
+		}
+	}
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ice");
 	if (res) {
 		base = devm_ioremap_resource(&pdev->dev, res);
@@ -593,7 +754,7 @@ static struct qcom_ice *of_qcom_ice_get(struct device *dev)
 			return ERR_CAST(base);
 
 		/* create ICE instance using consumer dev */
-		return qcom_ice_create(&pdev->dev, base);
+		return qcom_ice_create(&pdev->dev, base, NULL, 0);
 	}
 
 	/*
@@ -636,8 +797,7 @@ static void qcom_ice_put(const struct qcom_ice *ice)
 {
 	struct platform_device *pdev = to_platform_device(ice->dev);
 
-	if (!platform_get_resource_byname(pdev, IORESOURCE_MEM, "ice"))
-		platform_device_put(pdev);
+	platform_device_put(pdev);
 }
 
 static void devm_of_qcom_ice_put(struct device *dev, void *res)
@@ -668,7 +828,7 @@ struct qcom_ice *devm_of_qcom_ice_get(struct device *dev)
 		return ERR_PTR(-ENOMEM);
 
 	ice = of_qcom_ice_get(dev);
-	if (!IS_ERR_OR_NULL(ice)) {
+	if (!IS_ERR_OR_NULL(ice) && ice->dev != dev) {
 		*dr = ice;
 		devres_add(dev, dr);
 	} else {
@@ -690,7 +850,7 @@ static int qcom_ice_probe(struct platform_device *pdev)
 		return PTR_ERR(base);
 	}
 
-	engine = qcom_ice_create(&pdev->dev, base);
+	engine = qcom_ice_create(&pdev->dev, base, NULL, 0);
 	if (IS_ERR(engine))
 		return PTR_ERR(engine);
 

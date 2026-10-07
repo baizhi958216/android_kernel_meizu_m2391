@@ -16,6 +16,8 @@ int qcom_ice_resume(struct qcom_ice *ice);
 int qcom_ice_suspend(struct qcom_ice *ice);
 int qcom_ice_program_key(struct qcom_ice *ice, unsigned int slot,
 			 const struct blk_crypto_key *blk_key);
+int qcom_ice_program_ufs_key(struct qcom_ice *ice, unsigned int slot,
+			     const struct blk_crypto_key *key, u8 capidx);
 int qcom_ice_evict_key(struct qcom_ice *ice, int slot);
 enum blk_crypto_key_type qcom_ice_get_supported_key_type(struct qcom_ice *ice);
 int qcom_ice_derive_sw_secret(struct qcom_ice *ice,

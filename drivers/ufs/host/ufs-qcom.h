@@ -328,6 +328,7 @@ struct ufs_qcom_host {
 
 #ifdef CONFIG_SCSI_UFS_CRYPTO
 	struct qcom_ice *ice;
+	u8 ice_cap_idx[8];
 #endif
 	u32 caps;
 	void __iomem *dev_ref_clk_ctrl_mmio;

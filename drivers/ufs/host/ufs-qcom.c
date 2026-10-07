@@ -211,9 +211,13 @@ static int ufs_qcom_ice_init(struct ufs_qcom_host *host)
 						       REG_UFS_CRYPTOCAP +
 						       i * sizeof(__le32)));
 		if (cap.algorithm_id == UFS_CRYPTO_ALG_AES_XTS &&
-		    cap.key_size == UFS_CRYPTO_KEY_SIZE_256)
+		    cap.key_size == UFS_CRYPTO_KEY_SIZE_256) {
+			for (int bit = 0; bit < ARRAY_SIZE(host->ice_cap_idx); bit++)
+				if (cap.sdus_mask & BIT(bit))
+					host->ice_cap_idx[bit] = i;
 			profile->modes_supported[BLK_ENCRYPTION_MODE_AES_256_XTS] |=
 				cap.sdus_mask * 512;
+		}
 	}
 
 	hba->caps |= UFSHCD_CAP_CRYPTO;
@@ -243,10 +247,15 @@ static int ufs_qcom_ice_keyslot_program(struct blk_crypto_profile *profile,
 {
 	struct ufs_hba *hba = ufs_hba_from_crypto_profile(profile);
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	unsigned int data_unit = key->crypto_cfg.data_unit_size / 512;
 	int err;
 
+	if (!is_power_of_2(data_unit) || data_unit > BIT(7))
+		return -EOPNOTSUPP;
+
 	ufshcd_hold(hba);
-	err = qcom_ice_program_key(host->ice, slot, key);
+	err = qcom_ice_program_ufs_key(host->ice, slot, key,
+				       host->ice_cap_idx[ilog2(data_unit)]);
 	ufshcd_release(hba);
 	return err;
 }
