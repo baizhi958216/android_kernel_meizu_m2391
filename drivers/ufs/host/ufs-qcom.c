@@ -135,6 +135,101 @@ static struct ufs_qcom_host *rcdev_to_ufs_host(struct reset_controller_dev *rcd)
 }
 
 #ifdef CONFIG_SCSI_UFS_CRYPTO
+enum kalama_ice_alloc_mode {
+	KALAMA_ICE_STATIC,
+	KALAMA_ICE_FLOOR,
+	KALAMA_ICE_INSTANT,
+};
+
+struct kalama_ice_allocator {
+	enum kalama_ice_alloc_mode mode;
+	u32 rx_percent;
+	u32 instant_cores;
+	u32 floor[10][2];
+};
+
+static int kalama_ice_parse_floor(struct device_node *node,
+				  struct kalama_ice_allocator *alloc)
+{
+	/* TX cores, RX cores, write max/min tasks, read max/min tasks. */
+	static const u32 defaults[][6] = {
+		{ 5, 12, 0, 0, 32, 0 }, { 12, 5, 32, 0, 0, 0 },
+		{ 6, 11, 4, 1, 32, 1 }, { 6, 11, 7, 1, 32, 1 },
+		{ 7, 10, 11, 1, 32, 1 }, { 7, 10, 14, 1, 32, 1 },
+		{ 8, 9, 18, 1, 32, 1 }, { 9, 8, 21, 1, 32, 1 },
+		{ 10, 7, 24, 1, 32, 1 }, { 10, 7, 32, 1, 32, 1 },
+	};
+	int i, j;
+
+	for (i = 0; i < ARRAY_SIZE(defaults); i++) {
+		const u32 *v = defaults[i];
+		u32 overrides[6];
+		char prop[8];
+
+		snprintf(prop, sizeof(prop), "g%d", i);
+		if (node && of_property_present(node, prop)) {
+			if (of_property_count_u32_elems(node, prop) != ARRAY_SIZE(overrides) ||
+			    of_property_read_u32_array(node, prop, overrides, ARRAY_SIZE(overrides)))
+				return -EINVAL;
+			for (j = 0; j < ARRAY_SIZE(overrides); j++)
+				if (overrides[j] > U8_MAX)
+					return -ERANGE;
+			v = overrides;
+		}
+		alloc->floor[i][0] = BIT(31) | v[0] << 8 | v[1];
+		alloc->floor[i][1] = v[2] << 24 | v[3] << 16 | v[4] << 8 | v[5];
+	}
+	return 0;
+}
+
+static int ufs_qcom_parse_ice_allocator(struct ufs_qcom_host *host)
+{
+	struct device *dev = host->hba->dev;
+	struct device_node *cfg __free(device_node) = NULL;
+	struct device_node *algo __free(device_node) = NULL;
+	struct kalama_ice_allocator *alloc;
+	u32 cores[4];
+	const char *name = "alg2";
+	int i;
+
+	if (!of_property_present(dev->of_node, "shared-ice-cfg"))
+		return 0;
+
+	cfg = of_parse_phandle(dev->of_node, "shared-ice-cfg", 0);
+	if (!cfg || of_get_available_child_count(cfg) > 1)
+		return -EINVAL;
+	algo = of_get_next_available_child(cfg, NULL);
+	if (algo && of_property_read_string(algo, "alg-name", &name))
+		return -EINVAL;
+	alloc = devm_kzalloc(dev, sizeof(*alloc), GFP_KERNEL);
+	if (!alloc)
+		return -ENOMEM;
+	host->ice_alloc = alloc;
+
+	if (!strcmp(name, "alg2")) {
+		alloc->mode = KALAMA_ICE_FLOOR;
+		return kalama_ice_parse_floor(algo, alloc);
+	}
+	if (!strcmp(name, "alg1")) {
+		alloc->mode = KALAMA_ICE_STATIC;
+		if (of_property_read_u32(algo, "rx-alloc-percent", &alloc->rx_percent) ||
+		    alloc->rx_percent > 100)
+			return -EINVAL;
+		return 0;
+	}
+	if (strcmp(name, "alg3") ||
+	    of_property_count_u32_elems(algo, "num-core") != ARRAY_SIZE(cores) ||
+	    of_property_read_u32_array(algo, "num-core", cores, ARRAY_SIZE(cores)))
+		return -EINVAL;
+	alloc->mode = KALAMA_ICE_INSTANT;
+	for (i = 0; i < ARRAY_SIZE(cores); i++) {
+		if (cores[i] > U8_MAX)
+			return -ERANGE;
+		alloc->instant_cores |= cores[i] << (8 * i);
+	}
+	return 0;
+}
+
 /**
  * ufs_qcom_config_ice_allocator() - ICE core allocator configuration
  *
@@ -149,6 +244,32 @@ static void ufs_qcom_config_ice_allocator(struct ufs_qcom_host *host)
 	if (!(host->caps & UFS_QCOM_CAP_ICE_CONFIG) ||
 			!(host->hba->caps & UFSHCD_CAP_CRYPTO))
 		return;
+
+	if (host->ice_alloc) {
+		struct kalama_ice_allocator *alloc = host->ice_alloc;
+		u32 count, rx;
+
+		ufshcd_writel(hba, alloc->mode, REG_UFS_MEM_ICE_CONFIG);
+		switch (alloc->mode) {
+		case KALAMA_ICE_STATIC:
+			count = ufshcd_readl(hba, REG_UFS_MEM_ICE_AES_CORES);
+			rx = DIV_ROUND_CLOSEST(count * alloc->rx_percent, 100);
+			ufshcd_writel(hba, rx | (count - rx) << 8, REG_UFS_MEM_ICE_STATIC_CORES);
+			break;
+		case KALAMA_ICE_FLOOR:
+			for (int i = 0; i < ARRAY_SIZE(alloc->floor); i++) {
+				u32 offset = REG_UFS_MEM_ICE_FLOOR_BASE + 8 * i;
+
+				ufshcd_writel(hba, alloc->floor[i][0], offset);
+				ufshcd_writel(hba, alloc->floor[i][1], offset + 4);
+			}
+			break;
+		case KALAMA_ICE_INSTANT:
+			ufshcd_writel(hba, alloc->instant_cores, REG_UFS_MEM_ICE_NUM_CORE);
+			break;
+		}
+		return;
+	}
 
 	config = get_unaligned_le32(val);
 
@@ -185,6 +306,9 @@ static int ufs_qcom_ice_init(struct ufs_qcom_host *host)
 		return PTR_ERR_OR_ZERO(ice);
 
 	host->ice = ice;
+	err = ufs_qcom_parse_ice_allocator(host);
+	if (err)
+		return dev_err_probe(dev, err, "invalid shared ICE allocator configuration\n");
 
 	/* Initialize the blk_crypto_profile */
 

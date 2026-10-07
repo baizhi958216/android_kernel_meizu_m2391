@@ -123,6 +123,9 @@ enum {
 
 	UFS_RD_REG_MCQ				= 0xD00,
 	UFS_MEM_ICE_CFG				= 0x2600,
+	REG_UFS_MEM_ICE_AES_CORES		= 0x2608,
+	REG_UFS_MEM_ICE_STATIC_CORES		= 0x2610,
+	REG_UFS_MEM_ICE_FLOOR_BASE		= 0x2614,
 	REG_UFS_MEM_ICE_CONFIG			= 0x260C,
 	REG_UFS_MEM_ICE_NUM_CORE		= 0x2664,
 
@@ -328,6 +331,7 @@ struct ufs_qcom_host {
 
 #ifdef CONFIG_SCSI_UFS_CRYPTO
 	struct qcom_ice *ice;
+	struct kalama_ice_allocator *ice_alloc;
 	u8 ice_cap_idx[8];
 #endif
 	u32 caps;
