@@ -341,7 +341,7 @@ config QCOM_CPUCP_MBOX
 
 config QCOM_KALAMA_QMP
 	tristate "Qualcomm Kalama shared-memory QMP mailbox"
-	depends on OF && QCOM_SMEM && QCOM_IPCC
+	depends on OF && QCOM_SMEM && QCOM_IPCC && QCOM_AOSS_QMP
 	help
 	  Exchange packets with the trusted management engine through SMEM
 	  and an IPCC doorbell on Qualcomm Kalama.

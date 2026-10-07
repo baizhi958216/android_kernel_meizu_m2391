@@ -12,6 +12,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/soc/qcom/smem.h>
+#include <linux/soc/qcom/qcom_aoss.h>
 #include <linux/unaligned.h>
 #include <linux/workqueue.h>
 
@@ -262,6 +263,159 @@ static void qmp_disable_wake(void *data)
 	disable_irq_wake(edge->irq);
 }
 
+/* All clients specify mailbox zero on this binding. AOSS has one physical
+ * transmit window. Serialize client work and route its reply to the sender.
+ */
+struct qmp_aop {
+	struct qmp *qmp;
+	struct mbox_controller controller;
+	struct workqueue_struct *queue;
+	struct notifier_block rx;
+	struct mbox_chan __rcu *receiver;
+};
+
+struct qmp_aop_packet {
+	struct work_struct work;
+	struct mbox_chan *chan;
+	size_t len;
+	u32 data[SZ_4K / sizeof(u32)];
+};
+
+static int qmp_aop_rx(struct notifier_block *nb, unsigned long action, void *data)
+{
+	struct qmp_aop *aop = container_of(nb, struct qmp_aop, rx);
+	struct mbox_chan *chan;
+
+	rcu_read_lock();
+	chan = rcu_dereference(aop->receiver);
+	if (chan)
+		mbox_chan_received_data(chan, data);
+	rcu_read_unlock();
+	return NOTIFY_OK;
+}
+
+static void qmp_aop_tx(struct work_struct *work)
+{
+	struct qmp_aop_packet *pkt = container_of(work, struct qmp_aop_packet, work);
+	struct qmp_aop *aop = container_of(pkt->chan->mbox, struct qmp_aop, controller);
+	int ret;
+
+	rcu_assign_pointer(aop->receiver, pkt->chan);
+	ret = qmp_send_packet(aop->qmp, pkt->data, pkt->len);
+	mbox_chan_txdone(pkt->chan, ret);
+}
+
+static int qmp_aop_send(struct mbox_chan *chan, void *data)
+{
+	struct qmp_aop *aop = container_of(chan->mbox, struct qmp_aop, controller);
+	struct qmp_aop_packet *pending = chan->con_priv;
+	struct qmp_pkt *pkt = data;
+
+	if (!pkt || !pkt->data || !pkt->size || pkt->size > sizeof(pending->data))
+		return -EINVAL;
+	pending->len = ALIGN(pkt->size, sizeof(u32));
+	memcpy(pending->data, pkt->data, pkt->size);
+	memset((u8 *)pending->data + pkt->size, 0, pending->len - pkt->size);
+	queue_work(aop->queue, &pending->work);
+	return 0;
+}
+
+static void qmp_aop_shutdown(struct mbox_chan *chan)
+{
+	struct qmp_aop *aop = container_of(chan->mbox, struct qmp_aop, controller);
+	struct qmp_aop_packet *pkt = chan->con_priv;
+
+	cancel_work_sync(&pkt->work);
+	cmpxchg((struct mbox_chan **)&aop->receiver, chan, NULL);
+	synchronize_rcu();
+}
+
+static const struct mbox_chan_ops qmp_aop_ops = {
+	.send_data = qmp_aop_send,
+	.shutdown = qmp_aop_shutdown,
+};
+
+static struct mbox_chan *qmp_aop_xlate(struct mbox_controller *ctrl,
+				       const struct of_phandle_args *spec)
+{
+	int i;
+
+	if (spec->args_count != 1 || spec->args[0] != 0)
+		return ERR_PTR(-EINVAL);
+	for (i = 0; i < ctrl->num_chans; i++)
+		if (!ctrl->chans[i].cl)
+			return &ctrl->chans[i];
+	return ERR_PTR(-EBUSY);
+}
+
+static void qmp_aop_release(void *data)
+{
+	struct qmp_aop *aop = data;
+
+	qmp_unregister_rx_notifier(aop->qmp, &aop->rx);
+	destroy_workqueue(aop->queue);
+	qmp_put(aop->qmp);
+}
+
+static int qmp_aop_probe(struct device *dev)
+{
+	struct qmp_aop_packet *packets;
+	struct qmp_aop *aop;
+	struct device_node *devnode;
+	unsigned int count = 0;
+	int i, ret;
+
+	for_each_node_with_property(devnode, "mboxes") {
+		struct of_phandle_iterator it;
+		int err;
+
+		if (!of_device_is_available(devnode))
+			continue;
+		of_for_each_phandle(&it, err, devnode, "mboxes", "#mbox-cells", 0)
+			if (it.node == dev->of_node)
+				count++;
+	}
+	if (!count)
+		return -ENODEV;
+
+	aop = devm_kzalloc(dev, sizeof(*aop), GFP_KERNEL);
+	if (!aop)
+		return -ENOMEM;
+	aop->controller.dev = dev;
+	aop->controller.ops = &qmp_aop_ops;
+	aop->controller.of_xlate = qmp_aop_xlate;
+	aop->controller.num_chans = count;
+	aop->controller.txdone_irq = true;
+	aop->controller.chans = devm_kcalloc(dev, count, sizeof(struct mbox_chan), GFP_KERNEL);
+	packets = devm_kcalloc(dev, count, sizeof(*packets), GFP_KERNEL);
+	if (!packets || !aop->controller.chans)
+		return -ENOMEM;
+	for (i = 0; i < count; i++) {
+		packets[i].chan = &aop->controller.chans[i];
+		packets[i].chan->con_priv = &packets[i];
+		INIT_WORK(&packets[i].work, qmp_aop_tx);
+	}
+	aop->qmp = qmp_get(dev);
+	if (IS_ERR(aop->qmp))
+		return dev_err_probe(dev, PTR_ERR(aop->qmp), "AOSS mailbox unavailable\n");
+	aop->queue = alloc_ordered_workqueue("aoss-qmp-tx", 0);
+	if (!aop->queue) {
+		qmp_put(aop->qmp);
+		return -ENOMEM;
+	}
+	aop->rx.notifier_call = qmp_aop_rx;
+	ret = qmp_register_rx_notifier(aop->qmp, &aop->rx);
+	if (ret) {
+		destroy_workqueue(aop->queue);
+		qmp_put(aop->qmp);
+		return ret;
+	}
+	ret = devm_add_action_or_reset(dev, qmp_aop_release, aop);
+	if (ret)
+		return ret;
+	return devm_mbox_controller_register(dev, &aop->controller);
+}
+
 static int qmp_mbox_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -272,7 +426,7 @@ static int qmp_mbox_probe(struct platform_device *pdev)
 	int ret;
 
 	if (of_property_present(dev->of_node, "qcom,qmp"))
-		return -ENODEV;
+		return qmp_aop_probe(dev);
 	if (of_property_read_u32(dev->of_node, "qcom,remote-pid", &pid) ||
 	    of_property_read_u32(dev->of_node, "mbox-desc-offset", &offset))
 		return -EINVAL;
