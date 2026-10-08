@@ -3709,6 +3709,13 @@ static int kalama_init_clocks(struct device *dev, struct kalama_gcc *gcc)
 
 static int kalama_configure_gates(struct kalama_gcc *gcc)
 {
+	static const struct clk_branch * const ufs_clks[] = {
+		&gcc_ufs_phy_axi_clk, &gcc_aggre_ufs_phy_axi_clk,
+		&gcc_ufs_phy_ahb_clk, &gcc_ufs_phy_unipro_core_clk,
+		&gcc_ufs_phy_ice_core_clk, &gcc_ufs_phy_tx_symbol_0_clk,
+		&gcc_ufs_phy_rx_symbol_0_clk, &gcc_ufs_phy_rx_symbol_1_clk,
+	};
+	u32 mask = CBCR_FORCE_MEM_CORE_ON | CBCR_FORCE_MEM_PERIPH_ON | CBCR_FORCE_MEM_PERIPH_OFF;
 	int i, ret;
 
 	/* Prevent hardware from dropping GDSC votes when entering sleep. */
@@ -3718,6 +3725,18 @@ static int kalama_configure_gates(struct kalama_gcc *gcc)
 	for (i = 0; i < ARRAY_SIZE(critical_clk_list); i++) {
 		ret = regmap_set_bits(gcc->regmap, critical_clk_list[i].reg,
 				      critical_clk_list[i].def);
+		if (ret)
+			return ret;
+	}
+	/*
+	 * Preserve ICE key RAM while its clock is gated. The remaining clock
+	 * branches used by the Kalama UFS host release their core RAM votes.
+	 * Software and hardware controlled clocks share the same CBCR.
+	 */
+	for (i = 0; i < ARRAY_SIZE(ufs_clks); i++) {
+		u32 keep = ufs_clks[i] == &gcc_ufs_phy_ice_core_clk ? CBCR_FORCE_MEM_CORE_ON : 0;
+
+		ret = regmap_update_bits(gcc->regmap, ufs_clks[i]->halt_reg, mask, keep);
 		if (ret)
 			return ret;
 	}
