@@ -39,6 +39,7 @@
 #define ARM_SMMU_sCR0_CLIENTPD		BIT(0)
 
 /* Auxiliary Configuration register */
+#define ARM_MMU500_ACR_CACHE_LOCK	BIT(26)
 #define ARM_SMMU_GR0_sACR		0x10
 
 /* Identification registers */
@@ -333,6 +334,8 @@ struct arm_smmu_device {
 
 	int				num_context_irqs;
 	int				num_clks;
+	int				num_supplies;
+	struct regulator_bulk_data	*supplies;
 	unsigned int			*irqs;
 	struct clk_bulk_data		*clks;
 
@@ -363,6 +366,7 @@ struct arm_smmu_cfg {
 #define ARM_SMMU_INVALID_IRPTNDX	0xff
 
 struct arm_smmu_cb {
+	bool firmware_owned;
 	u64				ttbr[2];
 	u32				tcr[2];
 	u32				mair[2];

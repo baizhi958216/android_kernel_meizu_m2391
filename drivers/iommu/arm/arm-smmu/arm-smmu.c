@@ -33,6 +33,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/ratelimit.h>
+#include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/string_choices.h>
 
@@ -746,6 +747,8 @@ static int arm_smmu_init_domain_context(struct arm_smmu_domain *smmu_domain,
 		oas = smmu->ipa_size;
 		if (cfg->fmt == ARM_SMMU_CTX_FMT_AARCH64) {
 			fmt = ARM_64_LPAE_S1;
+			if (of_property_read_bool(smmu->dev->of_node, "qcom,use-3-lvl-tables"))
+				ias = min(ias, 39UL);
 		} else if (cfg->fmt == ARM_SMMU_CTX_FMT_AARCH32_L) {
 			fmt = ARM_32_LPAE_S1;
 			ias = min(ias, 32UL);
@@ -1673,6 +1676,8 @@ static void arm_smmu_device_reset(struct arm_smmu_device *smmu)
 
 	/* Make sure all context banks are disabled and clear CB_FSR  */
 	for (i = 0; i < smmu->num_context_banks; ++i) {
+		if (smmu->cbs[i].firmware_owned)
+			continue;
 		arm_smmu_write_context_bank(smmu, i);
 		arm_smmu_cb_write(smmu, i, ARM_SMMU_CB_FSR, ARM_SMMU_CB_FSR_FAULT);
 	}
@@ -1957,6 +1962,9 @@ static const struct of_device_id arm_smmu_of_match[] = {
 	{ .compatible = "arm,mmu-400", .data = &smmu_generic_v1 },
 	{ .compatible = "arm,mmu-401", .data = &arm_mmu401 },
 	{ .compatible = "arm,mmu-500", .data = &arm_mmu500 },
+#if IS_ENABLED(CONFIG_ARM_SMMU_QCOM)
+	{ .compatible = "qcom,qsmmu-v500", .data = &arm_mmu500 },
+#endif
 	{ .compatible = "cavium,smmu-v2", .data = &cavium_smmuv2 },
 	{ .compatible = "nvidia,smmu-500", .data = &arm_mmu500 },
 	{ .compatible = "qcom,smmu-v2", .data = &qcom_smmuv2 },
@@ -2115,6 +2123,38 @@ static void arm_smmu_rmr_install_bypass_smr(struct arm_smmu_device *smmu)
 	iort_put_rmr_sids(dev_fwnode(smmu->dev), &rmr_list);
 }
 
+static int arm_smmu_get_supplies(struct arm_smmu_device *smmu)
+{
+	struct device *dev = smmu->dev;
+	int count, i, ret;
+
+	if (!of_device_is_compatible(dev->of_node, "qcom,qsmmu-v500") ||
+	    !of_property_present(dev->of_node, "qcom,regulator-names"))
+		return 0;
+	count = of_property_count_strings(dev->of_node, "qcom,regulator-names");
+	if (count <= 0)
+		return -EINVAL;
+	smmu->supplies = devm_kcalloc(dev, count, sizeof(*smmu->supplies), GFP_KERNEL);
+	if (!smmu->supplies)
+		return -ENOMEM;
+	for (i = 0; i < count; i++) {
+		ret = of_property_read_string_index(dev->of_node, "qcom,regulator-names", i,
+						    &smmu->supplies[i].supply);
+		if (ret)
+			return ret;
+	}
+	smmu->num_supplies = count;
+	return devm_regulator_bulk_get(dev, count, smmu->supplies);
+}
+
+static void arm_smmu_probe_power_off(void *data)
+{
+	struct arm_smmu_device *smmu = data;
+
+	clk_bulk_disable_unprepare(smmu->num_clks, smmu->clks);
+	regulator_bulk_disable(smmu->num_supplies, smmu->supplies);
+}
+
 static int arm_smmu_device_probe(struct platform_device *pdev)
 {
 	struct resource *res;
@@ -2182,7 +2222,18 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 	}
 	smmu->num_clks = err;
 
+	err = arm_smmu_get_supplies(smmu);
+	if (err)
+		return dev_err_probe(dev, err, "failed to get SMMU supplies\n");
+	err = regulator_bulk_enable(smmu->num_supplies, smmu->supplies);
+	if (err)
+		return err;
 	err = clk_bulk_prepare_enable(smmu->num_clks, smmu->clks);
+	if (err) {
+		regulator_bulk_disable(smmu->num_supplies, smmu->supplies);
+		return err;
+	}
+	err = devm_add_action_or_reset(dev, arm_smmu_probe_power_off, smmu);
 	if (err)
 		return err;
 
@@ -2224,7 +2275,8 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, smmu);
 
 	/* Check for RMRs and install bypass SMRs if any */
-	arm_smmu_rmr_install_bypass_smr(smmu);
+	if (!of_device_is_compatible(dev->of_node, "qcom,qsmmu-v500"))
+		arm_smmu_rmr_install_bypass_smr(smmu);
 
 	arm_smmu_device_reset(smmu);
 	arm_smmu_test_smr_masks(smmu);
@@ -2247,7 +2299,8 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 	 * can serve as an ideal proxy for that decision. So, conditionally
 	 * enable pm_runtime.
 	 */
-	if (dev->pm_domain) {
+	devm_remove_action(dev, arm_smmu_probe_power_off, smmu);
+	if (dev->pm_domain || smmu->num_supplies) {
 		pm_runtime_set_active(dev);
 		pm_runtime_enable(dev);
 		arm_smmu_rpm_use_autosuspend(smmu);
@@ -2270,8 +2323,10 @@ static void arm_smmu_device_shutdown(struct platform_device *pdev)
 
 	if (pm_runtime_enabled(smmu->dev))
 		pm_runtime_force_suspend(smmu->dev);
-	else
+	else {
 		clk_bulk_disable(smmu->num_clks, smmu->clks);
+		regulator_bulk_disable(smmu->num_supplies, smmu->supplies);
+	}
 
 	clk_bulk_unprepare(smmu->num_clks, smmu->clks);
 }
@@ -2291,9 +2346,14 @@ static int __maybe_unused arm_smmu_runtime_resume(struct device *dev)
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
 	int ret;
 
-	ret = clk_bulk_enable(smmu->num_clks, smmu->clks);
+	ret = regulator_bulk_enable(smmu->num_supplies, smmu->supplies);
 	if (ret)
 		return ret;
+	ret = clk_bulk_enable(smmu->num_clks, smmu->clks);
+	if (ret) {
+		regulator_bulk_disable(smmu->num_supplies, smmu->supplies);
+		return ret;
+	}
 
 	arm_smmu_device_reset(smmu);
 
@@ -2304,9 +2364,13 @@ static int __maybe_unused arm_smmu_runtime_suspend(struct device *dev)
 {
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
 
-	clk_bulk_disable(smmu->num_clks, smmu->clks);
+	int ret;
 
-	return 0;
+	clk_bulk_disable(smmu->num_clks, smmu->clks);
+	ret = regulator_bulk_disable(smmu->num_supplies, smmu->supplies);
+	if (ret && clk_bulk_enable(smmu->num_clks, smmu->clks))
+		dev_err(dev, "failed to restore clocks after suspend error\n");
+	return ret;
 }
 
 static int __maybe_unused arm_smmu_pm_resume(struct device *dev)

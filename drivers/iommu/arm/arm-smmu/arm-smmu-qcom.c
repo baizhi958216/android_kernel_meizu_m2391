@@ -567,6 +567,118 @@ static int qcom_sdm845_smmu500_reset(struct arm_smmu_device *smmu)
 	return ret;
 }
 
+/* Preserve translations handed over by ABL while the display is scanning
+ * out. Linux installs its own context and redirects the matching stream when
+ * the client attaches. An active firmware bank must not be reset or reused.
+ */
+static int kalama_smmu_cfg_probe(struct arm_smmu_device *smmu)
+{
+	struct device_node *np = smmu->dev->of_node;
+	int count, i, j;
+	u32 id, mask;
+
+	if (!of_property_present(np, "qcom,handoff-smrs"))
+		return 0;
+	count = of_property_count_u32_elems(np, "qcom,handoff-smrs");
+	if (count <= 0 || count % 2 || !smmu->smrs)
+		return -EINVAL;
+	for (i = 0; i < count; i += 2) {
+		of_property_read_u32_index(np, "qcom,handoff-smrs", i, &id);
+		of_property_read_u32_index(np, "qcom,handoff-smrs", i + 1, &mask);
+		if (id > U16_MAX || mask > U16_MAX)
+			return -EINVAL;
+		for (j = 0; j < smmu->num_mapping_groups; j++) {
+			u32 smr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(j));
+			u32 s2cr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_S2CR(j));
+			struct arm_smmu_smr entry;
+			u32 bank;
+
+			if (smmu->features & ARM_SMMU_FEAT_EXIDS) {
+				if (!(s2cr & ARM_SMMU_S2CR_EXIDVALID))
+					continue;
+			} else {
+				if (!(smr & ARM_SMMU_SMR_VALID))
+					continue;
+				smr &= ~ARM_SMMU_SMR_VALID;
+			}
+			entry.id = FIELD_GET(ARM_SMMU_SMR_ID, smr);
+			entry.mask = FIELD_GET(ARM_SMMU_SMR_MASK, smr);
+			entry.valid = true;
+			if ((mask & ~entry.mask) || ((id ^ entry.id) & ~entry.mask))
+				continue;
+
+			bank = FIELD_GET(ARM_SMMU_S2CR_CBNDX, s2cr);
+			if (FIELD_GET(ARM_SMMU_S2CR_TYPE, s2cr) == S2CR_TYPE_TRANS) {
+				if (bank >= smmu->num_context_banks)
+					return -EINVAL;
+				smmu->cbs[bank].firmware_owned = true;
+				set_bit(bank, smmu->context_map);
+			}
+			smmu->smrs[j] = entry;
+			smmu->s2crs[j].count = 1;
+			smmu->s2crs[j].type = FIELD_GET(ARM_SMMU_S2CR_TYPE, s2cr);
+			smmu->s2crs[j].privcfg = FIELD_GET(ARM_SMMU_S2CR_PRIVCFG, s2cr);
+			smmu->s2crs[j].cbndx = bank;
+			break;
+		}
+	}
+	return 0;
+}
+
+static int kalama_smmu_init_context(struct arm_smmu_domain *domain,
+				    struct io_pgtable_cfg *cfg, struct device *dev)
+{
+	struct iommu_fwspec *fw = dev_iommu_fwspec_get(dev);
+	struct device_node *np = domain->smmu->dev->of_node;
+	const __be32 *p;
+	u32 value = 0;
+	bool found = false;
+	int i, j, bytes;
+
+	domain->cfg.flush_walk_prefer_tlbiasid = true;
+	p = of_get_property(np, "qcom,actlr", &bytes);
+	if (!p)
+		return 0;
+	if (bytes <= 0 || bytes % (3 * sizeof(*p)))
+		return -EINVAL;
+	for (i = 0; i < bytes / sizeof(*p); i += 3) {
+		u32 id = be32_to_cpu(p[i]);
+		u32 mask = be32_to_cpu(p[i + 1]);
+		u32 actlr = be32_to_cpu(p[i + 2]);
+
+		if (id > U16_MAX || mask > U16_MAX)
+			return -EINVAL;
+		for (j = 0; j < fw->num_ids; j++) {
+			u32 sid = FIELD_GET(ARM_SMMU_SMR_ID, fw->ids[j]);
+			u32 smask = FIELD_GET(ARM_SMMU_SMR_MASK, fw->ids[j]);
+
+			if ((smask & ~mask) || ((id ^ sid) & ~mask))
+				continue;
+			if (found && value != actlr)
+				return dev_err_probe(dev, -EINVAL, "conflicting SMMU ACTLR values\n");
+			found = true;
+			value = actlr;
+		}
+	}
+	if (found)
+		arm_smmu_cb_write(domain->smmu, domain->cfg.cbndx, ARM_SMMU_CB_ACTLR, value);
+	return 0;
+}
+
+static int kalama_smmu_reset(struct arm_smmu_device *smmu)
+{
+	u32 acr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_sACR);
+
+	arm_smmu_gr0_write(smmu, ARM_SMMU_GR0_sACR, acr & ~ARM_MMU500_ACR_CACHE_LOCK);
+	return 0;
+}
+
+static const struct arm_smmu_impl kalama_smmu_impl = {
+	.init_context = kalama_smmu_init_context,
+	.cfg_probe = kalama_smmu_cfg_probe,
+	.reset = kalama_smmu_reset,
+};
+
 static const struct arm_smmu_impl qcom_smmu_v2_impl = {
 	.init_context = qcom_smmu_init_context,
 	.cfg_probe = qcom_smmu_cfg_probe,
@@ -699,7 +811,13 @@ static const struct qcom_smmu_match_data qcom_smmu_500_impl0_data = {
  * Do not add any more qcom,SOC-smmu-500 entries to this list, unless they need
  * special handling and can not be covered by the qcom,smmu-500 entry.
  */
+static const struct qcom_smmu_match_data kalama_v500_data = {
+	.impl = &kalama_smmu_impl,
+	.adreno_impl = &kalama_smmu_impl,
+};
+
 static const struct of_device_id __maybe_unused qcom_smmu_impl_of_match[] = {
+	{ .compatible = "qcom,qsmmu-v500", .data = &kalama_v500_data },
 	{ .compatible = "qcom,msm8996-smmu-v2", .data = &msm8996_smmu_data },
 	{ .compatible = "qcom,msm8998-smmu-v2", .data = &qcom_smmu_v2_data },
 	{ .compatible = "qcom,qcm2290-smmu-500", .data = &qcom_smmu_500_impl0_data },
