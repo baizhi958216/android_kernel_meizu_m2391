@@ -14,6 +14,7 @@
 #include <linux/of.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
+#include <linux/regulator/consumer.h>
 #include <linux/reset-controller.h>
 #include <linux/time.h>
 #include <linux/unaligned.h>
@@ -911,17 +912,158 @@ static void ufs_qcom_device_reset_ctrl(struct ufs_hba *hba, bool asserted)
 	gpiod_set_value_cansleep(host->device_reset, asserted);
 }
 
+struct ufs_qcom_rail {
+	struct regulator *reg;
+	bool enabled;
+};
+
+struct ufs_qcom_kalama_rails {
+	struct ufs_qcom_rail ref_clk;
+	struct ufs_qcom_rail vccq_parent;
+	struct ufs_qcom_rail vccq_shutdown;
+	u32 vccq_lpm_uV;
+};
+
+static int ufs_qcom_get_rail(struct device *dev, const char *name, u32 default_uV,
+			     struct ufs_qcom_rail *rail)
+{
+	struct device_node *np = dev->of_node;
+	u32 min_uV = default_uV, max_uV = default_uV, load;
+	char prop[64];
+	int err;
+
+	snprintf(prop, sizeof(prop), "%s-supply", name);
+	if (!of_property_present(np, prop))
+		return 0;
+	rail->reg = devm_regulator_get_optional(dev, name);
+	if (IS_ERR(rail->reg))
+		return dev_err_probe(dev, PTR_ERR(rail->reg), "Failed to get %s\n", name);
+
+	snprintf(prop, sizeof(prop), "%s-max-microamp", name);
+	err = of_property_read_u32(np, prop, &load);
+	if (err)
+		return err;
+	err = regulator_set_load(rail->reg, load);
+	if (err)
+		return err;
+
+	snprintf(prop, sizeof(prop), "%s-min-uV", name);
+	of_property_read_u32(np, prop, &min_uV);
+	snprintf(prop, sizeof(prop), "%s-max-uV", name);
+	of_property_read_u32(np, prop, &max_uV);
+	if (min_uV || max_uV)
+		return regulator_set_voltage(rail->reg, min_uV, max_uV);
+	return 0;
+}
+
+static int ufs_qcom_vote_rail(struct ufs_qcom_rail *rail, bool enable)
+{
+	int err;
+
+	if (!rail->reg || rail->enabled == enable)
+		return 0;
+	err = enable ? regulator_enable(rail->reg) : regulator_disable(rail->reg);
+	if (!err)
+		rail->enabled = enable;
+	return err;
+}
+
+static void ufs_qcom_release_rails(void *data)
+{
+	struct ufs_qcom_kalama_rails *rails = data;
+
+	ufs_qcom_vote_rail(&rails->vccq_shutdown, false);
+	ufs_qcom_vote_rail(&rails->vccq_parent, false);
+	ufs_qcom_vote_rail(&rails->ref_clk, false);
+}
+
+static int ufs_qcom_init_kalama_rails(struct ufs_qcom_host *host)
+{
+	struct device *dev = host->hba->dev;
+	struct ufs_qcom_kalama_rails *rails;
+	int err;
+
+	if (!of_machine_is_compatible("qcom,kalama"))
+		return 0;
+	rails = devm_kzalloc(dev, sizeof(*rails), GFP_KERNEL);
+	if (!rails)
+		return -ENOMEM;
+	err = ufs_qcom_get_rail(dev, "qcom,vddp-ref-clk", 1200000, &rails->ref_clk);
+	if (err)
+		return err;
+	err = ufs_qcom_get_rail(dev, "qcom,vccq-parent", 0, &rails->vccq_parent);
+	if (err)
+		return err;
+	err = ufs_qcom_get_rail(dev, "qcom,vccq-shutdown", 0, &rails->vccq_shutdown);
+	if (err)
+		return err;
+	of_property_read_u32(dev->of_node, "qcom,vccq-lpm-uV", &rails->vccq_lpm_uV);
+	if (rails->vccq_lpm_uV && !host->hba->vreg_info.vccq)
+		return dev_err_probe(dev, -EINVAL, "Missing VCCQ for low-power setting\n");
+
+	err = devm_add_action_or_reset(dev, ufs_qcom_release_rails, rails);
+	if (err)
+		return err;
+	host->rails = rails;
+	err = ufs_qcom_vote_rail(&rails->ref_clk, true);
+	if (err)
+		return err;
+	return ufs_qcom_vote_rail(&rails->vccq_parent, true);
+}
+
+static int ufs_qcom_set_kalama_rail_state(struct ufs_qcom_host *host, bool active)
+{
+	struct ufs_hba *hba = host->hba;
+	struct ufs_qcom_kalama_rails *rails = host->rails;
+	bool ref_enabled, parent_enabled;
+	int voltage, err;
+
+	if (!rails)
+		return 0;
+
+	ref_enabled = rails->ref_clk.enabled;
+	parent_enabled = rails->vccq_parent.enabled;
+	err = ufs_qcom_vote_rail(&rails->ref_clk, active || !ufshcd_is_link_off(hba));
+	if (err)
+		return err;
+	err = ufs_qcom_vote_rail(&rails->vccq_parent, active || ufshcd_is_link_active(hba) ||
+						     hba->auto_bkops_enabled);
+	if (err)
+		goto restore_ref;
+
+	if (rails->vccq_lpm_uV && (active || (ufshcd_is_link_hibern8(hba) &&
+					      !ufshcd_is_ufs_dev_active(hba)))) {
+		voltage = active ? 1200000 : rails->vccq_lpm_uV;
+		err = regulator_set_voltage(hba->vreg_info.vccq->reg, voltage, voltage);
+		if (err)
+			goto restore_parent;
+	}
+	return 0;
+
+restore_parent:
+	ufs_qcom_vote_rail(&rails->vccq_parent, parent_enabled);
+restore_ref:
+	ufs_qcom_vote_rail(&rails->ref_clk, ref_enabled);
+	return err;
+}
+
 static int ufs_qcom_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op,
 	enum ufs_notify_change_status status)
 {
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	int err;
 
-	if (status == PRE_CHANGE)
+	if (status == PRE_CHANGE) {
+		if (pm_op == UFS_SHUTDOWN_PM && host->rails)
+			return ufs_qcom_vote_rail(&host->rails->vccq_shutdown, true);
 		return 0;
+	}
+	err = ufs_qcom_set_kalama_rail_state(host, false);
+	if (err)
+		return err;
 
 	if (!ufs_qcom_is_link_active(hba))
 		ufs_qcom_disable_lane_clks(host);
-
 
 	/* reset the connected UFS device during power down */
 	if (ufs_qcom_is_link_off(hba) && host->device_reset) {
@@ -948,6 +1090,10 @@ static int ufs_qcom_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
 	int err;
 	u32 reg_val;
+
+	err = ufs_qcom_set_kalama_rail_state(host, true);
+	if (err)
+		return err;
 
 	err = ufs_qcom_enable_lane_clks(host);
 	if (err)
@@ -1748,6 +1894,10 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 		if (!strcmp(clki->name, "core_clk_unipro"))
 			clki->keep_link_active = true;
 	}
+
+	err = ufs_qcom_init_kalama_rails(host);
+	if (err)
+		goto out_variant_clear;
 
 	err = ufs_qcom_init_lane_clks(host);
 	if (err)

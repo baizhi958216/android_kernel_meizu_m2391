@@ -317,6 +317,7 @@ struct ufs_qcom_testbus {
 };
 
 struct gpio_desc;
+struct ufs_qcom_kalama_rails;
 
 struct ufs_qcom_host {
 	struct phy *generic_phy;
@@ -328,6 +329,7 @@ struct ufs_qcom_host {
 
 	struct icc_path *icc_ddr;
 	struct icc_path *icc_cpu;
+	struct ufs_qcom_kalama_rails *rails;
 
 #ifdef CONFIG_SCSI_UFS_CRYPTO
 	struct qcom_ice *ice;
