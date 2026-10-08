@@ -49,6 +49,11 @@ struct eusb2_repeater_cfg {
 	int num_vregs;
 };
 
+struct eusb2_tuning {
+	struct reg_sequence regs[EUSB2_TUNE_EUSB_HS_COMP_CUR - EUSB2_TUNE_USB2_CROSSOVER + 1];
+	unsigned int count;
+};
+
 struct eusb2_repeater {
 	struct device *dev;
 	struct regmap *regmap;
@@ -57,6 +62,8 @@ struct eusb2_repeater {
 	const struct eusb2_repeater_cfg *cfg;
 	u32 base;
 	enum phy_mode mode;
+	bool powered;
+	struct eusb2_tuning peripheral, host;
 };
 
 static const char * const pm8550b_vreg_l[] = {
@@ -110,7 +117,66 @@ static int eusb2_repeater_init_vregs(struct eusb2_repeater *rptr)
 	for (i = 0; i < num; i++)
 		rptr->vregs[i].supply = rptr->cfg->vreg_list[i];
 
+	if (of_device_is_compatible(dev->of_node, "qcom,pmic-eusb2-repeater")) {
+		rptr->vregs[0].init_load_uA = 32000;
+		rptr->vregs[1].init_load_uA = 3500;
+	}
+
 	return devm_regulator_bulk_get(dev, num, rptr->vregs);
+}
+
+static int eusb2_read_tuning(struct device *dev, const char *name,
+			     struct eusb2_tuning *tuning)
+{
+	u32 cells[ARRAY_SIZE(tuning->regs) * 2];
+	int count, ret;
+
+	if (!device_property_present(dev, name))
+		return 0;
+
+	count = device_property_count_u32(dev, name);
+	if (count <= 0 || count > ARRAY_SIZE(cells) || count % 2)
+		return -EINVAL;
+
+	ret = device_property_read_u32_array(dev, name, cells, count);
+	if (ret)
+		return ret;
+
+	/* Board tables contain pairs of byte values and PMIC tuning offsets. */
+	for (int i = 0; i < count; i += 2) {
+		if (cells[i] > U8_MAX || cells[i + 1] < EUSB2_TUNE_USB2_CROSSOVER ||
+		    cells[i + 1] > EUSB2_TUNE_EUSB_HS_COMP_CUR)
+			return -EINVAL;
+		tuning->regs[i / 2].reg = cells[i + 1];
+		tuning->regs[i / 2].def = cells[i];
+	}
+	tuning->count = count / 2;
+
+	return 0;
+}
+
+static int eusb2_apply_mode(struct eusb2_repeater *rptr, enum phy_mode mode)
+{
+	bool host = mode == PHY_MODE_USB_HOST;
+	const struct eusb2_tuning *t = host && rptr->host.count ?
+				       &rptr->host : &rptr->peripheral;
+	int ret;
+
+	for (unsigned int i = 0; i < t->count; i++) {
+		ret = regmap_write(rptr->regmap, rptr->base + t->regs[i].reg,
+				   t->regs[i].def);
+		if (ret)
+			return ret;
+	}
+
+	/* Hold the 19.2 MHz clock in host Lx. Shared rails can retain it on role swap. */
+	ret = regmap_update_bits(rptr->regmap, rptr->base + EUSB2_FORCE_EN_5,
+				 F_CLK_19P2M_EN, host ? F_CLK_19P2M_EN : 0);
+	if (ret)
+		return ret;
+
+	return regmap_update_bits(rptr->regmap, rptr->base + EUSB2_FORCE_VAL_5,
+				  V_CLK_19P2M_EN, host ? V_CLK_19P2M_EN : 0);
 }
 
 static int eusb2_repeater_init(struct phy *phy)
@@ -127,7 +193,10 @@ static int eusb2_repeater_init(struct phy *phy)
 	if (ret)
 		return ret;
 
-	regmap_write(regmap, base + EUSB2_EN_CTL1, EUSB2_RPTR_EN);
+	ret = regmap_update_bits(regmap, base + EUSB2_EN_CTL1, EUSB2_RPTR_EN,
+				 EUSB2_RPTR_EN);
+	if (ret)
+		goto disable_vregs;
 
 	/* Write registers from init table */
 	for (int i = 0; i < rptr->cfg->init_tbl_num; i++)
@@ -147,12 +216,22 @@ static int eusb2_repeater_init(struct phy *phy)
 	if (!of_property_read_u8(np, "qcom,tune-res-fsdif", &val))
 		regmap_write(regmap, base + EUSB2_TUNE_RES_FSDIF, val);
 
-	/* Wait for status OK */
-	ret = regmap_read_poll_timeout(regmap, base + EUSB2_RPTR_STATUS, poll_val,
-				       poll_val & RPTR_OK, 10, 5);
+	ret = eusb2_apply_mode(rptr, rptr->mode);
 	if (ret)
-		dev_err(rptr->dev, "initialization timed-out\n");
+		goto disable_rptr;
 
+	ret = regmap_read_poll_timeout(regmap, base + EUSB2_RPTR_STATUS, poll_val,
+				       poll_val & RPTR_OK, 10, 100);
+	if (!ret) {
+		rptr->powered = true;
+		return 0;
+	}
+
+	dev_err(rptr->dev, "repeater did not become ready: %d\n", ret);
+disable_rptr:
+	regmap_update_bits(regmap, base + EUSB2_EN_CTL1, EUSB2_RPTR_EN, 0);
+disable_vregs:
+	regulator_bulk_disable(rptr->cfg->num_vregs, rptr->vregs);
 	return ret;
 }
 
@@ -160,32 +239,17 @@ static int eusb2_repeater_set_mode(struct phy *phy,
 				   enum phy_mode mode, int submode)
 {
 	struct eusb2_repeater *rptr = phy_get_drvdata(phy);
-	struct regmap *regmap = rptr->regmap;
-	u32 base = rptr->base;
+	int ret;
 
-	switch (mode) {
-	case PHY_MODE_USB_HOST:
-		/*
-		 * CM.Lx is prohibited when repeater is already into Lx state as
-		 * per eUSB 1.2 Spec. Below implement software workaround until
-		 * PHY and controller is fixing seen observation.
-		 */
-		regmap_write(regmap, base + EUSB2_FORCE_EN_5, F_CLK_19P2M_EN);
-		regmap_write(regmap, base + EUSB2_FORCE_VAL_5, V_CLK_19P2M_EN);
-		break;
-	case PHY_MODE_USB_DEVICE:
-		/*
-		 * In device mode clear host mode related workaround as there
-		 * is no repeater reset available, and enable/disable of
-		 * repeater doesn't clear previous value due to shared
-		 * regulators (say host <-> device mode switch).
-		 */
-		regmap_write(regmap, base + EUSB2_FORCE_EN_5, 0);
-		regmap_write(regmap, base + EUSB2_FORCE_VAL_5, 0);
-		break;
-	default:
+	if (mode != PHY_MODE_USB_HOST && mode != PHY_MODE_USB_DEVICE)
 		return -EINVAL;
+
+	if (rptr->powered) {
+		ret = eusb2_apply_mode(rptr, mode);
+		if (ret)
+			return ret;
 	}
+	rptr->mode = mode;
 
 	return 0;
 }
@@ -194,6 +258,8 @@ static int eusb2_repeater_exit(struct phy *phy)
 {
 	struct eusb2_repeater *rptr = phy_get_drvdata(phy);
 
+	rptr->powered = false;
+	regmap_update_bits(rptr->regmap, rptr->base + EUSB2_EN_CTL1, EUSB2_RPTR_EN, 0);
 	return regulator_bulk_disable(rptr->cfg->num_vregs, rptr->vregs);
 }
 
@@ -233,6 +299,12 @@ static int eusb2_repeater_probe(struct platform_device *pdev)
 		return ret;
 
 	rptr->base = res;
+	ret = eusb2_read_tuning(dev, "qcom,param-override-seq", &rptr->peripheral);
+	if (ret)
+		return dev_err_probe(dev, ret, "invalid device tuning\n");
+	ret = eusb2_read_tuning(dev, "qcom,param-override-seq-host", &rptr->host);
+	if (ret)
+		return dev_err_probe(dev, ret, "invalid host tuning\n");
 
 	ret = eusb2_repeater_init_vregs(rptr);
 	if (ret < 0) {
@@ -255,17 +327,11 @@ static int eusb2_repeater_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void eusb2_repeater_remove(struct platform_device *pdev)
-{
-	struct eusb2_repeater *rptr = platform_get_drvdata(pdev);
-
-	if (!rptr)
-		return;
-
-	eusb2_repeater_exit(rptr->phy);
-}
-
 static const struct of_device_id eusb2_repeater_of_match_table[] = {
+	{
+		.compatible = "qcom,pmic-eusb2-repeater",
+		.data = &pm8550b_eusb2_cfg,
+	},
 	{
 		.compatible = "qcom,pm8550b-eusb2-repeater",
 		.data = &pm8550b_eusb2_cfg,
@@ -284,7 +350,6 @@ MODULE_DEVICE_TABLE(of, eusb2_repeater_of_match_table);
 
 static struct platform_driver eusb2_repeater_driver = {
 	.probe		= eusb2_repeater_probe,
-	.remove		= eusb2_repeater_remove,
 	.driver = {
 		.name	= "qcom-eusb2-repeater",
 		.of_match_table = eusb2_repeater_of_match_table,
