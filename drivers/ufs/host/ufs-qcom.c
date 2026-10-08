@@ -124,6 +124,22 @@ static const struct {
 	[TSTBUS_UNIPRO]   = {256, "TSTBUS_UNIPRO"},
 };
 
+static const struct ufs_qcom_drvdata ufs_qcom_sm8550_drvdata = {
+	.quirks = UFSHCD_QUIRK_BROKEN_LSDBS_CAP,
+	.no_phy_retention = true,
+};
+
+static const struct ufs_qcom_drvdata *ufs_qcom_get_drvdata(struct device *dev)
+{
+	const struct ufs_qcom_drvdata *data = of_device_get_match_data(dev);
+
+	/* Kalama firmware only identifies the host as qcom,ufshc. */
+	if (!data && of_machine_is_compatible("qcom,kalama") &&
+	    of_device_is_compatible(dev->of_node, "qcom,ufshc"))
+		data = &ufs_qcom_sm8550_drvdata;
+	return data;
+}
+
 static void ufs_qcom_get_default_testbus_cfg(struct ufs_qcom_host *host);
 static unsigned long ufs_qcom_opp_freq_to_clk_freq(struct ufs_hba *hba,
 						   unsigned long freq, char *name);
@@ -488,12 +504,44 @@ static int ufs_qcom_enable_lane_clks(struct ufs_qcom_host *host)
 {
 	int err;
 
+	if (host->is_lane_clks_enabled)
+		return 0;
+
 	err = clk_bulk_prepare_enable(host->num_clks, host->clks);
 	if (err)
 		return err;
 
 	host->is_lane_clks_enabled = true;
 
+	return 0;
+}
+
+static int ufs_qcom_init_kalama_lane_clks(struct ufs_qcom_host *host)
+{
+	static const char * const names[] = {
+		"rx_lane0_sync_clk", "tx_lane0_sync_clk", "rx_lane1_sync_clk", "tx_lane1_sync_clk"
+	};
+	struct device *dev = host->hba->dev;
+	int count = host->hba->lanes_per_direction > 1 ? ARRAY_SIZE(names) : 2;
+
+	host->clks = devm_kcalloc(dev, count, sizeof(*host->clks), GFP_KERNEL);
+	if (!host->clks)
+		return -ENOMEM;
+
+	for (int i = 0; i < count; i++) {
+		struct clk_bulk_data *clki = &host->clks[i];
+
+		clki->id = names[i];
+		/* Two-lane controllers can share a transmit symbol clock. */
+		if (i == 3)
+			clki->clk = devm_clk_get_optional(dev, clki->id);
+		else
+			clki->clk = devm_clk_get(dev, clki->id);
+		if (IS_ERR(clki->clk))
+			return dev_err_probe(dev, PTR_ERR(clki->clk),
+					     "Failed to get %s\n", clki->id);
+	}
+	host->num_clks = count;
 	return 0;
 }
 
@@ -504,6 +552,9 @@ static int ufs_qcom_init_lane_clks(struct ufs_qcom_host *host)
 
 	if (has_acpi_companion(dev))
 		return 0;
+
+	if (of_machine_is_compatible("qcom,kalama"))
+		return ufs_qcom_init_kalama_lane_clks(host);
 
 	err = devm_clk_bulk_get_all(dev, &host->clks);
 	if (err <= 0)
@@ -1380,7 +1431,7 @@ static u32 ufs_qcom_get_ufs_hci_version(struct ufs_hba *hba)
  */
 static void ufs_qcom_advertise_quirks(struct ufs_hba *hba)
 {
-	const struct ufs_qcom_drvdata *drvdata = of_device_get_match_data(hba->dev);
+	const struct ufs_qcom_drvdata *drvdata = ufs_qcom_get_drvdata(hba->dev);
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
 
 	if (host->hw_ver.major == 0x2)
@@ -1640,7 +1691,7 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 	struct device *dev = hba->dev;
 	struct ufs_qcom_host *host;
 	struct ufs_clk_info *clki;
-	const struct ufs_qcom_drvdata *drvdata = of_device_get_match_data(hba->dev);
+	const struct ufs_qcom_drvdata *drvdata = ufs_qcom_get_drvdata(hba->dev);
 
 	host = devm_kzalloc(dev, sizeof(*host), GFP_KERNEL);
 	if (!host)
@@ -2969,11 +3020,6 @@ static void ufs_qcom_remove(struct platform_device *pdev)
 	if (host->esi_enabled)
 		platform_device_msi_free_irqs_all(hba->dev);
 }
-
-static const struct ufs_qcom_drvdata ufs_qcom_sm8550_drvdata = {
-	.quirks = UFSHCD_QUIRK_BROKEN_LSDBS_CAP,
-	.no_phy_retention = true,
-};
 
 static const struct of_device_id ufs_qcom_of_match[] __maybe_unused = {
 	{ .compatible = "qcom,ufshc" },
