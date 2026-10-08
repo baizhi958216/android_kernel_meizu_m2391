@@ -1120,15 +1120,34 @@ static u16 pmic_arb_find_apid(struct spmi_pmic_arb_bus *bus, u16 ppid)
 	return apid;
 }
 
+/* The legacy v7 binding describes each SPMI bus as a separate platform
+ * device. Both have the same transaction windows, but own disjoint APIDs
+ * and separate configuration and interrupt windows.
+ */
+static void __iomem *pmic_arb_map_window(struct platform_device *pdev, const char *name)
+{
+	struct resource *res;
+	void __iomem *base;
+
+	if (!of_property_present(pdev->dev.of_node, "qcom,bus-id"))
+		return devm_platform_ioremap_resource_byname(pdev, name);
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
+	if (!res)
+		return ERR_PTR(-EINVAL);
+	base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+	return base ?: ERR_PTR(-ENOMEM);
+}
+
 static int pmic_arb_get_obsrvr_chnls_v2(struct platform_device *pdev)
 {
 	struct spmi_pmic_arb *pmic_arb = platform_get_drvdata(pdev);
 
-	pmic_arb->rd_base = devm_platform_ioremap_resource_byname(pdev, "obsrvr");
+	pmic_arb->rd_base = pmic_arb_map_window(pdev, "obsrvr");
 	if (IS_ERR(pmic_arb->rd_base))
 		return PTR_ERR(pmic_arb->rd_base);
 
-	pmic_arb->wr_base = devm_platform_ioremap_resource_byname(pdev, "chnls");
+	pmic_arb->wr_base = pmic_arb_map_window(pdev, "chnls");
 	if (IS_ERR(pmic_arb->wr_base))
 		return PTR_ERR(pmic_arb->wr_base);
 
@@ -1671,8 +1690,17 @@ static int spmi_pmic_arb_bus_init(struct platform_device *pdev,
 	struct spmi_controller *ctrl;
 	void __iomem *intr;
 	void __iomem *cnfg;
+	u32 hw_bus = bus_index;
 	int index, ret;
 	int irq;
+
+	if (bus_index >= ARRAY_SIZE(pmic_arb->buses))
+		return -EINVAL;
+	if (of_property_present(node, "qcom,bus-id") &&
+	    (pmic_arb->ver_ops != &pmic_arb_v7 ||
+	     of_property_read_u32(node, "qcom,bus-id", &hw_bus) ||
+	     hw_bus >= PMIC_ARB_MAX_BUSES))
+		return dev_err_probe(dev, -EINVAL, "invalid SPMI hardware bus ID\n");
 
 	ctrl = devm_spmi_controller_alloc(dev, sizeof(*bus));
 	if (IS_ERR(ctrl))
@@ -1729,9 +1757,9 @@ static int spmi_pmic_arb_bus_init(struct platform_device *pdev,
 	bus->cnfg = cnfg;
 	bus->irq = irq;
 	bus->spmic = ctrl;
-	bus->id = bus_index;
+	bus->id = hw_bus;
 
-	ret = pmic_arb->ver_ops->init_apid(bus, bus_index);
+	ret = pmic_arb->ver_ops->init_apid(bus, hw_bus);
 	if (ret)
 		return ret;
 
@@ -1807,6 +1835,8 @@ static int spmi_pmic_arb_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "core");
+	if (!res)
+		return -EINVAL;
 	core = devm_ioremap(dev, res->start, resource_size(res));
 	if (!core)
 		return -ENOMEM;
