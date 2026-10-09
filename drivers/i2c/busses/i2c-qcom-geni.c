@@ -98,6 +98,7 @@ struct geni_i2c_dev {
 	struct dma_chan *tx_c;
 	struct dma_chan *rx_c;
 	bool no_dma;
+	bool kalama_hub;
 	bool gpi_mode;
 	bool abort_done;
 };
@@ -162,10 +163,18 @@ static const struct geni_i2c_clk_fld geni_i2c_clk_map_32mhz[] = {
 	{}
 };
 
+static const struct geni_i2c_clk_fld kalama_hub_fast_plus = {
+	I2C_MAX_FAST_MODE_PLUS_FREQ, 1, 3, 9, 18
+};
+
 static int geni_i2c_clk_map_idx(struct geni_i2c_dev *gi2c)
 {
 	const struct geni_i2c_clk_fld *itr;
 
+	if (gi2c->kalama_hub && gi2c->clk_freq_out == I2C_MAX_FAST_MODE_PLUS_FREQ) {
+		gi2c->clk_fld = &kalama_hub_fast_plus;
+		return 0;
+	}
 	if (clk_get_rate(gi2c->se.clk) == 32 * HZ_PER_MHZ)
 		itr = geni_i2c_clk_map_32mhz;
 	else
@@ -186,7 +195,8 @@ static void qcom_geni_i2c_conf(struct geni_i2c_dev *gi2c)
 	const struct geni_i2c_clk_fld *itr = gi2c->clk_fld;
 	u32 val;
 
-	writel_relaxed(0, gi2c->se.base + SE_GENI_CLK_SEL);
+	if (!gi2c->kalama_hub)
+		writel_relaxed(0, gi2c->se.base + SE_GENI_CLK_SEL);
 
 	val = (itr->clk_div << CLK_DIV_SHFT) | SER_CLK_EN;
 	writel_relaxed(val, gi2c->se.base + GENI_SER_M_CLK_CFG);
@@ -777,13 +787,16 @@ err_tx:
 	return ret;
 }
 
+static const struct geni_i2c_desc i2c_master_hub;
+
 static int geni_i2c_probe(struct platform_device *pdev)
 {
 	struct geni_i2c_dev *gi2c;
 	u32 proto, tx_depth, fifo_disable;
 	int ret;
 	struct device *dev = &pdev->dev;
-	const struct geni_i2c_desc *desc = NULL;
+	const struct geni_i2c_desc *desc;
+	bool legacy = of_device_is_compatible(dev->of_node, "qcom,i2c-geni");
 
 	gi2c = devm_kzalloc(dev, sizeof(*gi2c), GFP_KERNEL);
 	if (!gi2c)
@@ -795,19 +808,22 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	if (IS_ERR(gi2c->se.base))
 		return PTR_ERR(gi2c->se.base);
 
-	desc = device_get_match_data(&pdev->dev);
+	desc = device_get_match_data(dev);
+	gi2c->kalama_hub = legacy && device_property_read_bool(dev, "qcom,i2c-hub");
+	if (gi2c->kalama_hub)
+		desc = &i2c_master_hub;
 
 	if (desc && desc->has_core_clk) {
-		gi2c->core_clk = devm_clk_get(dev, "core");
+		gi2c->core_clk = devm_clk_get(dev, legacy ? "core-clk" : "core");
 		if (IS_ERR(gi2c->core_clk))
 			return PTR_ERR(gi2c->core_clk);
 	}
 
-	gi2c->se.clk = devm_clk_get(dev, "se");
+	gi2c->se.clk = devm_clk_get(dev, legacy ? "se-clk" : "se");
 	if (IS_ERR(gi2c->se.clk) && !has_acpi_companion(dev))
 		return PTR_ERR(gi2c->se.clk);
 
-	ret = device_property_read_u32(dev, "clock-frequency",
+	ret = device_property_read_u32(dev, legacy ? "qcom,clk-freq-out" : "clock-frequency",
 				       &gi2c->clk_freq_out);
 	if (ret) {
 		dev_info(dev, "Bus frequency not specified, default to 100kHz.\n");
@@ -1064,6 +1080,7 @@ static const struct geni_i2c_desc i2c_master_hub = {
 
 static const struct of_device_id geni_i2c_dt_match[] = {
 	{ .compatible = "qcom,geni-i2c" },
+	{ .compatible = "qcom,i2c-geni" },
 	{ .compatible = "qcom,geni-i2c-master-hub", .data = &i2c_master_hub },
 	{}
 };
