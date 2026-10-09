@@ -1066,7 +1066,7 @@ static int spi_geni_probe(struct platform_device *pdev)
 	void __iomem *base;
 	struct clk *clk;
 	struct device *dev = &pdev->dev;
-	bool legacy = of_device_is_compatible(dev->of_node, "qcom,spi-geni");
+	bool legacy = device_is_compatible(dev, "qcom,spi-geni");
 	const char *clk_name = legacy ? "se-clk" : "se";
 
 	irq = platform_get_irq(pdev, 0);
