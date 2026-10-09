@@ -293,6 +293,13 @@ config QCOM_KALAMA_HWKM
 	  Use the Kalama TME mailbox for transport key broadcasts and the
 	  UFS HWKM v2 secure monitor interface for KeyMint-provisioned keys.
 
+config QCOM_PANEL_EVENT_NOTIFIER
+	tristate "Qualcomm display panel event notifier"
+	depends on DRM
+	help
+	  Deliver synchronous blank, low-power and refresh-rate notifications
+	  to clients of the primary and secondary Qualcomm display panels.
+
 config QCOM_PBS
 	tristate "PBS trigger support for Qualcomm Technologies, Inc. PMICS"
 	depends on SPMI
