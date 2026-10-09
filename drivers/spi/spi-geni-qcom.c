@@ -383,6 +383,8 @@ static int geni_spi_set_clock_and_bw(struct spi_geni_master *mas,
 
 	/* Set BW quota for CPU as driver supports FIFO mode only. */
 	se->icc_paths[CPU_TO_GENI].avg_bw = Bps_to_icc(mas->cur_speed_hz);
+	if (se->icc_paths[GENI_TO_DDR].path)
+		se->icc_paths[GENI_TO_DDR].avg_bw = Bps_to_icc(mas->cur_speed_hz);
 	ret = geni_icc_set_bw(se);
 	if (ret)
 		return ret;
@@ -1064,6 +1066,8 @@ static int spi_geni_probe(struct platform_device *pdev)
 	void __iomem *base;
 	struct clk *clk;
 	struct device *dev = &pdev->dev;
+	bool legacy = of_device_is_compatible(dev->of_node, "qcom,spi-geni");
+	const char *clk_name = legacy ? "se-clk" : "se";
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
@@ -1077,7 +1081,7 @@ static int spi_geni_probe(struct platform_device *pdev)
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
-	clk = devm_clk_get(dev, "se");
+	clk = devm_clk_get(dev, clk_name);
 	if (IS_ERR(clk))
 		return PTR_ERR(clk);
 
@@ -1094,7 +1098,7 @@ static int spi_geni_probe(struct platform_device *pdev)
 	mas->se.base = base;
 	mas->se.clk = clk;
 
-	ret = devm_pm_opp_set_clkname(&pdev->dev, "se");
+	ret = devm_pm_opp_set_clkname(dev, clk_name);
 	if (ret)
 		return ret;
 	/* OPP table is optional */
@@ -1126,7 +1130,7 @@ static int spi_geni_probe(struct platform_device *pdev)
 	init_completion(&mas->rx_reset_done);
 	spin_lock_init(&mas->lock);
 
-	ret = geni_icc_get(&mas->se, NULL);
+	ret = geni_icc_get(&mas->se, legacy ? "qup-memory" : NULL);
 	if (ret)
 		return ret;
 
@@ -1245,6 +1249,7 @@ static const struct dev_pm_ops spi_geni_pm_ops = {
 
 static const struct of_device_id spi_geni_dt_match[] = {
 	{ .compatible = "qcom,geni-spi" },
+	{ .compatible = "qcom,spi-geni" },
 	{}
 };
 MODULE_DEVICE_TABLE(of, spi_geni_dt_match);
