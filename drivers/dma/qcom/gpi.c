@@ -475,10 +475,14 @@ struct gpi_dev {
 	u32 max_gpii; /* maximum # of gpii instances available per gpi block */
 	u32 gpii_mask; /* gpii instances available for apps */
 	u32 ev_factor; /* ev ring length factor */
+	u32 static_mask;
+	bool legacy;
 	struct gpii *gpiis;
 };
 
 struct gchan {
+	u32 ring_entries;
+	bool irq_completion;
 	struct virt_dma_chan vc;
 	u32 chid;
 	u32 seid;
@@ -734,11 +738,17 @@ static inline void gpi_write_ev_db(struct gpii *gpii,
 	gpi_write_reg(gpii, gpii->ev_cntxt_db_reg, p_wp);
 }
 
+static void gpi_process_events(struct gpii *gpii);
+
 /* process transfer completion interrupt */
 static void gpi_process_ieob(struct gpii *gpii)
 {
 	gpi_write_reg(gpii, gpii->ieob_clr_reg, BIT(0));
 
+	if (gpii->gchan[0].irq_completion || gpii->gchan[1].irq_completion) {
+		gpi_process_events(gpii);
+		return;
+	}
 	gpi_config_interrupts(gpii, MASK_IEOB_SETTINGS, 0);
 	tasklet_hi_schedule(&gpii->ev_task);
 }
@@ -1913,7 +1923,7 @@ static int gpi_ch_init(struct gchan *gchan)
 	}
 
 	/* allocate memory for event ring */
-	elements = CHAN_TRES << ev_factor;
+	elements = max(gpii->gchan[0].ring_entries, gpii->gchan[1].ring_entries) << ev_factor;
 	ret = gpi_alloc_ring(&gpii->ev_ring, elements,
 			     sizeof(union gpi_event), gpii);
 	if (ret)
@@ -2052,7 +2062,7 @@ static int gpi_alloc_chan_resources(struct dma_chan *chan)
 	mutex_lock(&gpii->ctrl_lock);
 
 	/* allocate memory for transfer ring */
-	ret = gpi_alloc_ring(&gchan->ch_ring, CHAN_TRES,
+	ret = gpi_alloc_ring(&gchan->ch_ring, gchan->ring_entries,
 			     sizeof(struct gpi_tre), gpii);
 	if (ret)
 		goto xfer_alloc_err;
@@ -2113,7 +2123,7 @@ static struct dma_chan *gpi_of_dma_xlate(struct of_phandle_args *args,
 					 struct of_dma *of_dma)
 {
 	struct gpi_dev *gpi_dev = (struct gpi_dev *)of_dma->of_dma_data;
-	u32 seid, chid;
+	u32 seid, chid, reserved = 0, entries = CHAN_TRES;
 	int gpii;
 	struct gchan *gchan;
 
@@ -2131,8 +2141,27 @@ static struct dma_chan *gpi_of_dma_xlate(struct of_phandle_args *args,
 
 	seid = args->args[1];
 
-	/* find next available gpii to use */
-	gpii = gpi_find_avail_gpii(gpi_dev, seid);
+	if (gpi_dev->legacy) {
+		if (args->args_count != 5 || args->args[4] & ~GENMASK(4, 0))
+			return NULL;
+		entries = args->args[3];
+		if (entries < 2 || entries > 1024 || !is_power_of_2(entries))
+			return NULL;
+		reserved = FIELD_GET(GENMASK(4, 1), args->args[4]);
+	}
+
+	if (reserved) {
+		struct gchan *peer;
+
+		gpii = reserved - 1;
+		if (!(BIT(gpii) & gpi_dev->static_mask))
+			return NULL;
+		peer = &gpi_dev->gpiis[gpii].gchan[chid ^ 1];
+		if (peer->vc.chan.client_count && peer->seid != seid)
+			return NULL;
+	} else {
+		gpii = gpi_find_avail_gpii(gpi_dev, seid);
+	}
 	if (gpii < 0) {
 		dev_err(gpi_dev->dev, "no available gpii instances\n");
 		return NULL;
@@ -2145,6 +2174,8 @@ static struct dma_chan *gpi_of_dma_xlate(struct of_phandle_args *args,
 		return NULL;
 	}
 
+	gchan->ring_entries = entries;
+	gchan->irq_completion = gpi_dev->legacy && !(args->args[4] & BIT(0));
 	gchan->seid = seid;
 	gchan->protocol = args->args[2];
 
@@ -2168,14 +2199,17 @@ static int gpi_probe(struct platform_device *pdev)
 		return PTR_ERR(gpi_dev->regs);
 	gpi_dev->ee_base = gpi_dev->regs;
 
-	ret = of_property_read_u32(gpi_dev->dev->of_node, "dma-channels",
+	gpi_dev->legacy = of_device_is_compatible(pdev->dev.of_node, "qcom,gpi-dma");
+	ret = of_property_read_u32(pdev->dev.of_node,
+			gpi_dev->legacy ? "qcom,max-num-gpii" : "dma-channels",
 				   &gpi_dev->max_gpii);
 	if (ret) {
 		dev_err(gpi_dev->dev, "missing 'max-no-gpii' DT node\n");
 		return ret;
 	}
 
-	ret = of_property_read_u32(gpi_dev->dev->of_node, "dma-channel-mask",
+	ret = of_property_read_u32(pdev->dev.of_node,
+			gpi_dev->legacy ? "qcom,gpii-mask" : "dma-channel-mask",
 				   &gpi_dev->gpii_mask);
 	if (ret) {
 		dev_err(gpi_dev->dev, "missing 'gpii-mask' DT node\n");
@@ -2183,9 +2217,21 @@ static int gpi_probe(struct platform_device *pdev)
 	}
 
 	ee_offset = (uintptr_t)device_get_match_data(gpi_dev->dev);
-	gpi_dev->ee_base = gpi_dev->ee_base - ee_offset;
-
 	gpi_dev->ev_factor = EV_FACTOR;
+	if (gpi_dev->legacy) {
+		if (of_property_read_u32(pdev->dev.of_node, "qcom,gpi-ee-offset", &ee_offset) ||
+		    of_property_read_u32(pdev->dev.of_node, "qcom,ev-factor", &gpi_dev->ev_factor))
+			return -EINVAL;
+		of_property_read_u32(pdev->dev.of_node, "qcom,static-gpii-mask",
+				     &gpi_dev->static_mask);
+		if ((ee_offset && ee_offset != 0x10000) || gpi_dev->ev_factor > 4)
+			return -EINVAL;
+	}
+	if (!gpi_dev->max_gpii || gpi_dev->max_gpii > 32 ||
+	    (gpi_dev->static_mask & gpi_dev->gpii_mask) ||
+	    ((gpi_dev->static_mask | gpi_dev->gpii_mask) & ~GENMASK(gpi_dev->max_gpii - 1, 0)))
+		return -EINVAL;
+	gpi_dev->ee_base -= ee_offset;
 
 	ret = dma_set_mask(gpi_dev->dev, DMA_BIT_MASK(64));
 	if (ret) {
@@ -2204,7 +2250,7 @@ static int gpi_probe(struct platform_device *pdev)
 		struct gpii *gpii = &gpi_dev->gpiis[i];
 		int chan;
 
-		if (!((1 << i) & gpi_dev->gpii_mask))
+		if (!(BIT(i) & (gpi_dev->gpii_mask | gpi_dev->static_mask)))
 			continue;
 
 		/* set up ev cntxt register map */
@@ -2288,6 +2334,7 @@ static int gpi_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id gpi_of_match[] = {
+	{ .compatible = "qcom,gpi-dma" },
 	{ .compatible = "qcom,sdm845-gpi-dma", .data = (void *)0x0 },
 	{ .compatible = "qcom,sm6350-gpi-dma", .data = (void *)0x10000 },
 	/*
