@@ -173,6 +173,9 @@ struct snps_eusb2_hsphy {
 	enum phy_mode mode;
 
 	struct phy *repeater;
+	void __iomem *eud_enable;
+	void __iomem *eud_detect;
+	u32 vdd_levels[3];
 
 	const struct snps_eusb2_phy_drvdata *data;
 };
@@ -453,14 +456,32 @@ static const struct snps_eusb2_phy_drvdata sm8550_snps_eusb2_phy = {
 	.num_clks       = ARRAY_SIZE(qcom_eusb2_hsphy_clock_names),
 };
 
+static const char * const kalama_eusb2_clocks[] = { "ref_clk_src", "ref_clk" };
+
+static const struct snps_eusb2_phy_drvdata kalama_eusb2_phy = {
+	.phy_init = qcom_snps_eusb2_hsphy_init,
+	.clk_names = kalama_eusb2_clocks,
+	.num_clks = ARRAY_SIZE(kalama_eusb2_clocks),
+};
+
 static int snps_eusb2_hsphy_init(struct phy *p)
 {
 	struct snps_eusb2_hsphy *phy = phy_get_drvdata(p);
 	int ret;
 
+	if (phy->data == &kalama_eusb2_phy) {
+		ret = regulator_set_voltage(phy->vregs[0].consumer, phy->vdd_levels[1],
+					    phy->vdd_levels[2]);
+		if (ret)
+			return ret;
+	}
+
 	ret = regulator_bulk_enable(ARRAY_SIZE(phy->vregs), phy->vregs);
 	if (ret)
-		return ret;
+		goto release_voltage;
+
+	if (phy->eud_detect)
+		writel(readl(phy->eud_detect) | BIT(0), phy->eud_detect);
 
 	ret = phy_init(phy->repeater);
 	if (ret) {
@@ -473,6 +494,10 @@ static int snps_eusb2_hsphy_init(struct phy *p)
 		dev_err(&p->dev, "failed to enable ref clock: %d\n", ret);
 		goto exit_repeater;
 	}
+
+	/* Firmware may have left the enhanced USB debugger using this PHY. */
+	if (phy->eud_enable && (readl(phy->eud_enable) & BIT(0)))
+		return 0;
 
 	ret = reset_control_assert(phy->phy_reset);
 	if (ret) {
@@ -499,7 +524,13 @@ disable_clks:
 exit_repeater:
 	phy_exit(phy->repeater);
 disable_vreg:
+	if (phy->eud_detect)
+		writel(readl(phy->eud_detect) & ~BIT(0), phy->eud_detect);
 	regulator_bulk_disable(ARRAY_SIZE(phy->vregs), phy->vregs);
+release_voltage:
+	if (phy->data == &kalama_eusb2_phy)
+		regulator_set_voltage(phy->vregs[0].consumer, phy->vdd_levels[0],
+				      phy->vdd_levels[2]);
 
 	return ret;
 }
@@ -510,9 +541,13 @@ static int snps_eusb2_hsphy_exit(struct phy *p)
 
 	clk_bulk_disable_unprepare(phy->data->num_clks, phy->clks);
 
-	regulator_bulk_disable(ARRAY_SIZE(phy->vregs), phy->vregs);
-
 	phy_exit(phy->repeater);
+	if (phy->eud_detect)
+		writel(readl(phy->eud_detect) & ~BIT(0), phy->eud_detect);
+	regulator_bulk_disable(ARRAY_SIZE(phy->vregs), phy->vregs);
+	if (phy->data == &kalama_eusb2_phy)
+		regulator_set_voltage(phy->vregs[0].consumer, phy->vdd_levels[0],
+				      phy->vdd_levels[2]);
 
 	return 0;
 }
@@ -565,7 +600,7 @@ static int snps_eusb2_hsphy_probe(struct platform_device *pdev)
 
 	phy->ref_clk = NULL;
 	for (i = 0; i < phy->data->num_clks; ++i) {
-		if (!strcmp(phy->clks[i].id, "ref")) {
+		if (!strcmp(phy->clks[i].id, "ref") || !strcmp(phy->clks[i].id, "ref_clk_src")) {
 			phy->ref_clk = phy->clks[i].clk;
 			break;
 		}
@@ -581,12 +616,32 @@ static int snps_eusb2_hsphy_probe(struct platform_device *pdev)
 	for (i = 0; i < num; i++)
 		phy->vregs[i].supply = eusb2_hsphy_vreg_names[i];
 
+	if (phy->data == &kalama_eusb2_phy) {
+		ret = device_property_read_u32_array(dev, "qcom,vdd-voltage-level",
+						     phy->vdd_levels, 3);
+		if (ret || phy->vdd_levels[0] > phy->vdd_levels[1] ||
+		    phy->vdd_levels[1] > phy->vdd_levels[2])
+			return dev_err_probe(dev, -EINVAL, "invalid PHY voltage levels\n");
+
+		phy->vregs[0].init_load_uA = 7757;
+		phy->vregs[1].init_load_uA = 5905;
+		phy->eud_enable = devm_platform_ioremap_resource_byname(pdev, "eud_enable_reg");
+		if (IS_ERR(phy->eud_enable))
+			return PTR_ERR(phy->eud_enable);
+		phy->eud_detect = devm_platform_ioremap_resource_byname(pdev, "eud_detect_reg");
+		if (IS_ERR(phy->eud_detect))
+			return PTR_ERR(phy->eud_detect);
+	}
+
 	ret = devm_regulator_bulk_get(dev, num, phy->vregs);
 	if (ret)
 		return dev_err_probe(dev, ret,
 				     "failed to get regulator supplies\n");
 
-	phy->repeater = devm_of_phy_optional_get(dev, np, NULL);
+	if (phy->data == &kalama_eusb2_phy)
+		phy->repeater = devm_of_phy_get(dev, np, NULL);
+	else
+		phy->repeater = devm_of_phy_optional_get(dev, np, NULL);
 	if (IS_ERR(phy->repeater))
 		return dev_err_probe(dev, PTR_ERR(phy->repeater),
 				     "failed to get repeater\n");
@@ -609,6 +664,9 @@ static int snps_eusb2_hsphy_probe(struct platform_device *pdev)
 
 static const struct of_device_id snps_eusb2_hsphy_of_match_table[] = {
 	{
+		.compatible = "qcom,usb-snps-eusb2-phy",
+		.data = &kalama_eusb2_phy,
+	}, {
 		.compatible = "qcom,sm8550-snps-eusb2-phy",
 		.data = &sm8550_snps_eusb2_phy,
 	}, {
