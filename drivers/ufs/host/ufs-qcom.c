@@ -1212,59 +1212,84 @@ static void ufs_qcom_dev_ref_clk_ctrl(struct ufs_qcom_host *host, bool enable)
 	}
 }
 
-static int ufs_qcom_icc_set_bw(struct ufs_qcom_host *host, u32 mem_bw, u32 cfg_bw)
+static int ufs_qcom_read_icc_table(struct ufs_qcom_host *host)
 {
-	struct device *dev = host->hba->dev;
-	int ret;
+	struct device_node *np = host->hba->dev->of_node;
+	const __be32 *vectors;
+	u32 count, paths;
+	int len;
 
-	ret = icc_set_bw(host->icc_ddr, 0, mem_bw);
-	if (ret < 0) {
-		dev_err(dev, "failed to set bandwidth request: %d\n", ret);
-		return ret;
-	}
+	if (!of_machine_is_compatible("qcom,kalama") ||
+	    !of_property_present(np, "qcom,ufs-bus-bw,vectors-KBps"))
+		return 0;
+	if (of_property_read_u32(np, "qcom,ufs-bus-bw,num-paths", &paths) || paths != 2 ||
+	    of_property_read_u32(np, "qcom,ufs-bus-bw,num-cases", &count) || !count ||
+	    count != of_property_count_strings(np, "qcom,bus-vector-names"))
+		return -EINVAL;
 
-	ret = icc_set_bw(host->icc_cpu, 0, cfg_bw);
-	if (ret < 0) {
-		dev_err(dev, "failed to set bandwidth request: %d\n", ret);
-		return ret;
-	}
-
+	vectors = of_get_property(np, "qcom,ufs-bus-bw,vectors-KBps", &len);
+	if (!vectors || len % (4 * sizeof(*vectors)) || len / (4 * sizeof(*vectors)) != count)
+		return -EINVAL;
+	host->icc_vectors = vectors;
 	return 0;
 }
 
-static struct __ufs_qcom_bw_table ufs_qcom_get_bw_table(struct ufs_qcom_host *host)
+static int ufs_qcom_icc_set_bw(struct ufs_qcom_host *host, int mode, int gear, int lane)
+{
+	static const char * const names[] = { "MIN", "PWM", "HS_RA", "HS_RB", "MAX" };
+	const struct __ufs_qcom_bw_table *bw = &ufs_qcom_bw_table[mode][gear][lane];
+	struct device *dev = host->hba->dev;
+	u32 mem_avg = 0, mem_peak = bw->mem_bw, cpu_avg = 0, cpu_peak = bw->cfg_bw;
+	int ret;
+
+	if (host->icc_vectors) {
+		const __be32 *row;
+		const char *name = names[mode];
+		char speed[24];
+
+		if (mode != MODE_MIN && mode != MODE_MAX) {
+			snprintf(speed, sizeof(speed), "%s_G%d_L%d", name, gear, lane);
+			name = speed;
+		}
+		ret = of_property_match_string(dev->of_node, "qcom,bus-vector-names", name);
+		if (ret < 0)
+			return dev_err_probe(dev, ret, "Missing UFS bus vote %s\n", name);
+		row = host->icc_vectors + 4 * ret;
+		mem_avg = be32_to_cpup(row);
+		mem_peak = be32_to_cpup(row + 1);
+		cpu_avg = be32_to_cpup(row + 2);
+		cpu_peak = be32_to_cpup(row + 3);
+	}
+
+	ret = icc_set_bw(host->icc_ddr, mem_avg, mem_peak);
+	if (!ret)
+		ret = icc_set_bw(host->icc_cpu, cpu_avg, cpu_peak);
+	if (ret)
+		dev_err(dev, "failed to set UFS bandwidth request: %d\n", ret);
+	return ret;
+}
+
+static int ufs_qcom_icc_update_bw(struct ufs_qcom_host *host)
 {
 	struct ufs_pa_layer_attr *p = &host->dev_req_params;
 	int gear = max_t(u32, p->gear_rx, p->gear_tx);
 	int lane = max_t(u32, p->lane_rx, p->lane_tx);
+	int mode = MODE_PWM;
 
 	if (WARN_ONCE(gear > QCOM_UFS_MAX_GEAR,
 		      "ICC scaling for UFS Gear (%d) not supported. Using Gear (%d) bandwidth\n",
 		      gear, QCOM_UFS_MAX_GEAR))
 		gear = QCOM_UFS_MAX_GEAR;
-
 	if (WARN_ONCE(lane > QCOM_UFS_MAX_LANE,
 		      "ICC scaling for UFS Lane (%d) not supported. Using Lane (%d) bandwidth\n",
 		      lane, QCOM_UFS_MAX_LANE))
 		lane = QCOM_UFS_MAX_LANE;
 
-	if (ufshcd_is_hs_mode(p)) {
-		if (p->hs_rate == PA_HS_MODE_B)
-			return ufs_qcom_bw_table[MODE_HS_RB][gear][lane];
-		else
-			return ufs_qcom_bw_table[MODE_HS_RA][gear][lane];
-	} else {
-		return ufs_qcom_bw_table[MODE_PWM][gear][lane];
-	}
-}
-
-static int ufs_qcom_icc_update_bw(struct ufs_qcom_host *host)
-{
-	struct __ufs_qcom_bw_table bw_table;
-
-	bw_table = ufs_qcom_get_bw_table(host);
-
-	return ufs_qcom_icc_set_bw(host, bw_table.mem_bw, bw_table.cfg_bw);
+	if (!p->pwr_rx && !p->pwr_tx)
+		return ufs_qcom_icc_set_bw(host, MODE_MIN, 0, 0);
+	if (ufshcd_is_hs_mode(p))
+		mode = p->hs_rate == PA_HS_MODE_B ? MODE_HS_RB : MODE_HS_RA;
+	return ufs_qcom_icc_set_bw(host, mode, gear, lane);
 }
 
 static void ufs_qcom_set_tx_hs_equalizer(struct ufs_hba *hba, u32 gear, u32 tx_lanes)
@@ -1347,7 +1372,7 @@ static int ufs_qcom_pwr_change_notify(struct ufs_hba *hba,
 		memcpy(&host->dev_req_params,
 				dev_req_params, sizeof(*dev_req_params));
 
-		ufs_qcom_icc_update_bw(host);
+		ret = ufs_qcom_icc_update_bw(host);
 
 		/* disable the device ref clock if entered PWM mode */
 		if (ufshcd_is_hs_mode(&hba->pwr_info) &&
@@ -1754,7 +1779,9 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 	switch (status) {
 	case PRE_CHANGE:
 		if (on) {
-			ufs_qcom_icc_update_bw(host);
+			err = ufs_qcom_icc_update_bw(host);
+			if (err)
+				return err;
 			if (ufs_qcom_is_link_hibern8(hba)) {
 				err = ufs_qcom_enable_lane_clks(host);
 				if (err) {
@@ -1790,8 +1817,7 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 			if (ufs_qcom_is_link_hibern8(hba))
 				ufs_qcom_disable_lane_clks(host);
 
-			ufs_qcom_icc_set_bw(host, ufs_qcom_bw_table[MODE_MIN][0][0].mem_bw,
-					    ufs_qcom_bw_table[MODE_MIN][0][0].cfg_bw);
+			return ufs_qcom_icc_set_bw(host, MODE_MIN, 0, 0);
 		}
 		break;
 	}
@@ -1850,8 +1876,10 @@ static int ufs_qcom_icc_init(struct ufs_qcom_host *host)
 	 * device. Ideally, a minimal interconnect vote would suffice for the
 	 * initialization, but a max vote would allow faster initialization.
 	 */
-	ret = ufs_qcom_icc_set_bw(host, ufs_qcom_bw_table[MODE_MAX][0][0].mem_bw,
-				  ufs_qcom_bw_table[MODE_MAX][0][0].cfg_bw);
+	ret = ufs_qcom_read_icc_table(host);
+	if (ret)
+		return dev_err_probe(dev, ret, "Invalid UFS interconnect table\n");
+	ret = ufs_qcom_icc_set_bw(host, MODE_MAX, 0, 0);
 	if (ret < 0)
 		return dev_err_probe(dev, ret, "failed to set bandwidth request\n");
 
@@ -2212,8 +2240,10 @@ static int ufs_qcom_clk_scale_notify(struct ufs_hba *hba, bool scale_up,
 			return err;
 		}
 
-		ufs_qcom_icc_update_bw(host);
+		err = ufs_qcom_icc_update_bw(host);
 		ufshcd_uic_hibern8_exit(hba);
+		if (err)
+			return err;
 	}
 
 	return 0;

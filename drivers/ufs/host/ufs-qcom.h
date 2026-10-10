@@ -333,6 +333,7 @@ struct ufs_qcom_host {
 
 	struct icc_path *icc_ddr;
 	struct icc_path *icc_cpu;
+	const __be32 *icc_vectors;
 	struct ufs_qcom_kalama_rails *rails;
 
 #ifdef CONFIG_SCSI_UFS_CRYPTO
