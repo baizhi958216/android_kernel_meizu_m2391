@@ -2,10 +2,12 @@
 /* RPMh ARC corner votes for regmap clocks with board-specific Fmax tables. */
 
 #include <linux/clk.h>
+#include <linux/clk/qcom-kalama.h>
 #include <linux/clk-provider.h>
 #include <linux/device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
+#include <linux/xarray.h>
 
 #include "clk-regmap.h"
 #include "clk-regmap-vdd.h"
@@ -21,6 +23,8 @@ struct clk_vdd_state {
 	int *corners;
 };
 
+static DEFINE_XARRAY(vdd_clocks);
+
 static int clk_vdd_find_corner(const struct clk_regmap_vdd *vdd, unsigned long rate)
 {
 	int i;
@@ -32,6 +36,28 @@ static int clk_vdd_find_corner(const struct clk_regmap_vdd *vdd, unsigned long r
 						      vdd->rates[i].corner;
 
 	return -ERANGE;
+}
+
+int qcom_clk_get_voltage(struct clk *clk, unsigned long rate)
+{
+	struct clk_hw *hw;
+	struct clk_regmap_vdd *vdd;
+	int corner;
+
+	if (IS_ERR_OR_NULL(clk))
+		return -EINVAL;
+	hw = __clk_get_hw(clk);
+	xa_lock(&vdd_clocks);
+	vdd = xa_load(&vdd_clocks, (unsigned long)hw);
+	corner = vdd ? clk_vdd_find_corner(vdd, rate) : -EINVAL;
+	xa_unlock(&vdd_clocks);
+	return corner;
+}
+EXPORT_SYMBOL_GPL(qcom_clk_get_voltage);
+
+static void clk_vdd_forget_corner_table(void *hw)
+{
+	xa_erase(&vdd_clocks, (unsigned long)hw);
 }
 
 static int clk_vdd_set_corner(struct clk_vdd_state *s, int corner, bool raise_only)
@@ -172,7 +198,13 @@ int devm_clk_register_regmap_vdd(struct device *dev, struct clk_regmap *clkr)
 	if (IS_ERR(clk))
 		return PTR_ERR(clk);
 	s->notifier.notifier_call = clk_vdd_rate_change;
-	return devm_clk_notifier_register(dev, clk, &s->notifier);
+	ret = devm_clk_notifier_register(dev, clk, &s->notifier);
+	if (ret)
+		return ret;
+	ret = xa_insert(&vdd_clocks, (unsigned long)&clkr->hw, vdd, GFP_KERNEL);
+	if (ret)
+		return ret;
+	return devm_add_action_or_reset(dev, clk_vdd_forget_corner_table, &clkr->hw);
 }
 
 struct qcom_clk_boot_vote {
