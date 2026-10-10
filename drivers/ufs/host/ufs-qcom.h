@@ -173,6 +173,10 @@ enum {
 #define TEST_BUS_EN		BIT(18)
 #define TEST_BUS_SEL		GENMASK(22, 19)
 #define UFS_REG_TEST_BUS_EN	BIT(30)
+#define UFS_UTP_SCSI_CHECK_DIS	BIT(31)
+
+/* System, ICE, UniPro and auxiliary clock requests during Auto-Hibern8. */
+#define KALAMA_UFS_AH8_CLK_REQ_MASK	GENMASK(5, 2)
 
 /* bit definitions for REG_UFS_CFG2 register */
 #define UAWM_HW_CGC_EN		BIT(0)

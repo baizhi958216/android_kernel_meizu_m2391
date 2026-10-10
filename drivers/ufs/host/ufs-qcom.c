@@ -13,6 +13,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/phy/phy.h>
+#include <linux/phy/phy-qcom-ufs.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/reset-controller.h>
@@ -294,10 +295,11 @@ static void ufs_qcom_config_ice_allocator(struct ufs_qcom_host *host)
 	ufshcd_writel(hba, config, REG_UFS_MEM_ICE_NUM_CORE);
 }
 
-static inline void ufs_qcom_ice_enable(struct ufs_qcom_host *host)
+static inline int ufs_qcom_ice_enable(struct ufs_qcom_host *host)
 {
 	if (host->hba->caps & UFSHCD_CAP_CRYPTO)
-		qcom_ice_enable(host->ice);
+		return qcom_ice_enable(host->ice);
+	return 0;
 }
 
 static const struct blk_crypto_ll_ops ufs_qcom_crypto_ops; /* forward decl */
@@ -466,8 +468,9 @@ static const struct blk_crypto_ll_ops ufs_qcom_crypto_ops = {
 
 #else
 
-static inline void ufs_qcom_ice_enable(struct ufs_qcom_host *host)
+static inline int ufs_qcom_ice_enable(struct ufs_qcom_host *host)
 {
+	return 0;
 }
 
 static int ufs_qcom_ice_init(struct ufs_qcom_host *host)
@@ -598,9 +601,9 @@ static int ufs_qcom_check_hibern8(struct ufs_hba *hba)
 		dev_err(hba->dev, "%s: unable to get TX_FSM_STATE, err %d\n",
 				__func__, err);
 	} else if (tx_fsm_val != TX_FSM_HIBERN8) {
-		err = tx_fsm_val;
-		dev_err(hba->dev, "%s: invalid TX_FSM_STATE = %d\n",
-				__func__, err);
+		dev_err(hba->dev, "%s: invalid TX_FSM_STATE = %u\n",
+				__func__, tx_fsm_val);
+		err = -ETIMEDOUT;
 	}
 
 	return err;
@@ -788,12 +791,21 @@ static int ufs_qcom_hce_enable_notify(struct ufs_hba *hba,
 		 * is initialized.
 		 */
 		err = ufs_qcom_enable_lane_clks(host);
+		/* ufshcd_hba_start() restores cached keyslots after PRE_CHANGE. */
+		if (!err && of_machine_is_compatible("qcom,kalama"))
+			err = ufs_qcom_ice_enable(host);
 		break;
 	case POST_CHANGE:
 		/* check if UFS PHY moved from DISABLED to HIBERN8 */
 		err = ufs_qcom_check_hibern8(hba);
+		if (err)
+			return err;
 		ufs_qcom_enable_hw_clk_gating(hba);
-		ufs_qcom_ice_enable(host);
+		if (!of_machine_is_compatible("qcom,kalama")) {
+			err = ufs_qcom_ice_enable(host);
+			if (err)
+				return err;
+		}
 		ufs_qcom_config_ice_allocator(host);
 		break;
 	default:
@@ -871,10 +883,16 @@ cfg_timers:
 static int ufs_qcom_link_startup_notify(struct ufs_hba *hba,
 					enum ufs_notify_change_status status)
 {
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	struct phy *phy = host->generic_phy;
+	bool kalama_phy = IS_REACHABLE(CONFIG_PHY_QCOM_KALAMA_UFS) && phy &&
+		of_device_is_compatible(phy->dev.parent->of_node, "qcom,ufs-phy-qmp-v4-kalama");
 	int err = 0;
 
 	switch (status) {
 	case PRE_CHANGE:
+		if (kalama_phy)
+			ufs_qcom_phy_ctrl_rx_linecfg(phy, true);
 		if (ufs_qcom_cfg_timers(hba, false, ULONG_MAX)) {
 			dev_err(hba->dev, "%s: ufs_qcom_cfg_timers() failed\n",
 				__func__);
@@ -882,8 +900,16 @@ static int ufs_qcom_link_startup_notify(struct ufs_hba *hba,
 		}
 
 		err = ufs_qcom_set_core_clk_ctrl(hba, true, ULONG_MAX);
-		if (err)
+		if (err) {
 			dev_err(hba->dev, "cfg core clk ctrl failed\n");
+			return err;
+		}
+		if (of_machine_is_compatible("qcom,kalama")) {
+			/* Non-SCSI management UPIUs do not carry a crypto context. */
+			ufshcd_rmwl(hba, UFS_UTP_SCSI_CHECK_DIS, UFS_UTP_SCSI_CHECK_DIS,
+				    REG_UFS_CFG1);
+			ufshcd_readl(hba, REG_UFS_CFG1);
+		}
 		/*
 		 * Some UFS devices (and may be host) have issues if LCC is
 		 * enabled. So we are setting PA_Local_TX_LCC_Enable to 0
@@ -891,8 +917,19 @@ static int ufs_qcom_link_startup_notify(struct ufs_hba *hba,
 		 * and device TX LCC are disabled once link startup is
 		 * completed.
 		 */
-		err = ufshcd_disable_host_tx_lcc(hba);
-
+		if (!kalama_phy || hba->ufs_version > ufshci_version(1, 1))
+			err = ufshcd_disable_host_tx_lcc(hba);
+		break;
+	case POST_CHANGE:
+		if (kalama_phy) {
+			if (hba->ufs_version <= ufshci_version(1, 1))
+				ufs_qcom_phy_ctrl_rx_linecfg(phy, false);
+			if (ufshcd_is_auto_hibern8_supported(hba)) {
+				ufshcd_rmwl(hba, KALAMA_UFS_AH8_CLK_REQ_MASK,
+					    KALAMA_UFS_AH8_CLK_REQ_MASK, UFS_AH8_CFG);
+				ufshcd_readl(hba, UFS_AH8_CFG);
+			}
+		}
 		break;
 	default:
 		break;
@@ -1913,7 +1950,9 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 	if (err)
 		goto out_variant_clear;
 
-	ufs_qcom_setup_clocks(hba, true, POST_CHANGE);
+	err = ufs_qcom_setup_clocks(hba, true, POST_CHANGE);
+	if (err)
+		goto out_variant_clear;
 
 	ufs_qcom_get_default_testbus_cfg(host);
 	err = ufs_qcom_testbus_config(host);

@@ -308,7 +308,10 @@ int qcom_ice_resume(struct qcom_ice *ice)
 		return err;
 	}
 	qcom_ice_hwkm_init(ice);
-	return qcom_ice_wait_bist_status(ice);
+	err = qcom_ice_wait_bist_status(ice);
+	if (err)
+		clk_disable_unprepare(ice->core_clk);
+	return err;
 }
 EXPORT_SYMBOL_GPL(qcom_ice_resume);
 
