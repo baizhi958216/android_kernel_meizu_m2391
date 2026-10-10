@@ -32,6 +32,7 @@
 #include <linux/pci.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/qcom-iommu-util.h>
 #include <linux/ratelimit.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
@@ -959,7 +960,8 @@ static void arm_smmu_write_smr(struct arm_smmu_device *smmu, int idx)
 	u32 reg = FIELD_PREP(ARM_SMMU_SMR_ID, smr->id) |
 		  FIELD_PREP(ARM_SMMU_SMR_MASK, smr->mask);
 
-	if (!(smmu->features & ARM_SMMU_FEAT_EXIDS) && smr->valid)
+	if (!(smmu->features & ARM_SMMU_FEAT_EXIDS) && smr->valid &&
+	    !smmu->s2crs[idx].released)
 		reg |= ARM_SMMU_SMR_VALID;
 	arm_smmu_gr0_write(smmu, ARM_SMMU_GR0_SMR(idx), reg);
 }
@@ -978,8 +980,10 @@ static void arm_smmu_write_s2cr(struct arm_smmu_device *smmu, int idx)
 	      FIELD_PREP(ARM_SMMU_S2CR_CBNDX, s2cr->cbndx) |
 	      FIELD_PREP(ARM_SMMU_S2CR_PRIVCFG, s2cr->privcfg);
 
+	if (s2cr->firmware_handoff)
+		reg = s2cr->firmware_s2cr & ~ARM_SMMU_S2CR_EXIDVALID;
 	if (smmu->features & ARM_SMMU_FEAT_EXIDS && smmu->smrs &&
-	    smmu->smrs[idx].valid)
+	    smmu->smrs[idx].valid && !s2cr->released)
 		reg |= ARM_SMMU_S2CR_EXIDVALID;
 	arm_smmu_gr0_write(smmu, ARM_SMMU_GR0_S2CR(idx), reg);
 }
@@ -1078,6 +1082,11 @@ static bool arm_smmu_free_sme(struct arm_smmu_device *smmu, int idx)
 	if (--smmu->s2crs[idx].count)
 		return false;
 
+	if (smmu->s2crs[idx].firmware_handoff) {
+		smmu->s2crs[idx].group = NULL;
+		smmu->s2crs[idx].released = false;
+		return true;
+	}
 	smmu->s2crs[idx] = s2cr_init_val;
 	if (smmu->smrs)
 		smmu->smrs[idx].valid = false;
@@ -1109,7 +1118,7 @@ static int arm_smmu_master_alloc_smes(struct device *dev)
 			goto out_err;
 
 		idx = ret;
-		if (smrs && smmu->s2crs[idx].count == 0) {
+		if (smrs && !smrs[idx].valid) {
 			smrs[idx].id = sid;
 			smrs[idx].mask = mask;
 			smrs[idx].valid = true;
@@ -1157,8 +1166,13 @@ static void arm_smmu_master_install_s2crs(struct arm_smmu_master_cfg *cfg,
 	struct arm_smmu_s2cr *s2cr = smmu->s2crs;
 	int i, idx;
 
+	mutex_lock(&smmu->stream_map_mutex);
 	for_each_cfg_sme(cfg, fwspec, i, idx) {
-		if (type == s2cr[idx].type && cbndx == s2cr[idx].cbndx)
+		bool drop_handoff = s2cr[idx].firmware_handoff && type != S2CR_TYPE_TRANS;
+
+		if (drop_handoff)
+			s2cr[idx].firmware_handoff = false;
+		if (!drop_handoff && type == s2cr[idx].type && cbndx == s2cr[idx].cbndx)
 			continue;
 
 		s2cr[idx].type = type;
@@ -1166,6 +1180,7 @@ static void arm_smmu_master_install_s2crs(struct arm_smmu_master_cfg *cfg,
 		s2cr[idx].cbndx = cbndx;
 		arm_smmu_write_s2cr(smmu, idx);
 	}
+	mutex_unlock(&smmu->stream_map_mutex);
 }
 
 static int arm_smmu_attach_dev(struct iommu_domain *domain, struct device *dev)
@@ -1214,6 +1229,80 @@ rpm_put:
 	arm_smmu_rpm_put(smmu);
 	return ret;
 }
+
+/* A released stream must stay reserved in the software allocator while the
+ * hypervisor owns the corresponding device. Only its hardware match is removed.
+ */
+int qcom_iommu_sid_switch(struct device *dev, enum sid_switch_direction dir)
+{
+	struct iommu_domain *domain = iommu_get_domain_for_dev(dev);
+	struct arm_smmu_device *smmu;
+	struct iommu_group *group;
+	int i, ret;
+
+	if (dir != SID_ACQUIRE && dir != SID_RELEASE)
+		return -EINVAL;
+	if (!domain || domain->ops != arm_smmu_ops.default_domain_ops)
+		return -ENODEV;
+	smmu = to_smmu_domain(domain)->smmu;
+	if (!smmu || !of_device_is_compatible(smmu->dev->of_node, "qcom,qsmmu-v500") ||
+	    !smmu->smrs || !disable_bypass)
+		return -EOPNOTSUPP;
+	group = iommu_group_get(dev);
+	if (!group)
+		return -ENODEV;
+	ret = arm_smmu_rpm_get(smmu);
+	if (ret >= 0) {
+		ret = -ENOENT;
+		mutex_lock(&smmu->stream_map_mutex);
+		for (i = 0; i < smmu->num_mapping_groups; i++) {
+			if (smmu->s2crs[i].group != group)
+				continue;
+			smmu->s2crs[i].released = dir == SID_RELEASE;
+			arm_smmu_write_sme(smmu, i);
+			ret = 0;
+		}
+		wmb();
+		mutex_unlock(&smmu->stream_map_mutex);
+		arm_smmu_rpm_put(smmu);
+	}
+	iommu_group_put(group);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(qcom_iommu_sid_switch);
+
+int qcom_iommu_enable_s1_translation(struct iommu_domain *domain)
+{
+	struct arm_smmu_domain *d;
+	struct arm_smmu_device *smmu;
+	int i, ret;
+
+	if (!domain || domain->ops != arm_smmu_ops.default_domain_ops)
+		return -EINVAL;
+	d = to_smmu_domain(domain);
+	smmu = d->smmu;
+	if (!smmu || d->stage != ARM_SMMU_DOMAIN_S1 ||
+	    !of_device_is_compatible(smmu->dev->of_node, "qcom,qsmmu-v500"))
+		return -EOPNOTSUPP;
+	ret = arm_smmu_rpm_get(smmu);
+	if (ret < 0)
+		return ret;
+	mutex_lock(&smmu->stream_map_mutex);
+	for (i = 0; i < smmu->num_mapping_groups; i++) {
+		struct arm_smmu_s2cr *s2cr = &smmu->s2crs[i];
+
+		if (s2cr->firmware_handoff && s2cr->group &&
+		    s2cr->type == S2CR_TYPE_TRANS && s2cr->cbndx == d->cfg.cbndx) {
+			s2cr->firmware_handoff = false;
+			arm_smmu_write_sme(smmu, i);
+		}
+	}
+	wmb();
+	mutex_unlock(&smmu->stream_map_mutex);
+	arm_smmu_rpm_put(smmu);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(qcom_iommu_enable_s1_translation);
 
 static int arm_smmu_attach_dev_type(struct device *dev,
 				    enum arm_smmu_s2cr_type type)

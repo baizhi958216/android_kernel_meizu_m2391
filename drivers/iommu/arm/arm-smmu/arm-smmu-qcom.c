@@ -590,7 +590,7 @@ static int kalama_smmu_cfg_probe(struct arm_smmu_device *smmu)
 		for (j = 0; j < smmu->num_mapping_groups; j++) {
 			u32 smr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(j));
 			u32 s2cr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_S2CR(j));
-			struct arm_smmu_smr entry;
+			struct arm_smmu_smr entry = {};
 			u32 bank;
 
 			if (smmu->features & ARM_SMMU_FEAT_EXIDS) {
@@ -615,7 +615,8 @@ static int kalama_smmu_cfg_probe(struct arm_smmu_device *smmu)
 				set_bit(bank, smmu->context_map);
 			}
 			smmu->smrs[j] = entry;
-			smmu->s2crs[j].count = 1;
+			smmu->s2crs[j].firmware_handoff = true;
+			smmu->s2crs[j].firmware_s2cr = s2cr;
 			smmu->s2crs[j].type = FIELD_GET(ARM_SMMU_S2CR_TYPE, s2cr);
 			smmu->s2crs[j].privcfg = FIELD_GET(ARM_SMMU_S2CR_PRIVCFG, s2cr);
 			smmu->s2crs[j].cbndx = bank;

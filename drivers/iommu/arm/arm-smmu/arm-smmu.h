@@ -273,6 +273,9 @@ enum arm_smmu_implementation {
 };
 
 struct arm_smmu_s2cr {
+	bool released;
+	bool firmware_handoff;
+	u32 firmware_s2cr;
 	struct iommu_group		*group;
 	int				count;
 	enum arm_smmu_s2cr_type		type;
