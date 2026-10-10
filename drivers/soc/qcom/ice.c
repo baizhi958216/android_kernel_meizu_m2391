@@ -697,6 +697,13 @@ static struct qcom_ice *qcom_ice_create(struct device *dev,
 	if (!qcom_ice_check_supported(engine))
 		return ERR_PTR(-EOPNOTSUPP);
 
+	if (km) {
+		int err = qcom_tme_hwkm_link(dev);
+
+		if (err)
+			return ERR_PTR(err);
+	}
+
 	dev_dbg(dev, "Registered Qualcomm Inline Crypto Engine\n");
 
 	return engine;

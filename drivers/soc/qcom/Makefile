@@ -38,8 +38,8 @@ obj-$(CONFIG_QCOM_KRYO_L2_ACCESSORS) +=	kryo-l2-accessors.o
 obj-$(CONFIG_QCOM_ICC_BWMON)	+= icc-bwmon.o
 qcom_ice-objs			+= ice.o
 ifeq ($(CONFIG_QCOM_KALAMA_HWKM),y)
-obj-$(CONFIG_QCOM_INLINE_CRYPTO_ENGINE) += tmecom_intf.o
-tmecom_intf-y := tme-hwkm.o
+obj-$(CONFIG_QCOM_INLINE_CRYPTO_ENGINE) += tmecom-intf.o
+tmecom-intf-y := tme-hwkm.o
 endif
 obj-$(CONFIG_QCOM_INLINE_CRYPTO_ENGINE)	+= qcom_ice.o
 obj-$(CONFIG_QCOM_PANEL_EVENT_NOTIFIER) += panel_event_notifier.o

@@ -12,7 +12,6 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
-#include <linux/unaligned.h>
 
 #include "tme-hwkm.h"
 
@@ -76,6 +75,18 @@ static void tme_hwkm_rx(struct mbox_client *client, void *message)
 	}
 	spin_unlock_irqrestore(&tme->rx_lock, flags);
 }
+
+/* The firmware DT does not express this dependency on the UFS node. */
+int qcom_tme_hwkm_link(struct device *consumer)
+{
+	guard(mutex)(&tme_lock);
+	if (!tme_master)
+		return -EPROBE_DEFER;
+	if (!device_link_add(consumer, tme_master->client.dev, DL_FLAG_AUTOREMOVE_CONSUMER))
+		return -EINVAL;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(qcom_tme_hwkm_link);
 
 int qcom_tme_hwkm_broadcast(void)
 {
@@ -168,5 +179,6 @@ static struct platform_driver tme_hwkm_driver = {
 };
 module_platform_driver(tme_hwkm_driver);
 
+MODULE_SOFTDEP("pre: msm_qmp");
 MODULE_DESCRIPTION("Qualcomm Kalama TME transport key broadcast");
 MODULE_LICENSE("GPL");
