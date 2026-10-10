@@ -409,20 +409,22 @@ out:
 }
 
 /**
- * blk_crypto_reprogram_all_keys() - Re-program all keyslots.
+ * blk_crypto_reprogram_all_keys_checked() - Re-program all keyslots.
  * @profile: The crypto profile
  *
  * Re-program all keyslots that are supposed to have a key programmed.  This is
  * intended only for use by drivers for hardware that loses its keys on reset.
  *
  * Context: Process context. Takes and releases profile->lock.
+ * Return: 0 on success, or the first error from keyslot_program().
  */
-void blk_crypto_reprogram_all_keys(struct blk_crypto_profile *profile)
+int blk_crypto_reprogram_all_keys_checked(struct blk_crypto_profile *profile)
 {
 	unsigned int slot;
+	int first_error = 0;
 
 	if (profile->num_slots == 0)
-		return;
+		return 0;
 
 	/* This is for device initialization, so don't resume the device */
 	down_write(&profile->lock);
@@ -434,9 +436,17 @@ void blk_crypto_reprogram_all_keys(struct blk_crypto_profile *profile)
 			continue;
 
 		err = profile->ll_ops.keyslot_program(profile, key, slot);
-		WARN_ON(err);
+		if (err && !first_error)
+			first_error = err;
 	}
 	up_write(&profile->lock);
+	return first_error;
+}
+EXPORT_SYMBOL_GPL(blk_crypto_reprogram_all_keys_checked);
+
+void blk_crypto_reprogram_all_keys(struct blk_crypto_profile *profile)
+{
+	WARN_ON(blk_crypto_reprogram_all_keys_checked(profile));
 }
 EXPORT_SYMBOL_GPL(blk_crypto_reprogram_all_keys);
 

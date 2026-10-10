@@ -201,6 +201,7 @@ int devm_blk_crypto_profile_init(struct device *dev,
 
 unsigned int blk_crypto_keyslot_index(struct blk_crypto_keyslot *slot);
 
+int blk_crypto_reprogram_all_keys_checked(struct blk_crypto_profile *profile);
 void blk_crypto_reprogram_all_keys(struct blk_crypto_profile *profile);
 
 void blk_crypto_profile_destroy(struct blk_crypto_profile *profile);

@@ -104,25 +104,25 @@ static int ufshcd_crypto_keyslot_evict(struct blk_crypto_profile *profile,
 }
 
 /*
- * Reprogram the keyslots if needed, and return true if CRYPTO_GENERAL_ENABLE
- * should be used in the host controller initialization sequence.
+ * Restore keyslots before allowing I/O and select the appropriate HCE value.
  */
-bool ufshcd_crypto_enable(struct ufs_hba *hba)
+int ufshcd_crypto_enable(struct ufs_hba *hba, u32 *hce)
 {
 	int err = -EOPNOTSUPP;
 
 	if (!(hba->caps & UFSHCD_CAP_CRYPTO))
-		return false;
+		return 0;
 
 	/* Reset might clear all keys, so reprogram all the keys. */
 	trace_android_rvh_ufs_reprogram_all_keys(hba, &err);
 	if (err == -EOPNOTSUPP)
-		blk_crypto_reprogram_all_keys(&hba->crypto_profile);
+		err = blk_crypto_reprogram_all_keys_checked(&hba->crypto_profile);
+	if (err)
+		return err;
 
-	if (hba->quirks & UFSHCD_QUIRK_BROKEN_CRYPTO_ENABLE)
-		return false;
-
-	return true;
+	if (!(hba->quirks & UFSHCD_QUIRK_BROKEN_CRYPTO_ENABLE))
+		*hce |= CRYPTO_GENERAL_ENABLE;
+	return 0;
 }
 
 static const struct blk_crypto_ll_ops ufshcd_crypto_ops = {

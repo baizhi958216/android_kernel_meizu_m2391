@@ -1004,14 +1004,19 @@ static void ufshcd_enable_run_stop_reg(struct ufs_hba *hba)
  * ufshcd_hba_start - Start controller initialization sequence
  * @hba: per adapter instance
  */
-static inline void ufshcd_hba_start(struct ufs_hba *hba)
+static int ufshcd_hba_start(struct ufs_hba *hba)
 {
 	u32 val = CONTROLLER_ENABLE;
+	int err;
 
-	if (ufshcd_crypto_enable(hba))
-		val |= CRYPTO_GENERAL_ENABLE;
+	err = ufshcd_crypto_enable(hba, &val);
+	if (err) {
+		dev_err(hba->dev, "Failed to restore UFS keyslots: %d\n", err);
+		return err;
+	}
 
 	ufshcd_writel(hba, val, REG_CONTROLLER_ENABLE);
+	return 0;
 }
 
 /**
@@ -5135,7 +5140,7 @@ EXPORT_SYMBOL_GPL(ufshcd_hba_stop);
  */
 static int ufshcd_hba_execute_hce(struct ufs_hba *hba)
 {
-	int retry;
+	int retry, ret;
 
 	for (retry = 3; retry > 0; retry--) {
 		if (ufshcd_is_hba_active(hba))
@@ -5145,10 +5150,14 @@ static int ufshcd_hba_execute_hce(struct ufs_hba *hba)
 		/* UniPro link is disabled at this point */
 		ufshcd_set_link_off(hba);
 
-		ufshcd_vops_hce_enable_notify(hba, PRE_CHANGE);
+		ret = ufshcd_vops_hce_enable_notify(hba, PRE_CHANGE);
+		if (ret)
+			return ret;
 
 		/* start controller initialization sequence */
-		ufshcd_hba_start(hba);
+		ret = ufshcd_hba_start(hba);
+		if (ret)
+			return ret;
 
 		/*
 		 * To initialize a UFS host controller HCE bit must be set to 1.
@@ -5176,9 +5185,7 @@ static int ufshcd_hba_execute_hce(struct ufs_hba *hba)
 	/* enable UIC related interrupts */
 	ufshcd_enable_intr(hba, UFSHCD_UIC_MASK);
 
-	ufshcd_vops_hce_enable_notify(hba, POST_CHANGE);
-
-	return 0;
+	return ufshcd_vops_hce_enable_notify(hba, POST_CHANGE);
 }
 
 int ufshcd_hba_enable(struct ufs_hba *hba)
@@ -5187,7 +5194,9 @@ int ufshcd_hba_enable(struct ufs_hba *hba)
 
 	if (hba->quirks & UFSHCI_QUIRK_BROKEN_HCE) {
 		ufshcd_set_link_off(hba);
-		ufshcd_vops_hce_enable_notify(hba, PRE_CHANGE);
+		ret = ufshcd_vops_hce_enable_notify(hba, PRE_CHANGE);
+		if (ret)
+			return ret;
 
 		/* enable UIC related interrupts */
 		ufshcd_enable_intr(hba, UFSHCD_UIC_MASK);
@@ -5203,7 +5212,7 @@ int ufshcd_hba_enable(struct ufs_hba *hba)
 			return ret;
 		}
 
-		ufshcd_vops_hce_enable_notify(hba, POST_CHANGE);
+		ret = ufshcd_vops_hce_enable_notify(hba, POST_CHANGE);
 	} else {
 		ret = ufshcd_hba_execute_hce(hba);
 	}
@@ -5287,7 +5296,9 @@ static int ufshcd_link_startup(struct ufs_hba *hba)
 
 link_startup:
 	do {
-		ufshcd_vops_link_startup_notify(hba, PRE_CHANGE);
+		ret = ufshcd_vops_link_startup_notify(hba, PRE_CHANGE);
+		if (ret)
+			goto out;
 
 		ret = ufshcd_dme_link_startup(hba);
 

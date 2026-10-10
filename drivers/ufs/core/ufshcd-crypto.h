@@ -63,7 +63,7 @@ static inline void ufshcd_crypto_clear_prdt(struct ufs_hba *hba,
 			 ufshcd_sg_entry_size(hba) * scsi_sg_count(lrbp->cmd));
 }
 
-bool ufshcd_crypto_enable(struct ufs_hba *hba);
+int ufshcd_crypto_enable(struct ufs_hba *hba, u32 *hce);
 
 int ufshcd_hba_init_crypto_capabilities(struct ufs_hba *hba);
 
@@ -89,9 +89,9 @@ static inline int ufshcd_crypto_fill_prdt(struct ufs_hba *hba,
 static inline void ufshcd_crypto_clear_prdt(struct ufs_hba *hba,
 					    struct ufshcd_lrb *lrbp) { }
 
-static inline bool ufshcd_crypto_enable(struct ufs_hba *hba)
+static inline int ufshcd_crypto_enable(struct ufs_hba *hba, u32 *hce)
 {
-	return false;
+	return 0;
 }
 
 static inline int ufshcd_hba_init_crypto_capabilities(struct ufs_hba *hba)
