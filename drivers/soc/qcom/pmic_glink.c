@@ -174,15 +174,23 @@ static void pmic_glink_aux_release(struct device *dev)
 
 static int pmic_glink_add_aux_device(struct pmic_glink *pg,
 				     struct auxiliary_device *aux,
-				     const char *name)
+				     const char *name, const char *child_compat)
 {
 	struct device *parent = pg->dev;
+	struct device_node *np;
 	int ret;
 
 	aux->name = name;
 	aux->dev.parent = parent;
 	aux->dev.release = pmic_glink_aux_release;
-	device_set_of_node_from_dev(&aux->dev, parent);
+	/* Older board descriptions keep each service's properties in a child. */
+	np = of_get_compatible_child(parent->of_node, child_compat);
+	if (np) {
+		device_set_node(&aux->dev, of_fwnode_handle(np));
+		aux->dev.of_node_reused = true;
+	} else {
+		device_set_of_node_from_dev(&aux->dev, parent);
+	}
 	ret = auxiliary_device_init(aux);
 	if (ret) {
 		of_node_put(aux->dev.of_node);
@@ -316,17 +324,18 @@ static int pmic_glink_probe(struct platform_device *pdev)
 	}
 
 	if (pg->client_mask & BIT(PMIC_GLINK_CLIENT_UCSI)) {
-		ret = pmic_glink_add_aux_device(pg, &pg->ucsi_aux, "ucsi");
+		ret = pmic_glink_add_aux_device(pg, &pg->ucsi_aux, "ucsi", "qcom,ucsi-glink");
 		if (ret)
 			goto out_release_pdr_handle;
 	}
 	if (pg->client_mask & BIT(PMIC_GLINK_CLIENT_ALTMODE)) {
-		ret = pmic_glink_add_aux_device(pg, &pg->altmode_aux, "altmode");
+		ret = pmic_glink_add_aux_device(pg, &pg->altmode_aux, "altmode", "qcom,ucsi-glink");
 		if (ret)
 			goto out_release_ucsi_aux;
 	}
 	if (pg->client_mask & BIT(PMIC_GLINK_CLIENT_BATT)) {
-		ret = pmic_glink_add_aux_device(pg, &pg->ps_aux, "power-supply");
+		ret = pmic_glink_add_aux_device(pg, &pg->ps_aux, "power-supply",
+						"qcom,battery-charger");
 		if (ret)
 			goto out_release_altmode_aux;
 	}
