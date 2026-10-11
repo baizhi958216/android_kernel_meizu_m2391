@@ -18,6 +18,8 @@
 #include <linux/platform_device.h>
 #include <linux/phy/phy.h>
 #include <linux/usb/of.h>
+#include <linux/regulator/consumer.h>
+#include <linux/usb/role.h>
 #include <linux/reset.h>
 #include <linux/iopoll.h>
 #include <linux/usb/hcd.h>
@@ -90,6 +92,15 @@ struct dwc3_qcom {
 	bool			pm_suspended;
 	struct icc_path		*icc_path_ddr;
 	struct icc_path		*icc_path_apps;
+
+	/* The Kalama connector remains registered when data is disabled. */
+	bool			kalama;
+	struct mutex		role_lock;
+	void __iomem		*usb_access;
+	struct usb_role_switch	*role_sw;
+	enum usb_role		requested_role;
+	enum usb_dr_mode	child_mode;
+	bool			data_enabled;
 };
 
 static inline void dwc3_qcom_setbits(void __iomem *base, u32 offset, u32 val)
@@ -253,14 +264,31 @@ static int dwc3_qcom_interconnect_init(struct dwc3_qcom *qcom)
 				     "failed to get usb-ddr path\n");
 	}
 
-	qcom->icc_path_apps = of_icc_get(dev, "apps-usb");
+	qcom->icc_path_apps = of_icc_get(dev, qcom->kalama ? "ddr-usb" : "apps-usb");
 	if (IS_ERR(qcom->icc_path_apps)) {
 		ret = dev_err_probe(dev, PTR_ERR(qcom->icc_path_apps),
 				    "failed to get apps-usb path\n");
 		goto put_path_ddr;
 	}
 
-	max_speed = usb_get_maximum_speed(&qcom->dwc3->dev);
+	if (qcom->kalama) {
+		struct device_node *np __free(device_node) =
+			of_get_compatible_child(dev->of_node, "snps,dwc3");
+
+		const char *speed;
+
+		if (!np) {
+			ret = -ENODEV;
+			goto put_path_apps;
+		}
+		if (!of_property_read_string(np, "maximum-speed", &speed) &&
+		    !strcmp(speed, "high-speed"))
+			max_speed = USB_SPEED_HIGH;
+		else
+			max_speed = USB_SPEED_SUPER;
+	} else {
+		max_speed = usb_get_maximum_speed(&qcom->dwc3->dev);
+	}
 	if (max_speed >= USB_SPEED_SUPER || max_speed == USB_SPEED_UNKNOWN) {
 		ret = icc_set_bw(qcom->icc_path_ddr,
 				USB_MEMORY_AVG_SS_BW, USB_MEMORY_PEAK_SS_BW);
@@ -308,6 +336,8 @@ static bool dwc3_qcom_is_host(struct dwc3_qcom *qcom)
 	/*
 	 * FIXME: Fix this layering violation.
 	 */
+	if (!qcom->dwc3)
+		return false;
 	dwc = platform_get_drvdata(qcom->dwc3);
 
 	/* Core driver may not have probed yet. */
@@ -498,7 +528,7 @@ static int dwc3_qcom_resume(struct dwc3_qcom *qcom, bool wakeup)
 static irqreturn_t qcom_dwc3_resume_irq(int irq, void *data)
 {
 	struct dwc3_qcom *qcom = data;
-	struct dwc3	*dwc = platform_get_drvdata(qcom->dwc3);
+	struct dwc3 *dwc;
 
 	/* If pm_suspended then let pm_resume take care of resuming h/w */
 	if (qcom->pm_suspended)
@@ -508,8 +538,10 @@ static irqreturn_t qcom_dwc3_resume_irq(int irq, void *data)
 	 * This is safe as role switching is done from a freezable workqueue
 	 * and the wakeup interrupts are disabled as part of resume.
 	 */
-	if (dwc3_qcom_is_host(qcom))
+	if (dwc3_qcom_is_host(qcom)) {
+		dwc = platform_get_drvdata(qcom->dwc3);
 		pm_runtime_resume(&dwc->xhci->dev);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -705,6 +737,10 @@ static int dwc3_qcom_of_register_core(struct platform_device *pdev)
 	struct dwc3_qcom	*qcom = platform_get_drvdata(pdev);
 	struct device_node	*np = pdev->dev.of_node;
 	struct device		*dev = &pdev->dev;
+	struct of_dev_auxdata aux[] = {
+		{ .compatible = "meizu,m2391-dwc3", .platform_data = &qcom->child_mode },
+		{}
+	};
 	int			ret;
 
 	struct device_node *dwc3_np __free(device_node) = of_get_compatible_child(np,
@@ -714,7 +750,7 @@ static int dwc3_qcom_of_register_core(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	ret = of_platform_populate(np, NULL, NULL, dev);
+	ret = of_platform_populate(np, NULL, qcom->kalama ? aux : NULL, dev);
 	if (ret) {
 		dev_err(dev, "failed to register dwc3 core - %d\n", ret);
 		return ret;
@@ -729,6 +765,144 @@ static int dwc3_qcom_of_register_core(struct platform_device *pdev)
 
 	return ret;
 }
+
+/* Quiesce the UDC or xHCI before changing the electrical role or cutting data. */
+static void kalama_remove_core(struct dwc3_qcom *qcom)
+{
+	if (!qcom->dwc3)
+		return;
+
+	of_platform_depopulate(qcom->dev);
+	platform_device_put(qcom->dwc3);
+	qcom->dwc3 = NULL;
+}
+
+static int kalama_update_core(struct dwc3_qcom *qcom)
+{
+	enum usb_dr_mode mode = qcom->requested_role == USB_ROLE_HOST ?
+				USB_DR_MODE_HOST : USB_DR_MODE_PERIPHERAL;
+
+	if (!qcom->data_enabled || readl(qcom->usb_access) != 0xf) {
+		kalama_remove_core(qcom);
+		if (readl(qcom->usb_access) == 0xf)
+			dwc3_qcom_vbus_override_enable(qcom, false);
+		return qcom->data_enabled ? -EACCES : 0;
+	}
+	if (qcom->dwc3 && qcom->child_mode != mode)
+		kalama_remove_core(qcom);
+
+	dwc3_qcom_vbus_override_enable(qcom, qcom->requested_role == USB_ROLE_DEVICE);
+	if (qcom->dwc3)
+		return 0;
+
+	qcom->child_mode = mode;
+	return dwc3_qcom_of_register_core(to_platform_device(qcom->dev));
+}
+
+static int kalama_set_role(struct usb_role_switch *sw, enum usb_role role)
+{
+	struct dwc3_qcom *qcom = usb_role_switch_get_drvdata(sw);
+	int ret;
+
+	ret = pm_runtime_resume_and_get(qcom->dev);
+	if (ret < 0)
+		return ret;
+	mutex_lock(&qcom->role_lock);
+	qcom->requested_role = role;
+	ret = kalama_update_core(qcom);
+	mutex_unlock(&qcom->role_lock);
+	pm_runtime_put(qcom->dev);
+
+	return ret;
+}
+
+static ssize_t mode_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct dwc3_qcom *qcom = dev_get_drvdata(dev);
+	enum usb_role role;
+
+	guard(mutex)(&qcom->role_lock);
+	role = qcom->data_enabled ? qcom->requested_role : USB_ROLE_NONE;
+	return sysfs_emit(buf, "%s\n", role == USB_ROLE_DEVICE ? "peripheral" :
+				       role == USB_ROLE_HOST ? "host" : "none");
+}
+
+static ssize_t mode_store(struct device *dev, struct device_attribute *attr,
+			  const char *buf, size_t count)
+{
+	struct dwc3_qcom *qcom = dev_get_drvdata(dev);
+	enum usb_role role;
+	int ret;
+
+	if (sysfs_streq(buf, "host"))
+		role = USB_ROLE_HOST;
+	else if (sysfs_streq(buf, "peripheral"))
+		role = USB_ROLE_DEVICE;
+	else if (sysfs_streq(buf, "none"))
+		role = USB_ROLE_NONE;
+	else
+		return -EINVAL;
+
+	ret = usb_role_switch_set_role(qcom->role_sw, role);
+	return ret ? ret : (ssize_t)count;
+}
+static DEVICE_ATTR_RW(mode);
+
+static int kalama_enable_data(struct dwc3_qcom *qcom, bool enable)
+{
+	int ret;
+
+	ret = pm_runtime_resume_and_get(qcom->dev);
+	if (ret < 0)
+		return ret;
+	mutex_lock(&qcom->role_lock);
+	qcom->data_enabled = enable;
+	ret = kalama_update_core(qcom);
+	if (ret)
+		qcom->data_enabled = false;
+	mutex_unlock(&qcom->role_lock);
+	pm_runtime_put(qcom->dev);
+	return ret;
+}
+
+static ssize_t dynamic_disable_store(struct device *dev, struct device_attribute *attr,
+				     const char *buf, size_t count)
+{
+	bool disabled;
+	int ret = kstrtobool(buf, &disabled);
+
+	if (!ret)
+		ret = kalama_enable_data(dev_get_drvdata(dev), !disabled);
+	return ret ? ret : (ssize_t)count;
+}
+static DEVICE_ATTR_WO(dynamic_disable);
+
+static ssize_t usb_data_enabled_show(struct device *dev, struct device_attribute *attr,
+				     char *buf)
+{
+	struct dwc3_qcom *qcom = dev_get_drvdata(dev);
+
+	guard(mutex)(&qcom->role_lock);
+	return sysfs_emit(buf, "%u\n", qcom->data_enabled);
+}
+
+static ssize_t usb_data_enabled_store(struct device *dev, struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	bool enabled;
+	int ret = kstrtobool(buf, &enabled);
+
+	if (!ret)
+		ret = kalama_enable_data(dev_get_drvdata(dev), enabled);
+	return ret ? ret : (ssize_t)count;
+}
+static DEVICE_ATTR_RW(usb_data_enabled);
+
+static struct attribute *kalama_attrs[] = {
+	&dev_attr_mode.attr, &dev_attr_usb_data_enabled.attr,
+	&dev_attr_dynamic_disable.attr, NULL,
+};
+ATTRIBUTE_GROUPS(kalama);
 
 static int dwc3_qcom_probe(struct platform_device *pdev)
 {
@@ -745,17 +919,27 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, qcom);
 	qcom->dev = &pdev->dev;
+	qcom->kalama = of_device_is_compatible(np, "qcom,dwc-usb3-msm");
+	if (qcom->kalama) {
+		ret = devm_regulator_get_enable(dev, "USB3_GDSC");
+		if (ret)
+			return dev_err_probe(dev, ret, "USB domain unavailable\n");
+		ret = dwc3_qcom_interconnect_init(qcom);
+		if (ret)
+			return ret;
+		mutex_init(&qcom->role_lock);
+	}
 
 	qcom->resets = devm_reset_control_array_get_optional_exclusive(dev);
 	if (IS_ERR(qcom->resets)) {
-		return dev_err_probe(&pdev->dev, PTR_ERR(qcom->resets),
-				     "failed to get resets\n");
+		ret = dev_err_probe(dev, PTR_ERR(qcom->resets), "failed to get resets\n");
+		goto release_icc;
 	}
 
 	ret = reset_control_assert(qcom->resets);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to assert resets, err=%d\n", ret);
-		return ret;
+		goto release_icc;
 	}
 
 	usleep_range(10, 1000);
@@ -772,7 +956,27 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 		goto reset_assert;
 	}
 
-	qcom->qscratch_base = devm_platform_ioremap_resource(pdev, 0);
+	if (qcom->kalama) {
+		struct resource *r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+		struct resource scratch = {};
+
+		if (!r || resource_size(r) < SDM845_QSCRATCH_BASE_OFFSET + SDM845_QSCRATCH_SIZE) {
+			ret = -EINVAL;
+			goto clk_disable;
+		}
+		scratch.start = r->start + SDM845_QSCRATCH_BASE_OFFSET;
+		scratch.end = scratch.start + SDM845_QSCRATCH_SIZE - 1;
+		scratch.flags = IORESOURCE_MEM;
+		scratch.name = "qscratch";
+		qcom->qscratch_base = devm_ioremap_resource(dev, &scratch);
+		qcom->usb_access = devm_platform_ioremap_resource_byname(pdev, "tcsr_dyn_en_dis");
+		if (IS_ERR(qcom->usb_access)) {
+			ret = PTR_ERR(qcom->usb_access);
+			goto clk_disable;
+		}
+	} else {
+		qcom->qscratch_base = devm_platform_ioremap_resource(pdev, 0);
+	}
 	if (IS_ERR(qcom->qscratch_base)) {
 		ret = PTR_ERR(qcom->qscratch_base);
 		goto clk_disable;
@@ -790,8 +994,35 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 	 */
 	ignore_pipe_clk = device_property_read_bool(dev,
 				"qcom,select-utmi-as-pipe-clk");
-	if (ignore_pipe_clk)
+	if (ignore_pipe_clk && (!qcom->kalama || readl(qcom->usb_access) == 0xf))
 		dwc3_qcom_select_utmi_clk(qcom);
+
+	if (qcom->kalama) {
+		struct usb_role_switch_desc desc = {
+			.fwnode = dev_fwnode(dev),
+			.set = kalama_set_role,
+			.driver_data = qcom,
+		};
+
+		qcom->data_enabled = readl(qcom->usb_access) == 0xf;
+		ret = kalama_update_core(qcom);
+		if (ret)
+			goto clk_disable;
+		/* The switch must be usable immediately when UCSI finds it. */
+		pm_runtime_set_active(dev);
+		pm_runtime_enable(dev);
+		pm_runtime_forbid(dev);
+		qcom->role_sw = usb_role_switch_register(dev, &desc);
+		if (IS_ERR(qcom->role_sw)) {
+			ret = PTR_ERR(qcom->role_sw);
+			pm_runtime_allow(dev);
+			pm_runtime_disable(dev);
+			kalama_remove_core(qcom);
+			goto clk_disable;
+		}
+		device_init_wakeup(dev, true);
+		return 0;
+	}
 
 	ret = dwc3_qcom_of_register_core(pdev);
 	if (ret) {
@@ -837,7 +1068,9 @@ clk_disable:
 	}
 reset_assert:
 	reset_control_assert(qcom->resets);
-
+release_icc:
+	if (qcom->kalama)
+		dwc3_qcom_interconnect_exit(qcom);
 	return ret;
 }
 
@@ -847,8 +1080,14 @@ static void dwc3_qcom_remove(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	int i;
 
-	of_platform_depopulate(&pdev->dev);
-	platform_device_put(qcom->dwc3);
+	if (qcom->kalama) {
+		usb_role_switch_unregister(qcom->role_sw);
+		kalama_remove_core(qcom);
+		device_init_wakeup(dev, false);
+	} else {
+		of_platform_depopulate(&pdev->dev);
+		platform_device_put(qcom->dwc3);
+	}
 
 	for (i = qcom->num_clocks - 1; i >= 0; i--) {
 		clk_disable_unprepare(qcom->clks[i]);
@@ -929,7 +1168,37 @@ static struct platform_driver dwc3_qcom_driver = {
 	},
 };
 
-module_platform_driver(dwc3_qcom_driver);
+static const struct of_device_id kalama_of_match[] = {
+	{ .compatible = "qcom,dwc-usb3-msm" },
+	{}
+};
+MODULE_DEVICE_TABLE(of, kalama_of_match);
+
+static struct platform_driver kalama_driver = {
+	.probe = dwc3_qcom_probe,
+	.remove = dwc3_qcom_remove,
+	.driver = {
+		.name = "msm-dwc3",
+		.of_match_table = kalama_of_match,
+		.dev_groups = kalama_groups,
+		.pm = &dwc3_qcom_dev_pm_ops,
+	},
+};
+
+static struct platform_driver * const dwc3_qcom_drivers[] = {
+	&dwc3_qcom_driver, &kalama_driver,
+};
+static int __init dwc3_qcom_init(void)
+{
+	return platform_register_drivers(dwc3_qcom_drivers, ARRAY_SIZE(dwc3_qcom_drivers));
+}
+module_init(dwc3_qcom_init);
+
+static void __exit dwc3_qcom_exit(void)
+{
+	platform_unregister_drivers(dwc3_qcom_drivers, ARRAY_SIZE(dwc3_qcom_drivers));
+}
+module_exit(dwc3_qcom_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("DesignWare DWC3 QCOM legacy glue Driver");
