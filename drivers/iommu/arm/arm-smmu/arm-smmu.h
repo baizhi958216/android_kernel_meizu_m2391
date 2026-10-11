@@ -383,6 +383,7 @@ enum arm_smmu_domain_stage {
 };
 
 struct arm_smmu_domain {
+	struct kalama_pt_pool *secure_pt;
 	struct arm_smmu_device		*smmu;
 	struct io_pgtable_ops		*pgtbl_ops;
 	unsigned long			pgtbl_quirks;
@@ -393,6 +394,10 @@ struct arm_smmu_domain {
 	spinlock_t			cb_lock; /* Serialises ATS1* ops and TLB syncs */
 	struct iommu_domain		domain;
 };
+
+int kalama_pt_init(struct arm_smmu_domain *d, struct device *dev, struct io_pgtable_cfg *cfg);
+bool kalama_pt_matches(struct arm_smmu_domain *d, struct device *dev);
+void kalama_pt_destroy(struct arm_smmu_domain *d);
 
 struct arm_smmu_master_cfg {
 	struct arm_smmu_device		*smmu;

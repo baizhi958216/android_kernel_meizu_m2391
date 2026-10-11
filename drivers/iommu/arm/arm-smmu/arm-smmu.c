@@ -688,8 +688,13 @@ static int arm_smmu_init_domain_context(struct arm_smmu_domain *smmu_domain,
 	irqreturn_t (*context_fault)(int irq, void *dev);
 
 	mutex_lock(&smmu_domain->init_mutex);
-	if (smmu_domain->smmu)
+	if (smmu_domain->smmu) {
+		if (IS_ENABLED(CONFIG_ARM_SMMU_QCOM) &&
+		    of_device_is_compatible(smmu->dev->of_node, "qcom,qsmmu-v500") &&
+		    !kalama_pt_matches(smmu_domain, dev))
+			ret = -EINVAL;
 		goto out_unlock;
+	}
 
 	/*
 	 * Mapping the requested stage onto what we support is surprisingly
@@ -951,6 +956,8 @@ static void arm_smmu_domain_free(struct iommu_domain *domain)
 	 * already been detached.
 	 */
 	arm_smmu_destroy_domain_context(smmu_domain);
+	if (IS_ENABLED(CONFIG_ARM_SMMU_QCOM))
+		kalama_pt_destroy(smmu_domain);
 	kfree(smmu_domain);
 }
 

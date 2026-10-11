@@ -634,8 +634,11 @@ static int kalama_smmu_init_context(struct arm_smmu_domain *domain,
 	const __be32 *p;
 	u32 value = 0;
 	bool found = false;
-	int i, j, bytes;
+	int i, j, bytes, ret;
 
+	ret = kalama_pt_init(domain, dev, cfg);
+	if (ret)
+		return ret;
 	domain->cfg.flush_walk_prefer_tlbiasid = true;
 	p = of_get_property(np, "qcom,actlr", &bytes);
 	if (!p)
