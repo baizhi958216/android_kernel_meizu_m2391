@@ -1824,6 +1824,12 @@ struct qmp_phy_cfg {
 
 struct qmp_combo {
 	struct device *dev;
+	bool kalama;
+	void __iomem *base;
+	u32 *usb_init_seq;
+	unsigned int num_init_cells;
+	struct clk *pipe_mux, *pipe_src, *xo;
+	u32 vdd_levels[3];
 
 	const struct qmp_phy_cfg *cfg;
 
@@ -3003,6 +3009,40 @@ static int qmp_combo_dp_calibrate(struct phy *phy)
 	return ret;
 }
 
+static int qmp_combo_enable_vregs(struct qmp_combo *qmp)
+{
+	int ret;
+
+	if (!qmp->kalama)
+		return regulator_bulk_enable(qmp->cfg->num_vregs, qmp->vregs);
+
+	/* Kalama exposes the GDSC as a supply. Power the domain before its LDOs. */
+	ret = regulator_enable(qmp->vregs[2].consumer);
+	if (ret)
+		return ret;
+	ret = regulator_set_voltage(qmp->vregs[0].consumer,
+				    qmp->vdd_levels[1], qmp->vdd_levels[2]);
+	if (ret)
+		goto disable_domain;
+	ret = regulator_bulk_enable(2, qmp->vregs);
+	if (!ret)
+		return 0;
+	regulator_set_voltage(qmp->vregs[0].consumer, qmp->vdd_levels[0], qmp->vdd_levels[2]);
+disable_domain:
+	regulator_disable(qmp->vregs[2].consumer);
+	return ret;
+}
+
+static void qmp_combo_disable_vregs(struct qmp_combo *qmp)
+{
+	regulator_bulk_disable(qmp->cfg->num_vregs, qmp->vregs);
+	if (qmp->kalama) {
+		regulator_set_voltage(qmp->vregs[0].consumer,
+				      qmp->vdd_levels[0], qmp->vdd_levels[2]);
+		regulator_disable(qmp->vregs[2].consumer);
+	}
+}
+
 static int qmp_combo_com_init(struct qmp_combo *qmp, bool force)
 {
 	const struct qmp_phy_cfg *cfg = qmp->cfg;
@@ -3013,7 +3053,7 @@ static int qmp_combo_com_init(struct qmp_combo *qmp, bool force)
 	if (!force && qmp->init_count++)
 		return 0;
 
-	ret = regulator_bulk_enable(cfg->num_vregs, qmp->vregs);
+	ret = qmp_combo_enable_vregs(qmp);
 	if (ret) {
 		dev_err(qmp->dev, "failed to enable regulators, err=%d\n", ret);
 		goto err_decrement_count;
@@ -3086,7 +3126,7 @@ static int qmp_combo_com_init(struct qmp_combo *qmp, bool force)
 err_assert_reset:
 	reset_control_bulk_assert(cfg->num_resets, qmp->resets);
 err_disable_regulators:
-	regulator_bulk_disable(cfg->num_vregs, qmp->vregs);
+	qmp_combo_disable_vregs(qmp);
 err_decrement_count:
 	qmp->init_count--;
 
@@ -3104,7 +3144,7 @@ static int qmp_combo_com_exit(struct qmp_combo *qmp, bool force)
 
 	clk_bulk_disable_unprepare(qmp->num_clks, qmp->clks);
 
-	regulator_bulk_disable(cfg->num_vregs, qmp->vregs);
+	qmp_combo_disable_vregs(qmp);
 
 	return 0;
 }
@@ -3188,6 +3228,28 @@ static int qmp_combo_dp_power_off(struct phy *phy)
 	return 0;
 }
 
+static int qmp_combo_enable_pipe(struct qmp_combo *qmp)
+{
+	int ret;
+
+	if (qmp->kalama) {
+		ret = clk_set_parent(qmp->pipe_mux, qmp->pipe_src);
+		if (ret)
+			return ret;
+	}
+	ret = clk_prepare_enable(qmp->pipe_clk);
+	if (ret && qmp->kalama)
+		clk_set_parent(qmp->pipe_mux, qmp->xo);
+	return ret;
+}
+
+static void qmp_combo_disable_pipe(struct qmp_combo *qmp)
+{
+	clk_disable_unprepare(qmp->pipe_clk);
+	if (qmp->kalama)
+		clk_set_parent(qmp->pipe_mux, qmp->xo);
+}
+
 static int qmp_combo_usb_power_on(struct phy *phy)
 {
 	struct qmp_combo *qmp = phy_get_drvdata(phy);
@@ -3203,26 +3265,32 @@ static int qmp_combo_usb_power_on(struct phy *phy)
 	unsigned int val;
 	int ret;
 
-	qmp_configure(qmp->dev, serdes, cfg->serdes_tbl, cfg->serdes_tbl_num);
+	if (!qmp->kalama)
+		qmp_configure(qmp->dev, serdes, cfg->serdes_tbl, cfg->serdes_tbl_num);
 
-	ret = clk_prepare_enable(qmp->pipe_clk);
+	ret = qmp_combo_enable_pipe(qmp);
 	if (ret) {
 		dev_err(qmp->dev, "pipe_clk enable failed err=%d\n", ret);
 		return ret;
 	}
 
-	/* Tx, Rx, and PCS configurations */
-	qmp_configure_lane(qmp->dev, tx, cfg->tx_tbl, cfg->tx_tbl_num, 1);
-	qmp_configure_lane(qmp->dev, tx2, cfg->tx_tbl, cfg->tx_tbl_num, 2);
+	if (qmp->kalama) {
+		for (unsigned int i = 0; i < qmp->num_init_cells; i += 2)
+			writel(qmp->usb_init_seq[i + 1], qmp->base + qmp->usb_init_seq[i]);
+	} else {
+		/* Tx, Rx, and PCS configurations */
+		qmp_configure_lane(qmp->dev, tx, cfg->tx_tbl, cfg->tx_tbl_num, 1);
+		qmp_configure_lane(qmp->dev, tx2, cfg->tx_tbl, cfg->tx_tbl_num, 2);
 
-	qmp_configure_lane(qmp->dev, rx, cfg->rx_tbl, cfg->rx_tbl_num, 1);
-	qmp_configure_lane(qmp->dev, rx2, cfg->rx_tbl, cfg->rx_tbl_num, 2);
+		qmp_configure_lane(qmp->dev, rx, cfg->rx_tbl, cfg->rx_tbl_num, 1);
+		qmp_configure_lane(qmp->dev, rx2, cfg->rx_tbl, cfg->rx_tbl_num, 2);
 
-	qmp_configure(qmp->dev, pcs, cfg->pcs_tbl, cfg->pcs_tbl_num);
+		qmp_configure(qmp->dev, pcs, cfg->pcs_tbl, cfg->pcs_tbl_num);
 
-	if (pcs_usb)
-		qmp_configure(qmp->dev, pcs_usb, cfg->pcs_usb_tbl,
-			      cfg->pcs_usb_tbl_num);
+		if (pcs_usb)
+			qmp_configure(qmp->dev, pcs_usb, cfg->pcs_usb_tbl,
+				      cfg->pcs_usb_tbl_num);
+	}
 
 	if (cfg->has_pwrdn_delay)
 		usleep_range(10, 20);
@@ -3244,7 +3312,7 @@ static int qmp_combo_usb_power_on(struct phy *phy)
 	return 0;
 
 err_disable_pipe_clk:
-	clk_disable_unprepare(qmp->pipe_clk);
+	qmp_combo_disable_pipe(qmp);
 
 	return ret;
 }
@@ -3254,7 +3322,7 @@ static int qmp_combo_usb_power_off(struct phy *phy)
 	struct qmp_combo *qmp = phy_get_drvdata(phy);
 	const struct qmp_phy_cfg *cfg = qmp->cfg;
 
-	clk_disable_unprepare(qmp->pipe_clk);
+	qmp_combo_disable_pipe(qmp);
 
 	/* PHY reset */
 	qphy_setbits(qmp->pcs, cfg->regs[QPHY_SW_RESET], SW_RESET);
@@ -3400,7 +3468,7 @@ static int __maybe_unused qmp_combo_runtime_suspend(struct device *dev)
 
 	qmp_combo_enable_autonomous_mode(qmp);
 
-	clk_disable_unprepare(qmp->pipe_clk);
+	qmp_combo_disable_pipe(qmp);
 	clk_bulk_disable_unprepare(qmp->num_clks, qmp->clks);
 
 	return 0;
@@ -3422,7 +3490,7 @@ static int __maybe_unused qmp_combo_runtime_resume(struct device *dev)
 	if (ret)
 		return ret;
 
-	ret = clk_prepare_enable(qmp->pipe_clk);
+	ret = qmp_combo_enable_pipe(qmp);
 	if (ret) {
 		dev_err(dev, "pipe_clk enable failed, err=%d\n", ret);
 		clk_bulk_disable_unprepare(qmp->num_clks, qmp->clks);
@@ -3445,6 +3513,28 @@ static int qmp_combo_vreg_init(struct qmp_combo *qmp)
 	struct device *dev = qmp->dev;
 	int num = cfg->num_vregs;
 	int ret, i;
+
+	if (qmp->kalama) {
+		u32 load;
+
+		qmp->vregs = devm_kcalloc(dev, 3, sizeof(*qmp->vregs), GFP_KERNEL);
+		if (!qmp->vregs)
+			return -ENOMEM;
+		ret = device_property_read_u32_array(dev, "qcom,vdd-voltage-level",
+						     qmp->vdd_levels, 3);
+		if (ret || qmp->vdd_levels[0] > qmp->vdd_levels[1] ||
+		    qmp->vdd_levels[1] > qmp->vdd_levels[2])
+			return -EINVAL;
+		ret = device_property_read_u32(dev, "qcom,vdd-max-load-uA", &load);
+		if (ret)
+			return ret;
+		qmp->vregs[0].supply = "vdd";
+		qmp->vregs[0].init_load_uA = load;
+		qmp->vregs[1].supply = "core";
+		qmp->vregs[1].init_load_uA = 30000;
+		qmp->vregs[2].supply = "usb3_dp_phy_gdsc";
+		return devm_regulator_bulk_get(dev, 3, qmp->vregs);
+	}
 
 	qmp->vregs = devm_kcalloc(dev, num, sizeof(*qmp->vregs), GFP_KERNEL);
 	if (!qmp->vregs)
@@ -4050,6 +4140,50 @@ static int qmp_combo_parse_dt_legacy(struct qmp_combo *qmp, struct device_node *
 	return 0;
 }
 
+static int kalama_combo_init(struct qmp_combo *qmp, void __iomem *base)
+{
+	static const char * const names[] = { "ref_clk_src", "ref_clk", "com_aux_clk", "aux_clk" };
+	struct device *dev = qmp->dev;
+	int count, ret;
+
+	count = device_property_count_u32(dev, "qcom,qmp-phy-init-seq");
+	if (count <= 0 || count % 2)
+		return -EINVAL;
+	qmp->usb_init_seq = devm_kcalloc(dev, count, sizeof(u32), GFP_KERNEL);
+	if (!qmp->usb_init_seq)
+		return -ENOMEM;
+	ret = device_property_read_u32_array(dev, "qcom,qmp-phy-init-seq",
+					     qmp->usb_init_seq, count);
+	if (ret)
+		return ret;
+	/* The USB SerDes, two lane pairs and PCS occupy the middle 4 KiB. */
+	for (int i = 0; i < count; i += 2) {
+		if (!IS_ALIGNED(qmp->usb_init_seq[i], 4) || qmp->usb_init_seq[i] < 0x1000 ||
+		    qmp->usb_init_seq[i] >= 0x2000 || qmp->usb_init_seq[i + 1] > U8_MAX)
+			return -EINVAL;
+	}
+	qmp->base = base;
+	qmp->num_init_cells = count;
+	qmp->num_clks = ARRAY_SIZE(names);
+	qmp->clks = devm_kcalloc(dev, qmp->num_clks, sizeof(*qmp->clks), GFP_KERNEL);
+	if (!qmp->clks)
+		return -ENOMEM;
+	for (int i = 0; i < qmp->num_clks; i++)
+		qmp->clks[i].id = names[i];
+	ret = devm_clk_bulk_get(dev, qmp->num_clks, qmp->clks);
+	if (ret)
+		return ret;
+	qmp->xo = qmp->clks[0].clk;
+	qmp->pipe_mux = devm_clk_get(dev, "pipe_clk_mux");
+	if (IS_ERR(qmp->pipe_mux))
+		return PTR_ERR(qmp->pipe_mux);
+	qmp->pipe_src = devm_clk_get(dev, "pipe_clk_ext_src");
+	if (IS_ERR(qmp->pipe_src))
+		return PTR_ERR(qmp->pipe_src);
+	qmp->pipe_clk = devm_clk_get(dev, "pipe_clk");
+	return PTR_ERR_OR_ZERO(qmp->pipe_clk);
+}
+
 static int qmp_combo_parse_dt(struct qmp_combo *qmp)
 {
 	struct platform_device *pdev = to_platform_device(qmp->dev);
@@ -4086,6 +4220,9 @@ static int qmp_combo_parse_dt(struct qmp_combo *qmp)
 		qmp->dp_tx2 = base + offs->txb;
 	}
 	qmp->dp_dp_phy = base + offs->dp_dp_phy;
+
+	if (qmp->kalama)
+		return kalama_combo_init(qmp, base);
 
 	ret = qmp_combo_clk_init(qmp);
 	if (ret)
@@ -4132,6 +4269,7 @@ static int qmp_combo_probe(struct platform_device *pdev)
 	qmp->dev = dev;
 	dev_set_drvdata(dev, qmp);
 
+	qmp->kalama = of_device_is_compatible(dev->of_node, "qcom,usb-ssphy-qmp-dp-combo");
 	qmp->orientation = TYPEC_ORIENTATION_NORMAL;
 
 	qmp->cfg = of_device_get_match_data(dev);
@@ -4275,6 +4413,9 @@ static const struct of_device_id qmp_combo_of_match_table[] = {
 		.data = &sm8350_usb3dpphy_cfg,
 	},
 	{
+		.compatible = "qcom,usb-ssphy-qmp-dp-combo",
+		.data = &sm8550_usb3dpphy_cfg,
+	}, {
 		.compatible = "qcom,sm8550-qmp-usb3-dp-phy",
 		.data = &sm8550_usb3dpphy_cfg,
 	},
