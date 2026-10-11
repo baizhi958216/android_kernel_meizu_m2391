@@ -1750,8 +1750,12 @@ static void dwc3_get_properties(struct dwc3 *dwc)
 	dwc->dr_mode = usb_get_dr_mode(dev);
 	/* The Kalama wrapper owns the connector and creates one data role at a time. */
 	if (of_device_is_compatible(dev->of_node, "meizu,m2391-dwc3") &&
-	    dev_get_platdata(dev))
-		dwc->dr_mode = *(enum usb_dr_mode *)dev_get_platdata(dev);
+	    dev->parent && of_device_is_compatible(dev->parent->of_node, "qcom,dwc-usb3-msm")) {
+		const struct dwc3_kalama_glue *glue = dev_get_drvdata(dev->parent);
+
+		if (glue)
+			dwc->dr_mode = glue->child_mode;
+	}
 	dwc->hsphy_mode = of_usb_get_phy_mode(dev->of_node);
 
 	dwc->sysdev_is_parent = device_property_read_bool(dev,

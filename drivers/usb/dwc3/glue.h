@@ -22,6 +22,11 @@ struct dwc3_probe_data {
 	bool ignore_clocks_and_resets;
 };
 
+/* Parent driver data for the Kalama nested DWC3 core. */
+struct dwc3_kalama_glue {
+	enum usb_dr_mode child_mode;
+};
+
 int dwc3_core_probe(const struct dwc3_probe_data *data);
 void dwc3_core_remove(struct dwc3 *dwc);
 

@@ -24,7 +24,7 @@
 #include <linux/iopoll.h>
 #include <linux/usb/hcd.h>
 #include <linux/usb.h>
-#include "core.h"
+#include "glue.h"
 
 /* USB QSCRATCH Hardware registers */
 #define QSCRATCH_HS_PHY_CTRL			0x10
@@ -73,6 +73,8 @@ struct dwc3_qcom_port {
 };
 
 struct dwc3_qcom {
+	/* The child reads this prefix while it probes, including after probe defer. */
+	struct dwc3_kalama_glue glue;
 	struct device		*dev;
 	void __iomem		*qscratch_base;
 	struct platform_device	*dwc3;
@@ -99,7 +101,6 @@ struct dwc3_qcom {
 	void __iomem		*usb_access;
 	struct usb_role_switch	*role_sw;
 	enum usb_role		requested_role;
-	enum usb_dr_mode	child_mode;
 	bool			data_enabled;
 };
 
@@ -737,10 +738,6 @@ static int dwc3_qcom_of_register_core(struct platform_device *pdev)
 	struct dwc3_qcom	*qcom = platform_get_drvdata(pdev);
 	struct device_node	*np = pdev->dev.of_node;
 	struct device		*dev = &pdev->dev;
-	struct of_dev_auxdata aux[] = {
-		{ .compatible = "meizu,m2391-dwc3", .platform_data = &qcom->child_mode },
-		{}
-	};
 	int			ret;
 
 	struct device_node *dwc3_np __free(device_node) = of_get_compatible_child(np,
@@ -750,7 +747,7 @@ static int dwc3_qcom_of_register_core(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	ret = of_platform_populate(np, NULL, qcom->kalama ? aux : NULL, dev);
+	ret = of_platform_populate(np, NULL, NULL, dev);
 	if (ret) {
 		dev_err(dev, "failed to register dwc3 core - %d\n", ret);
 		return ret;
@@ -788,14 +785,14 @@ static int kalama_update_core(struct dwc3_qcom *qcom)
 			dwc3_qcom_vbus_override_enable(qcom, false);
 		return qcom->data_enabled ? -EACCES : 0;
 	}
-	if (qcom->dwc3 && qcom->child_mode != mode)
+	if (qcom->dwc3 && qcom->glue.child_mode != mode)
 		kalama_remove_core(qcom);
 
 	dwc3_qcom_vbus_override_enable(qcom, qcom->requested_role == USB_ROLE_DEVICE);
 	if (qcom->dwc3)
 		return 0;
 
-	qcom->child_mode = mode;
+	qcom->glue.child_mode = mode;
 	return dwc3_qcom_of_register_core(to_platform_device(qcom->dev));
 }
 
