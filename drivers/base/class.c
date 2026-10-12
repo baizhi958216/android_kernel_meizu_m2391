@@ -66,6 +66,21 @@ done:
 	return sp;
 }
 
+/**
+ * class_get_kobject - get the sysfs parent for a registered device class
+ * @class: the class containing the attributes or links
+ *
+ * Return: the referenced kobject, or NULL if unregistered. The caller
+ * must drop its reference with kobject_put().
+ */
+struct kobject *class_get_kobject(const struct class *class)
+{
+	struct subsys_private *sp = class_to_subsys(class);
+
+	return sp ? &sp->subsys.kobj : NULL;
+}
+EXPORT_SYMBOL_GPL(class_get_kobject);
+
 static ssize_t class_attr_show(struct kobject *kobj, struct attribute *attr,
 			       char *buf)
 {

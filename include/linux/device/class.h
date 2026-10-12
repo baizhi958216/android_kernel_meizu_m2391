@@ -230,6 +230,7 @@ int __must_check class_interface_register(struct class_interface *);
 void class_interface_unregister(struct class_interface *);
 
 struct class * __must_check class_create(const char *name);
+struct kobject *class_get_kobject(const struct class *class);
 void class_destroy(const struct class *cls);
 
 #endif	/* _DEVICE_CLASS_H_ */
