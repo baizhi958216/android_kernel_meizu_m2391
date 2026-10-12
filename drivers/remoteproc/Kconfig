@@ -234,6 +234,13 @@ config QCOM_Q6V5_PAS
 	  subsystems such as ADSP (Audio DSP), CDSP (Compute DSP), MPSS (Modem
 	  Peripheral SubSystem), and SLPI (Sensor Low Power Island).
 
+config QCOM_KALAMA_DSP_LOADER
+	tristate "Qualcomm Kalama Android DSP loader"
+	depends on QCOM_Q6V5_PAS
+	help
+	  Provide the boot_adsp and boot_cdsp controls used by Android init
+	  once the signed DSP firmware becomes available.
+
 config QCOM_Q6V5_WCSS
 	tristate "Qualcomm Hexagon based WCSS Peripheral Image Loader"
 	depends on OF && ARCH_QCOM
