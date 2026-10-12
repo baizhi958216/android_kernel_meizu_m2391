@@ -11,6 +11,7 @@
 #include <linux/delay.h>
 #include <linux/firmware.h>
 #include <linux/interrupt.h>
+#include <linux/interconnect.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -46,6 +47,7 @@ struct qcom_pas_data {
 	unsigned int minidump_id;
 	bool auto_boot;
 	bool decrypt_shutdown;
+	bool kalama;
 
 	char **proxy_pd_names;
 
@@ -61,6 +63,12 @@ struct qcom_pas_data {
 	int region_assign_vmid;
 };
 
+struct kalama_pas_rail {
+	struct regulator *reg;
+	u32 corner;
+	u32 load;
+};
+
 struct qcom_pas {
 	struct device *dev;
 	struct rproc *rproc;
@@ -72,6 +80,10 @@ struct qcom_pas {
 
 	struct regulator *cx_supply;
 	struct regulator *px_supply;
+	struct kalama_pas_rail rails[3];
+	unsigned int num_rails;
+	bool kalama;
+	struct icc_path *crypto_path;
 
 	struct device *proxy_pds[3];
 
@@ -263,6 +275,45 @@ release_dtb_firmware:
 	return ret;
 }
 
+static void kalama_pas_release_rails(struct qcom_pas *pas, unsigned int count)
+{
+	while (count) {
+		struct regulator *reg = pas->rails[--count].reg;
+
+		regulator_set_voltage(reg, 0, INT_MAX);
+		regulator_set_load(reg, 0);
+		regulator_disable(reg);
+	}
+}
+
+static int kalama_pas_vote_rails(struct qcom_pas *pas)
+{
+	unsigned int i;
+	int ret;
+
+	for (i = 0; i < pas->num_rails; i++) {
+		struct kalama_pas_rail *rail = &pas->rails[i];
+
+		ret = regulator_set_voltage(rail->reg, rail->corner, INT_MAX);
+		if (ret)
+			goto undo;
+		ret = regulator_set_load(rail->reg, rail->load);
+		if (!ret) {
+			ret = regulator_enable(rail->reg);
+			if (!ret)
+				continue;
+			regulator_set_load(rail->reg, 0);
+		}
+		regulator_set_voltage(rail->reg, 0, INT_MAX);
+		goto undo;
+	}
+	return 0;
+
+undo:
+	kalama_pas_release_rails(pas, i);
+	return ret;
+}
+
 static int qcom_pas_start(struct rproc *rproc)
 {
 	struct qcom_pas *pas = rproc->priv;
@@ -296,19 +347,23 @@ static int qcom_pas_start(struct rproc *rproc)
 			goto disable_cx_supply;
 	}
 
+	ret = kalama_pas_vote_rails(pas);
+	if (ret)
+		goto disable_px_supply;
+
 	if (pas->dtb_pas_id) {
 		ret = qcom_scm_pas_auth_and_reset(pas->dtb_pas_id);
 		if (ret) {
 			dev_err(pas->dev,
 				"failed to authenticate dtb image and release reset\n");
-			goto disable_px_supply;
+			goto disable_rails;
 		}
 	}
 
 	ret = qcom_mdt_pas_init(pas->dev, pas->firmware, rproc->firmware, pas->pas_id,
 				pas->mem_phys, &pas->pas_metadata);
 	if (ret)
-		goto disable_px_supply;
+		goto disable_rails;
 
 	ret = qcom_mdt_load_no_init(pas->dev, pas->firmware, rproc->firmware,
 				    pas->mem_region, pas->mem_phys, pas->mem_size,
@@ -345,6 +400,8 @@ release_pas_metadata:
 	qcom_scm_pas_metadata_release(&pas->pas_metadata);
 	if (pas->dtb_pas_id)
 		qcom_scm_pas_metadata_release(&pas->dtb_pas_metadata);
+disable_rails:
+	kalama_pas_release_rails(pas, pas->num_rails);
 disable_px_supply:
 	if (pas->px_supply)
 		regulator_disable(pas->px_supply);
@@ -370,6 +427,7 @@ static void qcom_pas_handover(struct qcom_q6v5 *q6v5)
 {
 	struct qcom_pas *pas = container_of(q6v5, struct qcom_pas, q6v5);
 
+	kalama_pas_release_rails(pas, pas->num_rails);
 	if (pas->px_supply)
 		regulator_disable(pas->px_supply);
 	if (pas->cx_supply)
@@ -467,6 +525,36 @@ static int qcom_pas_init_clock(struct qcom_pas *pas)
 		return dev_err_probe(pas->dev, PTR_ERR(pas->aggre2_clk),
 				     "failed to get aggre2 clock");
 
+	return 0;
+}
+
+static int kalama_pas_init_rails(struct qcom_pas *pas)
+{
+	static const char * const names[] = { "cx", "mx", "nsp" };
+	struct device_node *np = pas->dev->of_node;
+	int count, i, ret;
+
+	count = of_property_count_strings(np, "reg-names");
+	if (count != (pas->pas_id == 18 ? 3 : 2))
+		return -EINVAL;
+	for (i = 0; i < count; i++) {
+		struct kalama_pas_rail *rail = &pas->rails[i];
+		char property[16];
+		u32 vote[2];
+
+		if (of_property_match_string(np, "reg-names", names[i]) < 0)
+			return -EINVAL;
+		snprintf(property, sizeof(property), "%s-uV-uA", names[i]);
+		ret = of_property_read_u32_array(np, property, vote, ARRAY_SIZE(vote));
+		if (ret)
+			return ret;
+		rail->reg = devm_regulator_get_optional(pas->dev, names[i]);
+		if (IS_ERR(rail->reg))
+			return dev_err_probe(pas->dev, PTR_ERR(rail->reg), "failed to get %s\n", names[i]);
+		rail->corner = vote[0];
+		rail->load = vote[1];
+	}
+	pas->num_rails = count;
 	return 0;
 }
 
@@ -608,14 +696,18 @@ static int qcom_pas_assign_memory_region(struct qcom_pas *pas)
 	int offset;
 	int ret;
 
-	if (!pas->region_assign_idx)
+	if (!pas->region_assign_count)
 		return 0;
 
 	for (offset = 0; offset < pas->region_assign_count; ++offset) {
 		struct reserved_mem *rmem = NULL;
 
-		node = of_parse_phandle(pas->dev->of_node, "memory-region",
-					pas->region_assign_idx + offset);
+		/* Kalama memory-region[2] is the system CMA, never modem-owned. */
+		if (pas->kalama)
+			node = of_parse_phandle(pas->dev->of_node, "mpss_dsm_mem_reg", offset);
+		else
+			node = of_parse_phandle(pas->dev->of_node, "memory-region",
+						pas->region_assign_idx + offset);
 		if (node)
 			rmem = of_reserved_mem_lookup(node);
 		of_node_put(node);
@@ -660,7 +752,7 @@ static void qcom_pas_unassign_memory_region(struct qcom_pas *pas)
 	int offset;
 	int ret;
 
-	if (!pas->region_assign_idx || pas->region_assign_shared)
+	if (!pas->region_assign_count || pas->region_assign_shared)
 		return;
 
 	for (offset = 0; offset < pas->region_assign_count; ++offset) {
@@ -717,10 +809,11 @@ static int qcom_pas_probe(struct platform_device *pdev)
 	}
 
 	rproc->auto_boot = desc->auto_boot;
-	rproc_coredump_set_elf_info(rproc, ELFCLASS32, EM_NONE);
+	rproc_coredump_set_elf_info(rproc, desc->kalama ? ELFCLASS64 : ELFCLASS32, EM_NONE);
 
 	pas = rproc->priv;
 	pas->dev = &pdev->dev;
+	pas->kalama = desc->kalama;
 	pas->rproc = rproc;
 	pas->minidump_id = desc->minidump_id;
 	pas->pas_id = desc->pas_id;
@@ -755,7 +848,7 @@ static int qcom_pas_probe(struct platform_device *pdev)
 	if (ret)
 		goto unassign_mem;
 
-	ret = qcom_pas_init_regulator(pas);
+	ret = pas->kalama ? kalama_pas_init_rails(pas) : qcom_pas_init_regulator(pas);
 	if (ret)
 		goto unassign_mem;
 
@@ -1299,6 +1392,54 @@ static const struct qcom_pas_data sm8450_mpss_resource = {
 	.ssctl_id = 0x12,
 };
 
+static const struct qcom_pas_data kalama_adsp_resource = {
+	.crash_reason_smem = 423,
+	.firmware_name = "adsp.mdt",
+	.dtb_firmware_name = "adsp_dtb.mdt",
+	.pas_id = 1,
+	.dtb_pas_id = 0x24,
+	.minidump_id = 5,
+	.kalama = true,
+	.load_state = "adsp",
+	.ssr_name = "lpass",
+	.sysmon_name = "adsp",
+	.ssctl_id = 0x14,
+	.smem_host_id = 2,
+};
+
+static const struct qcom_pas_data kalama_cdsp_resource = {
+	.crash_reason_smem = 601,
+	.firmware_name = "cdsp.mdt",
+	.dtb_firmware_name = "cdsp_dtb.mdt",
+	.pas_id = 18,
+	.dtb_pas_id = 0x25,
+	.minidump_id = 7,
+	.kalama = true,
+	.load_state = "cdsp",
+	.ssr_name = "cdsp",
+	.sysmon_name = "cdsp",
+	.ssctl_id = 0x17,
+	.smem_host_id = 5,
+};
+
+static const struct qcom_pas_data kalama_mpss_resource = {
+	.crash_reason_smem = 421,
+	.firmware_name = "modem.mdt",
+	.dtb_firmware_name = "modem_dtb.mdt",
+	.pas_id = 4,
+	.dtb_pas_id = 0x26,
+	.minidump_id = 3,
+	.kalama = true,
+	.decrypt_shutdown = true,
+	.load_state = "modem",
+	.ssr_name = "mpss",
+	.sysmon_name = "modem",
+	.ssctl_id = 0x12,
+	.smem_host_id = 1,
+	.region_assign_count = 1,
+	.region_assign_vmid = QCOM_SCM_VMID_MSS_MSA,
+};
+
 static const struct qcom_pas_data sm8550_adsp_resource = {
 	.crash_reason_smem = 423,
 	.firmware_name = "adsp.mdt",
@@ -1517,6 +1658,9 @@ static const struct of_device_id qcom_pas_of_match[] = {
 	{ .compatible = "qcom,sm8450-cdsp-pas", .data = &sm8350_cdsp_resource},
 	{ .compatible = "qcom,sm8450-slpi-pas", .data = &sdm845_slpi_resource_init},
 	{ .compatible = "qcom,sm8450-mpss-pas", .data = &sm8450_mpss_resource},
+	{ .compatible = "qcom,kalama-adsp-pas", .data = &kalama_adsp_resource },
+	{ .compatible = "qcom,kalama-cdsp-pas", .data = &kalama_cdsp_resource },
+	{ .compatible = "qcom,kalama-modem-pas", .data = &kalama_mpss_resource },
 	{ .compatible = "qcom,sm8550-adsp-pas", .data = &sm8550_adsp_resource},
 	{ .compatible = "qcom,sm8550-cdsp-pas", .data = &sm8550_cdsp_resource},
 	{ .compatible = "qcom,sm8550-mpss-pas", .data = &sm8550_mpss_resource},
