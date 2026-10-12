@@ -637,6 +637,7 @@
 
 				eusb2-repeater@fd00 {
 					compatible = "qcom,pmic-eusb2-repeater";
+					#phy-cells = <0>;
 					reg = <0xfd00>;
 					vdd18-supply = <0xffffffff>;
 					vdd3-supply = <0xffffffff>;
@@ -2615,8 +2616,7 @@
 		target = <0xffffffff>;
 
 		__overlay__ {
-			dummy-supply = <0x2d>;
-			usb-repeater = <0x2d>;
+			phys = <0x2d>;
 		};
 	};
 
@@ -2642,6 +2642,8 @@
 		__overlay__ {
 
 			connector {
+				reg = <0>;
+				compatible = "usb-c-connector";
 
 				port {
 
@@ -4357,8 +4359,7 @@
 		fragment@20 {
 
 			__overlay__ {
-				dummy-supply = <0x00>;
-				usb-repeater = <0x00>;
+				phys = <0x00>;
 			};
 		};
 

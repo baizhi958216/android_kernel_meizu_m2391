@@ -650,6 +650,7 @@
 
 				eusb2-repeater@fd00 {
 					compatible = "qcom,pmic-eusb2-repeater";
+					#phy-cells = <0>;
 					reg = <0xfd00>;
 					vdd18-supply = <0xffffffff>;
 					vdd3-supply = <0xffffffff>;
@@ -2638,8 +2639,7 @@
 		target = <0xffffffff>;
 
 		__overlay__ {
-			dummy-supply = <0x2d>;
-			usb-repeater = <0x2d>;
+			phys = <0x2d>;
 		};
 	};
 
@@ -2665,6 +2665,8 @@
 		__overlay__ {
 
 			connector {
+				reg = <0>;
+				compatible = "usb-c-connector";
 
 				port {
 
@@ -3136,9 +3138,11 @@
 		target = <0xffffffff>;
 
 		__overlay__ {
+			qcom,select-utmi-as-pipe-clk;
 
 			dwc3@a600000 {
-				usb-phy = <0xffffffff 0x36>;
+				phys = <0xffffffff>;
+				phy-names = "usb2-phy";
 				maximum-speed = "high-speed";
 				snps,usb2-gadget-lpm-disable;
 			};
@@ -3859,7 +3863,7 @@
 		pm_v6g_s4 = "/fragment@18/__overlay__:qcom,vccq-parent-supply:0";
 		tlmm = "/fragment@18/__overlay__:reset-gpios:0\0/fragment@19/__overlay__/goodix-berlin@5d:interrupt-parent:0\0/fragment@19/__overlay__/goodix-berlin@5d:goodix,reset-gpio:0\0/fragment@19/__overlay__/goodix-berlin@5d:goodix,irq-gpio:0\0/fragment@19/__overlay__/goodix-berlin@5d:qts,trusted-touch-vm-gpio-list:0\0/fragment@19/__overlay__/goodix-berlin@5d:qts,trusted-touch-vm-gpio-list:12\0/fragment@19/__overlay__/goodix-berlin@5d:qts,trusted-touch-vm-gpio-list:24\0/fragment@19/__overlay__/goodix-berlin@5d:qts,trusted-touch-vm-gpio-list:36\0/fragment@19/__overlay__/goodix-berlin@5d:qts,trusted-touch-vm-gpio-list:48\0/fragment@19/__overlay__/goodix-berlin@5d:qts,trusted-touch-vm-gpio-list:60\0/fragment@25:target:0\0/fragment@26/__overlay__/haptic_hv@5A:irq-gpio:0\0/fragment@26/__overlay__/haptic_hv@5A:reset-gpio:0\0/fragment@26/__overlay__/haptic_hv@5A:motor_trig2:0\0/fragment@27:target:0\0/fragment@32/__overlay__/fp-regulator:gpio:0\0/fragment@33/__overlay__:qcom,ipc-gpio:0\0/fragment@33/__overlay__:qcom,finger-detect-gpio:0\0/fragment@44/__overlay__:rx-gpio:0\0/fragment@59:target:0\0/fragment@60/__overlay__/gpio-regulator@4:gpio:0\0/fragment@61/__overlay__/cs35l45@30:reset-gpios:0\0/fragment@61/__overlay__/cs35l45@30:switch-gpios:0\0/fragment@61/__overlay__/cs35l45@30:interrupt-parent:0\0/fragment@61/__overlay__/cs35l45@31:interrupt-parent:0\0/fragment@64/__overlay__/qcom,camera-flash0:gpios:0\0/fragment@64/__overlay__/qcom,camera-flash1:gpios:0\0/fragment@64/__overlay__/qcom,camera-flash2:gpios:0\0/fragment@65/__overlay__/qcom,eeprom3:gpios:0\0/fragment@65/__overlay__/qcom,eeprom3:gpios:12\0/fragment@65/__overlay__/qcom,cam-sensor3:gpios:0\0/fragment@65/__overlay__/qcom,cam-sensor3:gpios:12\0/fragment@65/__overlay__/qcom,eeprom0:gpios:0\0/fragment@65/__overlay__/qcom,eeprom0:gpios:12\0/fragment@65/__overlay__/qcom,cam-sensor0:gpios:0\0/fragment@65/__overlay__/qcom,cam-sensor0:gpios:12\0/fragment@66/__overlay__/qcom,eeprom2:gpios:0\0/fragment@66/__overlay__/qcom,eeprom2:gpios:12\0/fragment@66/__overlay__/qcom,cam-sensor2:gpios:0\0/fragment@66/__overlay__/qcom,cam-sensor2:gpios:12\0/fragment@66/__overlay__/qcom,eeprom1:gpios:0\0/fragment@66/__overlay__/qcom,eeprom1:gpios:12\0/fragment@66/__overlay__/qcom,cam-sensor1:gpios:0\0/fragment@66/__overlay__/qcom,cam-sensor1:gpios:12\0/fragment@67:target:0\0/fragment@71/__overlay__/tof-i2c@01:interrupts:0\0/fragment@74/__overlay__/qcom,mdss_mdp@ae00000/qcom,mdss_dsi_meizu_amoled_samsung_cmd:qcom,platform-te-gpio:0\0/fragment@74/__overlay__/qcom,mdss_mdp@ae00000/qcom,mdss_dsi_meizu_amoled_samsung_cmd:qcom,platform-reset-gpio:0\0/fragment@77:target:0\0/fragment@78/__overlay__/qcom,dsi-display-primary:qcom,platform-te-gpio:0\0/fragment@78/__overlay__/qcom,dsi-display-secondary:qcom,platform-te-gpio:0\0/fragment@85/__overlay__/goodix-berlin@5d:interrupt-parent:0\0/fragment@85/__overlay__/goodix-berlin@5d:goodix,reset-gpio:0\0/fragment@85/__overlay__/goodix-berlin@5d:goodix,irq-gpio:0\0/fragment@90:target:0\0/fragment@94/__overlay__/forcetouch@50:interrupt-parent:0\0/fragment@94/__overlay__/forcetouch@50:irq0-gpio:0\0/fragment@94/__overlay__/forcetouch@50:irq1-gpio:0\0/fragment@94/__overlay__/forcetouch@50:reset-gpio:0\0/fragment@94/__overlay__/forcetouch@50:enable3v3_gpio:0\0/fragment@96:target:0\0/fragment@99/__overlay__/sr100@0:nxp,sr100-ri:0\0/fragment@99/__overlay__/sr100@0:nxp,sr100-irq:0\0/fragment@99/__overlay__/sr100@0:nxp,sr100-rfclk-req:0\0/fragment@99/__overlay__/sr100@0:nxp,sr100-ce:0\0/fragment@99/__overlay__/sr100@0:interrupt-parent:0\0/fragment@100:target:0\0/fragment@101/__overlay__/nq@28:qcom,sn-irq:0\0/fragment@101/__overlay__/nq@28:qcom,sn-ven:0\0/fragment@101/__overlay__/nq@28:qcom,sn-firm:0\0/fragment@101/__overlay__/nq@28:qcom,sn-clkreq:0\0/fragment@101/__overlay__/nq@28:interrupt-parent:0";
 		qupv3_se4_i2c = "/fragment@19:target:0\0/fragment@85:target:0";
-		eusb2_phy0 = "/fragment@20:target:0\0/fragment@51/__overlay__/dwc3@a600000:usb-phy:0";
+		eusb2_phy0 = "/fragment@20:target:0\0/fragment@51/__overlay__/dwc3@a600000:phys:0";
 		usb0 = "/fragment@21:target:0\0/fragment@51:target:0\0/fragment@75/__overlay__/qcom,dp_display@ae90000:usb-controller:0";
 		ucsi = "/fragment@22:target:0";
 		battery_charger = "/fragment@23:target:0\0/fragment@89:target:0";
@@ -4470,8 +4474,7 @@
 		fragment@20 {
 
 			__overlay__ {
-				dummy-supply = <0x00>;
-				usb-repeater = <0x00>;
+				phys = <0x00>;
 			};
 		};
 
@@ -4563,10 +4566,6 @@
 		fragment@51 {
 
 			__overlay__ {
-
-				dwc3@a600000 {
-					usb-phy = <0x04>;
-				};
 			};
 		};
 
