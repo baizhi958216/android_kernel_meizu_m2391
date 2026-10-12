@@ -102,6 +102,8 @@ struct dwc3_qcom {
 	struct usb_role_switch	*role_sw;
 	enum usb_role		requested_role;
 	bool			data_enabled;
+	struct clk		*core_clk;
+	u32			rate_active, rate_hs, rate_idle;
 };
 
 static inline void dwc3_qcom_setbits(void __iomem *base, u32 offset, u32 val)
@@ -275,7 +277,6 @@ static int dwc3_qcom_interconnect_init(struct dwc3_qcom *qcom)
 	if (qcom->kalama) {
 		struct device_node *np __free(device_node) =
 			of_get_compatible_child(dev->of_node, "snps,dwc3");
-
 		const char *speed;
 
 		if (!np) {
@@ -690,6 +691,10 @@ static int dwc3_qcom_clk_init(struct dwc3_qcom *qcom, int count)
 {
 	struct device		*dev = qcom->dev;
 	struct device_node	*np = dev->of_node;
+	/* The Kalama bus FSM needs its interface and NoC clocks before the core. */
+	static const char * const ordered[] = {
+		"sleep_clk", "iface_clk", "bus_aggr_clk", "core_clk", "utmi_clk",
+	};
 	int			i;
 
 	if (!np || !count)
@@ -697,6 +702,9 @@ static int dwc3_qcom_clk_init(struct dwc3_qcom *qcom, int count)
 
 	if (count < 0)
 		return count;
+
+	if (qcom->kalama && count != ARRAY_SIZE(ordered))
+		return -EINVAL;
 
 	qcom->num_clocks = count;
 
@@ -709,10 +717,12 @@ static int dwc3_qcom_clk_init(struct dwc3_qcom *qcom, int count)
 		struct clk	*clk;
 		int		ret;
 
-		clk = of_clk_get(np, i);
+		clk = qcom->kalama ? of_clk_get_by_name(np, ordered[i]) : of_clk_get(np, i);
 		if (IS_ERR(clk)) {
-			while (--i >= 0)
+			while (--i >= 0) {
+				clk_disable_unprepare(qcom->clks[i]);
 				clk_put(qcom->clks[i]);
+			}
 			return PTR_ERR(clk);
 		}
 
@@ -728,6 +738,8 @@ static int dwc3_qcom_clk_init(struct dwc3_qcom *qcom, int count)
 		}
 
 		qcom->clks[i] = clk;
+		if (qcom->kalama && !strcmp(ordered[i], "core_clk"))
+			qcom->core_clk = clk;
 	}
 
 	return 0;
@@ -778,6 +790,8 @@ static int kalama_update_core(struct dwc3_qcom *qcom)
 {
 	enum usb_dr_mode mode = qcom->requested_role == USB_ROLE_HOST ?
 				USB_DR_MODE_HOST : USB_DR_MODE_PERIPHERAL;
+	u32 rate = qcom->rate_active;
+	int ret;
 
 	if (!qcom->data_enabled || readl(qcom->usb_access) != 0xf) {
 		kalama_remove_core(qcom);
@@ -787,6 +801,15 @@ static int kalama_update_core(struct dwc3_qcom *qcom)
 	}
 	if (qcom->dwc3 && qcom->glue.child_mode != mode)
 		kalama_remove_core(qcom);
+
+	if (qcom->requested_role == USB_ROLE_NONE)
+		rate = qcom->rate_idle;
+	else if (mode == USB_DR_MODE_HOST &&
+		 device_property_read_bool(qcom->dev, "qcom,select-utmi-as-pipe-clk"))
+		rate = qcom->rate_hs;
+	ret = clk_set_rate(qcom->core_clk, rate);
+	if (ret)
+		return ret;
 
 	dwc3_qcom_vbus_override_enable(qcom, qcom->requested_role == USB_ROLE_DEVICE);
 	if (qcom->dwc3)
@@ -918,6 +941,11 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 	qcom->dev = &pdev->dev;
 	qcom->kalama = of_device_is_compatible(np, "qcom,dwc-usb3-msm");
 	if (qcom->kalama) {
+		if (of_property_read_u32(np, "qcom,core-clk-rate", &qcom->rate_active) ||
+		    of_property_read_u32(np, "qcom,core-clk-rate-hs", &qcom->rate_hs) ||
+		    of_property_read_u32(np, "qcom,core-clk-rate-disconnected", &qcom->rate_idle))
+			return dev_err_probe(dev, -EINVAL, "missing controller clock rates\n");
+
 		ret = devm_regulator_get_enable(dev, "USB3_GDSC");
 		if (ret)
 			return dev_err_probe(dev, ret, "USB domain unavailable\n");
