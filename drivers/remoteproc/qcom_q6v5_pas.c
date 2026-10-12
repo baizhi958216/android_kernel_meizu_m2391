@@ -101,7 +101,6 @@ struct qcom_pas {
 	const char *info_name;
 
 	const struct firmware *firmware;
-	const struct firmware *dtb_firmware;
 
 	struct completion start_done;
 	struct completion stop_done;
@@ -233,6 +232,7 @@ static int qcom_pas_unprepare(struct rproc *rproc)
 static int qcom_pas_load(struct rproc *rproc, const struct firmware *fw)
 {
 	struct qcom_pas *pas = rproc->priv;
+	const struct firmware *dtb_fw;
 	int ret;
 
 	/* Store firmware handle to be used in qcom_pas_start() */
@@ -244,33 +244,37 @@ static int qcom_pas_load(struct rproc *rproc, const struct firmware *fw)
 		qcom_scm_pas_shutdown(pas->lite_dtb_pas_id);
 
 	if (pas->dtb_pas_id) {
-		ret = request_firmware(&pas->dtb_firmware, pas->dtb_firmware_name, pas->dev);
+		ret = request_firmware(&dtb_fw, pas->dtb_firmware_name, pas->dev);
 		if (ret) {
 			dev_err(pas->dev, "request_firmware failed for %s: %d\n",
 				pas->dtb_firmware_name, ret);
 			return ret;
 		}
 
-		ret = qcom_mdt_pas_init(pas->dev, pas->dtb_firmware, pas->dtb_firmware_name,
+		ret = icc_set_bw(pas->crypto_path, UINT_MAX, UINT_MAX);
+		if (ret)
+			goto release_dtb_firmware;
+		ret = qcom_mdt_pas_init(pas->dev, dtb_fw, pas->dtb_firmware_name,
 					pas->dtb_pas_id, pas->dtb_mem_phys,
 					&pas->dtb_pas_metadata);
 		if (ret)
-			goto release_dtb_firmware;
+			goto release_bw;
 
-		ret = qcom_mdt_load_no_init(pas->dev, pas->dtb_firmware, pas->dtb_firmware_name,
+		ret = qcom_mdt_load_no_init(pas->dev, dtb_fw, pas->dtb_firmware_name,
 					    pas->dtb_mem_region, pas->dtb_mem_phys,
 					    pas->dtb_mem_size, &pas->dtb_mem_reloc);
 		if (ret)
-			goto release_dtb_metadata;
+			qcom_scm_pas_metadata_release(&pas->dtb_pas_metadata);
+		goto release_bw;
 	}
 
 	return 0;
 
-release_dtb_metadata:
-	qcom_scm_pas_metadata_release(&pas->dtb_pas_metadata);
+release_bw:
+	icc_set_bw(pas->crypto_path, 0, 0);
 
 release_dtb_firmware:
-	release_firmware(pas->dtb_firmware);
+	release_firmware(dtb_fw);
 
 	return ret;
 }
@@ -347,9 +351,12 @@ static int qcom_pas_start(struct rproc *rproc)
 			goto disable_cx_supply;
 	}
 
-	ret = kalama_pas_vote_rails(pas);
+	ret = icc_set_bw(pas->crypto_path, UINT_MAX, UINT_MAX);
 	if (ret)
 		goto disable_px_supply;
+	ret = kalama_pas_vote_rails(pas);
+	if (ret)
+		goto disable_crypto;
 
 	if (pas->dtb_pas_id) {
 		ret = qcom_scm_pas_auth_and_reset(pas->dtb_pas_id);
@@ -394,6 +401,7 @@ static int qcom_pas_start(struct rproc *rproc)
 	/* firmware is used to pass reference from qcom_pas_start(), drop it now */
 	pas->firmware = NULL;
 
+	icc_set_bw(pas->crypto_path, 0, 0);
 	return 0;
 
 release_pas_metadata:
@@ -402,6 +410,8 @@ release_pas_metadata:
 		qcom_scm_pas_metadata_release(&pas->dtb_pas_metadata);
 disable_rails:
 	kalama_pas_release_rails(pas, pas->num_rails);
+disable_crypto:
+	icc_set_bw(pas->crypto_path, 0, 0);
 disable_px_supply:
 	if (pas->px_supply)
 		regulator_disable(pas->px_supply);
@@ -443,6 +453,9 @@ static int qcom_pas_stop(struct rproc *rproc)
 	int handover;
 	int ret;
 
+	ret = icc_set_bw(pas->crypto_path, UINT_MAX, UINT_MAX);
+	if (ret)
+		return ret;
 	ret = qcom_q6v5_request_stop(&pas->q6v5, pas->sysmon);
 	if (ret == -ETIMEDOUT)
 		dev_err(pas->dev, "timed out on wait\n");
@@ -460,6 +473,7 @@ static int qcom_pas_stop(struct rproc *rproc)
 			dev_err(pas->dev, "failed to shutdown dtb: %d\n", ret);
 	}
 
+	icc_set_bw(pas->crypto_path, 0, 0);
 	handover = qcom_q6v5_unprepare(&pas->q6v5);
 	if (handover)
 		qcom_pas_handover(&pas->q6v5);
@@ -848,6 +862,13 @@ static int qcom_pas_probe(struct platform_device *pdev)
 	if (ret)
 		goto unassign_mem;
 
+	if (pas->kalama) {
+		pas->crypto_path = devm_of_icc_get(pas->dev, "crypto_ddr");
+		if (IS_ERR(pas->crypto_path)) {
+			ret = dev_err_probe(pas->dev, PTR_ERR(pas->crypto_path), "failed to get PAS bandwidth\n");
+			goto unassign_mem;
+		}
+	}
 	ret = pas->kalama ? kalama_pas_init_rails(pas) : qcom_pas_init_regulator(pas);
 	if (ret)
 		goto unassign_mem;

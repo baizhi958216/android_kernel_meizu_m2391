@@ -11,6 +11,7 @@
 #include <linux/interconnect.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
+#include <linux/property.h>
 #include <linux/soc/qcom/qcom_aoss.h>
 #include <linux/soc/qcom/smem.h>
 #include <linux/soc/qcom/smem_state.h>
@@ -46,7 +47,7 @@ int qcom_q6v5_prepare(struct qcom_q6v5 *q6v5)
 {
 	int ret;
 
-	ret = icc_set_bw(q6v5->path, 0, UINT_MAX);
+	ret = icc_set_bw(q6v5->path, q6v5->path_avg, UINT_MAX);
 	if (ret < 0) {
 		dev_err(q6v5->dev, "failed to set bandwidth request\n");
 		return ret;
@@ -346,10 +347,17 @@ int qcom_q6v5_init(struct qcom_q6v5 *q6v5, struct platform_device *pdev,
 		return load_state ? -ENOMEM : -EINVAL;
 	}
 
-	q6v5->path = devm_of_icc_get(&pdev->dev, NULL);
-	if (IS_ERR(q6v5->path))
+	if (device_property_match_string(&pdev->dev, "interconnect-names", "rproc_ddr") >= 0) {
+		q6v5->path = devm_of_icc_get(&pdev->dev, "rproc_ddr");
+		q6v5->path_avg = UINT_MAX;
+	} else {
+		q6v5->path = devm_of_icc_get(&pdev->dev, NULL);
+	}
+	if (IS_ERR(q6v5->path)) {
+		qmp_put(q6v5->qmp);
 		return dev_err_probe(&pdev->dev, PTR_ERR(q6v5->path),
 				     "failed to acquire interconnect path\n");
+	}
 
 	return 0;
 }

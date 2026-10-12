@@ -20,6 +20,7 @@ struct qcom_q6v5 {
 	struct qmp *qmp;
 
 	struct icc_path *path;
+	u32 path_avg;
 
 	unsigned stop_bit;
 
