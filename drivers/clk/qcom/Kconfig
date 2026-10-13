@@ -1421,6 +1421,13 @@ config KALAMA_GPUCC
 	help
 	  Provide clocks, resets and RPMh voltage votes for the Kalama gpu subsystem.
 
+config KALAMA_CAMCC
+	tristate "Kalama cam clock controller"
+	depends on ARM64 || COMPILE_TEST
+	depends on REGULATOR && PM
+	help
+	  Provide clocks, resets and RPMh voltage votes for the Kalama cam subsystem.
+
 config KALAMA_DISPCC
 	tristate "Kalama downstream display clock controller"
 	depends on ARM64 || COMPILE_TEST
