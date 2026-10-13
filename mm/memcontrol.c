@@ -5146,6 +5146,12 @@ static inline void mem_cgroup_id_put(struct mem_cgroup *memcg)
 	mem_cgroup_id_put_many(memcg, 1);
 }
 
+void mem_cgroup_id_put2(struct mem_cgroup *memcg)
+{
+	mem_cgroup_id_put_many(memcg, 1);
+}
+EXPORT_SYMBOL_GPL(mem_cgroup_id_put2);
+
 /**
  * mem_cgroup_from_id - look up a memcg from a memcg id
  * @id: the memcg id to look up

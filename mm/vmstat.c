@@ -28,6 +28,9 @@
 #include <linux/mm_inline.h>
 #include <linux/page_ext.h>
 #include <linux/page_owner.h>
+#ifndef __GENKSYMS__
+#include <trace/hooks/mm.h>
+#endif
 
 #include "internal.h"
 
@@ -1124,6 +1127,7 @@ unsigned int extfrag_for_order(struct zone *zone, unsigned int order)
 	struct contig_page_info info;
 
 	fill_contig_page_info(zone, order, &info);
+	trace_android_vh_extfrag_for_order(&info, zone, order);
 	if (info.free_pages == 0)
 		return 0;
 

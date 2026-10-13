@@ -71,6 +71,9 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(mm_vmscan_direct_reclaim_end);
 
 #undef CREATE_TRACE_POINTS
 #include <trace/hooks/vmscan.h>
+#ifndef __GENKSYMS__
+#include <trace/hooks/mm.h>
+#endif
 
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
@@ -5017,6 +5020,8 @@ static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc
 			swappiness = 1;
 		else
 			swappiness = 0;
+
+		trace_android_vh_smartzram_tune_swappiness(&swappiness);
 
 		nr_to_scan = get_nr_to_scan(lruvec, sc, swappiness, &need_aging);
 		if (!nr_to_scan)

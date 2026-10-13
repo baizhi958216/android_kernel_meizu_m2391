@@ -33,6 +33,7 @@ struct track;
 struct address_space;
 struct page_vma_mapped_walk;
 struct cma;
+struct zone;
 
 DECLARE_RESTRICTED_HOOK(android_rvh_set_skip_swapcache_flags,
 			TP_PROTO(gfp_t *flags),
@@ -255,6 +256,12 @@ DECLARE_HOOK(android_vh_cma_alloc_bypass,
 	TP_PROTO(struct cma *cma, unsigned long count, unsigned int align,
 		bool no_warn, struct page **page, bool *bypass),
 	TP_ARGS(cma, count, align, no_warn, page, bypass));
+DECLARE_HOOK(android_vh_extfrag_for_order,
+	TP_PROTO(void *info, struct zone *zone, unsigned int order),
+	TP_ARGS(info, zone, order));
+DECLARE_HOOK(android_vh_smartzram_tune_swappiness,
+	TP_PROTO(int *swappiness),
+	TP_ARGS(swappiness));
 #endif /* _TRACE_HOOK_MM_H */
 
 /* This part must be outside protection */

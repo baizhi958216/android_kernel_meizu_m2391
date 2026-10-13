@@ -38,3 +38,5 @@ subdir-y += xilinx
 else
 	subdir-y += vendor
 endif
+
+subdir-y += meizu

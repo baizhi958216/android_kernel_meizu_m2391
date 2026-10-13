@@ -468,3 +468,5 @@ EXPORT_SYMBOL_GPL(GKI_struct_readahead_control);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_exit_signal_whether_wake);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_exit_check);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_freeze_whether_wake);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_extfrag_for_order);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_smartzram_tune_swappiness);
