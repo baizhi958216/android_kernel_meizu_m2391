@@ -6,6 +6,8 @@
 
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
+#include <linux/pinctrl/kalama.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/pinctrl/pinctrl.h>
@@ -2409,3 +2411,32 @@ module_exit(kalama_pinctrl_exit);
 MODULE_DESCRIPTION("QTI kalama pinctrl driver");
 MODULE_LICENSE("GPL v2");
 MODULE_DEVICE_TABLE(of, kalama_pinctrl_of_match);
+
+/* The trusted VM receives individual GPIO register pages, never a whole TLMM tile. */
+int kalama_gpio_get_mmio(struct device_node *np, unsigned int offset, struct resource *res)
+{
+	const struct of_device_id *match;
+	const struct msm_pinctrl_soc_data *soc;
+	const struct msm_pingroup *group;
+	struct resource window;
+	int ret;
+
+	match = of_match_node(kalama_pinctrl_of_match, np);
+	if (!match)
+		return -ENODEV;
+	soc = match->data;
+	if (offset >= soc->ngpios || offset >= soc->ngroups)
+		return -EINVAL;
+	group = &soc->groups[offset];
+	if (!group->nfuncs || !IS_ALIGNED(group->ctl_reg, REG_SIZE))
+		return -EINVAL;
+	ret = of_address_to_resource(np, 0, &window);
+	if (ret)
+		return ret;
+	if (resource_size(&window) < REG_SIZE ||
+	    group->ctl_reg > resource_size(&window) - REG_SIZE)
+		return -ERANGE;
+	*res = (struct resource)DEFINE_RES_MEM(window.start + group->ctl_reg, REG_SIZE);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(kalama_gpio_get_mmio);
