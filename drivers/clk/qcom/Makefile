@@ -175,6 +175,7 @@ obj-$(CONFIG_SM_GPUCC_8550) += gpucc-sm8550.o
 obj-$(CONFIG_SM_GPUCC_8650) += gpucc-sm8650.o
 obj-$(CONFIG_SM_GPUCC_MILOS) += gpucc-milos.o
 obj-$(CONFIG_SM_LPASSCC_6115) += lpasscc-sm6115.o
+obj-$(CONFIG_KALAMA_GPUCC) += gpucc-kalama.o
 obj-$(CONFIG_KALAMA_DISPCC) += dispcc-kalama.o
 obj-$(CONFIG_KALAMA_GCC) += gcc-kalama.o
 obj-$(CONFIG_KALAMA_TCSRCC) += tcsrcc-kalama.o
