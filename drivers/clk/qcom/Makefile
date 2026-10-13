@@ -177,6 +177,7 @@ obj-$(CONFIG_SM_GPUCC_MILOS) += gpucc-milos.o
 obj-$(CONFIG_SM_LPASSCC_6115) += lpasscc-sm6115.o
 obj-$(CONFIG_KALAMA_GPUCC) += gpucc-kalama.o
 obj-$(CONFIG_KALAMA_CAMCC) += camcc-kalama.o
+obj-$(CONFIG_KALAMA_VIDEOCC) += videocc-kalama.o
 obj-$(CONFIG_KALAMA_DISPCC) += dispcc-kalama.o
 obj-$(CONFIG_KALAMA_GCC) += gcc-kalama.o
 obj-$(CONFIG_KALAMA_TCSRCC) += tcsrcc-kalama.o

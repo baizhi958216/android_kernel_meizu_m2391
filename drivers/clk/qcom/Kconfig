@@ -1428,6 +1428,13 @@ config KALAMA_CAMCC
 	help
 	  Provide clocks, resets and RPMh voltage votes for the Kalama cam subsystem.
 
+config KALAMA_VIDEOCC
+	tristate "Kalama video clock controller"
+	depends on ARM64 || COMPILE_TEST
+	depends on REGULATOR && PM
+	help
+	  Provide clocks, resets and RPMh voltage votes for the Kalama video subsystem.
+
 config KALAMA_DISPCC
 	tristate "Kalama downstream display clock controller"
 	depends on ARM64 || COMPILE_TEST
