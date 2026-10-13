@@ -293,6 +293,13 @@ config QCOM_KALAMA_HWKM
 	  Use the Kalama TME mailbox for transport key broadcasts and the
 	  UFS HWKM v2 secure monitor interface for KeyMint-provisioned keys.
 
+config MSM_QBT_HANDLER
+	tristate "Qualcomm ultrasonic fingerprint event interface"
+	depends on ARM64 && OF && INPUT && GPIOLIB && REGULATOR
+	help
+	  Provide touchscreen and GPIO finger-detection events and the IPC
+	  character device used by the Qualcomm ultrasonic fingerprint HAL.
+
 config QCOM_PANEL_EVENT_NOTIFIER
 	tristate "Qualcomm display panel event notifier"
 	depends on DRM
