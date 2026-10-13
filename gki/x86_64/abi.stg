@@ -285020,6 +285020,12 @@ function {
   parameter_id: 0x1e820193
 }
 function {
+  id: 0x7963a3c3
+  return_type_id: 0x347303b4
+  parameter_id: 0x3e10b518
+  parameter_id: 0x051414e1
+}
+function {
   id: 0x79ee3805
   return_type_id: 0x1d19a9d5
   parameter_id: 0x09484746
@@ -326536,6 +326542,15 @@ elf_symbol {
   full_name: "of_dma_controller_register"
 }
 elf_symbol {
+  id: 0x71c7b52f
+  name: "of_find_node_opts_by_path"
+  is_defined: true
+  symbol_type: FUNCTION
+  crc: 0x0cc6d6fa
+  type_id: 0x7963a3c3
+  full_name: "of_find_node_opts_by_path"
+}
+elf_symbol {
   id: 0x5b961c3b
   name: "of_find_property"
   is_defined: true
@@ -331576,6 +331591,24 @@ elf_symbol {
   crc: 0x5e505530
   type_id: 0xfea45b04
   full_name: "set_freezable"
+}
+elf_symbol {
+  id: 0x7a50564a
+  name: "set_memory_decrypted"
+  is_defined: true
+  symbol_type: FUNCTION
+  crc: 0x6a63eb1a
+  type_id: 0x90c13942
+  full_name: "set_memory_decrypted"
+}
+elf_symbol {
+  id: 0x0888c744
+  name: "set_memory_encrypted"
+  is_defined: true
+  symbol_type: FUNCTION
+  crc: 0x6a63eb1a
+  type_id: 0x90c13942
+  full_name: "set_memory_encrypted"
 }
 elf_symbol {
   id: 0xcc3c3411
@@ -337886,7 +337919,7 @@ elf_symbol {
   name: "usb_autopm_get_interface"
   is_defined: true
   symbol_type: FUNCTION
-  crc: 0xfb4b1179
+  crc: 0x37f5d6a7
   type_id: 0x95c144d5
   full_name: "usb_autopm_get_interface"
 }
@@ -337895,7 +337928,7 @@ elf_symbol {
   name: "usb_autopm_get_interface_async"
   is_defined: true
   symbol_type: FUNCTION
-  crc: 0xfb4b1179
+  crc: 0x37f5d6a7
   type_id: 0x95c144d5
   full_name: "usb_autopm_get_interface_async"
 }
@@ -337904,7 +337937,7 @@ elf_symbol {
   name: "usb_autopm_get_interface_no_resume"
   is_defined: true
   symbol_type: FUNCTION
-  crc: 0xf748ae6b
+  crc: 0xaf83df2e
   type_id: 0x18d9f669
   full_name: "usb_autopm_get_interface_no_resume"
 }
@@ -337913,7 +337946,7 @@ elf_symbol {
   name: "usb_autopm_put_interface"
   is_defined: true
   symbol_type: FUNCTION
-  crc: 0xf748ae6b
+  crc: 0xaf83df2e
   type_id: 0x18d9f669
   full_name: "usb_autopm_put_interface"
 }
@@ -337922,7 +337955,7 @@ elf_symbol {
   name: "usb_autopm_put_interface_async"
   is_defined: true
   symbol_type: FUNCTION
-  crc: 0xf748ae6b
+  crc: 0xaf83df2e
   type_id: 0x18d9f669
   full_name: "usb_autopm_put_interface_async"
 }
@@ -338057,7 +338090,7 @@ elf_symbol {
   name: "usb_deregister"
   is_defined: true
   symbol_type: FUNCTION
-  crc: 0xc932493e
+  crc: 0x08c8a4b8
   type_id: 0x1fbef67f
   full_name: "usb_deregister"
 }
@@ -338075,7 +338108,7 @@ elf_symbol {
   name: "usb_disable_autosuspend"
   is_defined: true
   symbol_type: FUNCTION
-  crc: 0x57e66bb2
+  crc: 0xb31769d3
   type_id: 0x13c76860
   full_name: "usb_disable_autosuspend"
 }
@@ -338093,7 +338126,7 @@ elf_symbol {
   name: "usb_driver_claim_interface"
   is_defined: true
   symbol_type: FUNCTION
-  crc: 0x33a0ac7d
+  crc: 0x3a581a92
   type_id: 0x922471e5
   full_name: "usb_driver_claim_interface"
 }
@@ -338102,7 +338135,7 @@ elf_symbol {
   name: "usb_driver_release_interface"
   is_defined: true
   symbol_type: FUNCTION
-  crc: 0x5139bc02
+  crc: 0x5c7079cc
   type_id: 0x1f3aec00
   full_name: "usb_driver_release_interface"
 }
@@ -338111,7 +338144,7 @@ elf_symbol {
   name: "usb_enable_autosuspend"
   is_defined: true
   symbol_type: FUNCTION
-  crc: 0x57e66bb2
+  crc: 0xb31769d3
   type_id: 0x13c76860
   full_name: "usb_enable_autosuspend"
 }
@@ -338345,7 +338378,7 @@ elf_symbol {
   name: "usb_match_id"
   is_defined: true
   symbol_type: FUNCTION
-  crc: 0x95e6bfbd
+  crc: 0xdf905bf0
   type_id: 0x170370af
   full_name: "usb_match_id"
 }
@@ -338453,7 +338486,7 @@ elf_symbol {
   name: "usb_register_driver"
   is_defined: true
   symbol_type: FUNCTION
-  crc: 0xc94f38c3
+  crc: 0x08a507b2
   type_id: 0x92855f9f
   full_name: "usb_register_driver"
 }
@@ -343862,6 +343895,7 @@ interface {
   symbol_id: 0x490e6dfe
   symbol_id: 0xb784add6
   symbol_id: 0x46255d0e
+  symbol_id: 0x71c7b52f
   symbol_id: 0x5b961c3b
   symbol_id: 0x50e4a55a
   symbol_id: 0xe506b8c8
@@ -344422,6 +344456,8 @@ interface {
   symbol_id: 0x2c6a64fa
   symbol_id: 0xc2f063d0
   symbol_id: 0x180ceb0c
+  symbol_id: 0x7a50564a
+  symbol_id: 0x0888c744
   symbol_id: 0xcc3c3411
   symbol_id: 0x17aa7a44
   symbol_id: 0x7e3fb039
