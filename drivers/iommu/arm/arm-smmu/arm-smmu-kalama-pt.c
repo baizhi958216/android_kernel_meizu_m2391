@@ -109,10 +109,12 @@ int kalama_pt_init(struct arm_smmu_domain *d, struct device *dev, struct io_pgta
 	int ret;
 
 	if (!of_property_present(dev->of_node, "qcom,iommu-vmid"))
-		return 0;
+		return pool ? -EINVAL : 0;
 	ret = of_property_read_u32(dev->of_node, "qcom,iommu-vmid", &vmid);
 	if (ret || (vmid != QCOM_SCM_VMID_CP_PIXEL && vmid != QCOM_SCM_VMID_CP_NON_PIXEL &&
 		    vmid != QCOM_SCM_VMID_CP_BITSTREAM))
+		return -EINVAL;
+	if (pool && pool->vmid != vmid)
 		return -EINVAL;
 	if (!pool) {
 		pool = kzalloc(sizeof(*pool), GFP_KERNEL);
