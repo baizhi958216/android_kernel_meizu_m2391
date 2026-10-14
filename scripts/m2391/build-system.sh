@@ -28,12 +28,14 @@ install=(INSTALL_MOD_PATH="$stage" INSTALL_MOD_STRIP=1 DEPMOD=true)
 "${kmake[@]}" "${install[@]}" modules_install
 
 # Each external Kbuild writes into its own output directory just like the kernel.
+symvers=("$out/Module.symvers")
 extbuild() {
 	local path=$1
 	shift
 	local args=(M="$external/$path" MO="$out/m2391-external/$path" "$@")
 	"${kmake[@]}" "${args[@]}" -j"$jobs" modules
 	"${kmake[@]}" "${args[@]}" "${install[@]}" modules_install
+	symvers+=("$out/m2391-external/$path/Module.symvers")
 }
 extbuild meizu/system
 extbuild qcom/opensource/touch-drivers/mz_gesture \
@@ -41,10 +43,6 @@ extbuild qcom/opensource/touch-drivers/mz_gesture \
 extbuild qcom/opensource/mmrm-driver MMRM_ROOT="$external/qcom/opensource/mmrm-driver"
 
 release=$(<"$out/include/config/kernel.release")
-symvers=("$out/Module.symvers")
-while IFS= read -r -d '' table; do
-	symvers+=("$table")
-done < <(find "$out/m2391-external" -name Module.symvers -size +0c -print0)
 cat "${symvers[@]}" > "$stage/Module.symvers"
 depmod -ae -E "$stage/Module.symvers" -b "$stage" "$release" 2>"$stage/depmod.log"
 if [[ -s "$stage/depmod.log" ]]; then
