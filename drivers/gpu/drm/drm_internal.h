@@ -27,6 +27,7 @@
 #include <linux/kthread.h>
 #include <linux/types.h>
 
+#include <drm/drm_client.h>
 #include <drm/drm_ioctl.h>
 #include <drm/drm_vblank.h>
 
@@ -145,8 +146,6 @@ int drm_dropmaster_ioctl(struct drm_device *dev, void *data,
 			 struct drm_file *file_priv);
 int drm_master_open(struct drm_file *file_priv);
 void drm_master_release(struct drm_file *file_priv);
-bool drm_master_internal_acquire(struct drm_device *dev);
-void drm_master_internal_release(struct drm_device *dev);
 
 /* drm_sysfs.c */
 extern struct class *drm_class;

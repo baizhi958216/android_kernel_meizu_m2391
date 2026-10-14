@@ -159,6 +159,9 @@ struct drm_client_dev {
 	bool hotplug_failed;
 };
 
+bool drm_master_internal_acquire(struct drm_device *dev);
+void drm_master_internal_release(struct drm_device *dev);
+
 int drm_client_init(struct drm_device *dev, struct drm_client_dev *client,
 		    const char *name, const struct drm_client_funcs *funcs);
 void drm_client_release(struct drm_client_dev *client);
