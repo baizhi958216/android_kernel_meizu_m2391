@@ -438,7 +438,7 @@ static int qbt_open(struct inode *inode, struct file *file)
 	file->private_data = drvdata;
 
 	pr_debug("entry minor_no=%d fd_available=%d\n",
-			minor_no, drvdata->fd_available);
+			minor_no, atomic_read(&drvdata->fd_available));
 
 	/* disallowing concurrent opens */
 	if (minor_no == MINOR_NUM_FD &&
@@ -452,7 +452,7 @@ static int qbt_open(struct inode *inode, struct file *file)
 	}
 
 	pr_debug("exit : %d  fd_available=%d\n",
-			rc, drvdata->fd_available);
+			rc, atomic_read(&drvdata->fd_available));
 	return rc;
 }
 
@@ -476,7 +476,7 @@ static int qbt_release(struct inode *inode, struct file *file)
 	drvdata = file->private_data;
 	minor_no = iminor(inode);
 	pr_debug("entry minor_no=%d fd_available=%d\n",
-			minor_no, drvdata->fd_available);
+			minor_no, atomic_read(&drvdata->fd_available));
 	if (minor_no == MINOR_NUM_FD) {
 		atomic_inc(&drvdata->fd_available);
 	} else if (minor_no == MINOR_NUM_IPC) {
@@ -490,7 +490,7 @@ static int qbt_release(struct inode *inode, struct file *file)
 		pm_relax(drvdata->dev);
 		atomic_set(&drvdata->wakelock_acquired, 0);
 	}
-	pr_debug("exit : fd_available=%d\n", drvdata->fd_available);
+	pr_debug("exit : fd_available=%d\n", atomic_read(&drvdata->fd_available));
 	return 0;
 }
 
@@ -662,7 +662,7 @@ static long qbt_ioctl(
 				!= QBT_TOUCH_FD_VERSION_3) {
 			rc = -EINVAL;
 			pr_err("unsupported version %d\n",
-					drvdata->fd_touch.config.version);
+					drvdata->fd_touch.config.version.version);
 			goto end;
 		}
 		if (drvdata->fd_touch.config.version.version
@@ -818,7 +818,7 @@ static ssize_t qbt_read(struct file *filp, char __user *ubuf,
 			}
 			pr_debug("Reading event id: %d state: %d\n",
 					fd_evt->id, fd_evt->state);
-			pr_debug("x: %d y: %d timestamp: %ld.%03ld\n",
+			pr_debug("x: %d y: %d timestamp: %lld.%09ld\n",
 					fd_evt->X, fd_evt->Y,
 					fd_evt->timestamp.tv_sec,
 					fd_evt->timestamp.tv_nsec);
@@ -843,7 +843,7 @@ static ssize_t qbt_read(struct file *filp, char __user *ubuf,
 		pr_err("Invalid minor number\n");
 	}
 	if (num_bytes != 0)
-		pr_warn("Could not copy %d bytes\n", num_bytes);
+		pr_warn("Could not copy %zd bytes\n", num_bytes);
 	return num_bytes;
 }
 
