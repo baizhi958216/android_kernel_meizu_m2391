@@ -9,10 +9,22 @@ TARGET_KERNEL_SOURCE := $(M2391_KERNEL_SRC)
 TARGET_KERNEL_CONFIG := m2391_defconfig
 TARGET_KERNEL_VERSION := 5.15
 
-# clang-stable (r596125 / clang 20) rejects the 5.15 ACK source with
-# -Wdefault-const-init-var-unsafe.  Pin the clang this tree still ships and
-# that the kernel is known to build with.
-TARGET_KERNEL_CLANG_VERSION := r547379
+# Pin the toolchain the kernel itself designates.  This 5.15 ACK source
+# declares CLANG_VERSION=r450784e in build.config.constants, and the defconfig
+# enables LTO_CLANG_FULL + CFI_CLANG, so the kernel must be built with that
+# exact clang rather than the platform's clang-stable (r596125), which
+# additionally rejects this source with -Wdefault-const-init-var-unsafe.
+#
+# The prebuilt is not part of the LineageOS 24 / AOSP 17 prebuilts; fetch it
+# with (see patches/README.md):
+#   curl -L -o clang.tar.gz \
+#     "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android14-release/clang-r450784e.tar.gz"
+#   mkdir -p prebuilts/clang/kernel/linux-x86/clang-r450784e
+#   tar -xzf clang.tar.gz -C prebuilts/clang/kernel/linux-x86/clang-r450784e
+TARGET_KERNEL_CLANG_VERSION := r450784e
+# `=` (deferred) on purpose: $(BUILD_TOP) is not defined yet while BoardConfig
+# files are parsed, so `:=` would bake in a broken "/prebuilts/..." path.
+TARGET_KERNEL_CLANG_PATH = $(BUILD_TOP)/prebuilts/clang/kernel/linux-x86/clang-r450784e
 BOARD_KERNEL_IMAGE_NAME := Image
 
 # ---------------------------------------------------------------------------
