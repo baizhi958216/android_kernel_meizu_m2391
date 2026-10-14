@@ -21,6 +21,13 @@ struct qcom_scm_hdcp_req {
 	u32 val;
 };
 
+#define QCOM_SCM_MAX_MEM_REGIONS 32
+
+struct qcom_scm_mem_region {
+	phys_addr_t addr;
+	size_t size;
+};
+
 struct qcom_scm_vmperm {
 	int vmid;
 	int perm;
@@ -92,6 +99,10 @@ int qcom_scm_iommu_secure_ptbl_init(u64 addr, u32 size, u32 spare);
 int qcom_scm_iommu_set_cp_pool_size(u32 spare, u32 size);
 int qcom_scm_mem_protect_video_var(u32 cp_start, u32 cp_size,
 				   u32 cp_nonpixel_start, u32 cp_nonpixel_size);
+int qcom_scm_assign_mem_regions(const struct qcom_scm_mem_region *regions,
+				unsigned int nr_regions, u64 srcvm,
+				const struct qcom_scm_vmperm *newvm,
+				unsigned int dest_cnt);
 int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz, u64 *src,
 			const struct qcom_scm_vmperm *newvm,
 			unsigned int dest_cnt);

@@ -1044,22 +1044,11 @@ static int __qcom_scm_assign_mem(struct device *dev, phys_addr_t mem_region,
 	return ret ? : res.result[0];
 }
 
-/**
- * qcom_scm_assign_mem() - Make a secure call to reassign memory ownership
- * @mem_addr: mem region whose ownership need to be reassigned
- * @mem_sz:   size of the region.
- * @srcvm:    vmid for current set of owners, each set bit in
- *            flag indicate a unique owner
- * @newvm:    array having new owners and corresponding permission
- *            flags
- * @dest_cnt: number of owners in next set.
- *
- * Return negative errno on failure or 0 on success with @srcvm updated.
- */
-int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz,
+static int qcom_scm_assign_regions(const struct qcom_scm_mem_region *regions,
+			unsigned int nr_regions,
 			u64 *srcvm,
 			const struct qcom_scm_vmperm *newvm,
-			unsigned int dest_cnt)
+			unsigned int dest_cnt, bool quarantine_on_failure)
 {
 	struct qcom_scm_current_perm_info *destvm;
 	struct qcom_scm_mem_map_info *mem_to_map;
@@ -1070,13 +1059,20 @@ int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz,
 	size_t dest_sz;
 	size_t src_sz;
 	size_t ptr_sz;
-	int next_vm;
+	u64 next_vm = 0;
 	__le32 *src;
 	int ret, i, b;
 	u64 srcvm_bits = *srcvm;
 
+	if (!nr_regions || nr_regions > QCOM_SCM_MAX_MEM_REGIONS || !srcvm_bits ||
+	    !dest_cnt || dest_cnt > 64)
+		return -EINVAL;
+	for (i = 0; i < dest_cnt; i++)
+		if ((unsigned int)newvm[i].vmid >= 64)
+			return -EINVAL;
+
 	src_sz = hweight64(srcvm_bits) * sizeof(*src);
-	mem_to_map_sz = sizeof(*mem_to_map);
+	mem_to_map_sz = nr_regions * sizeof(*mem_to_map);
 	dest_sz = dest_cnt * sizeof(*destvm);
 	ptr_sz = ALIGN(src_sz, SZ_64) + ALIGN(mem_to_map_sz, SZ_64) +
 			ALIGN(dest_sz, SZ_64);
@@ -1092,17 +1088,18 @@ int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz,
 	src = ptr;
 	i = 0;
 	for (b = 0; b < BITS_PER_TYPE(u64); b++) {
-		if (srcvm_bits & BIT(b))
+		if (srcvm_bits & BIT_ULL(b))
 			src[i++] = cpu_to_le32(b);
 	}
 
 	/* Fill details of mem buff to map */
 	mem_to_map = ptr + ALIGN(src_sz, SZ_64);
 	mem_to_map_phys = ptr_phys + ALIGN(src_sz, SZ_64);
-	mem_to_map->mem_addr = cpu_to_le64(mem_addr);
-	mem_to_map->mem_size = cpu_to_le64(mem_sz);
+	for (i = 0; i < nr_regions; i++) {
+		mem_to_map[i].mem_addr = cpu_to_le64(regions[i].addr);
+		mem_to_map[i].mem_size = cpu_to_le64(regions[i].size);
+	}
 
-	next_vm = 0;
 	/* Fill details of next vmid detail */
 	destvm = ptr + ALIGN(mem_to_map_sz, SZ_64) + ALIGN(src_sz, SZ_64);
 	dest_phys = ptr_phys + ALIGN(mem_to_map_sz, SZ_64) + ALIGN(src_sz, SZ_64);
@@ -1111,7 +1108,7 @@ int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz,
 		destvm->perm = cpu_to_le32(newvm->perm);
 		destvm->ctx = 0;
 		destvm->ctx_size = 0;
-		next_vm |= BIT(newvm->vmid);
+		next_vm |= BIT_ULL(newvm->vmid);
 	}
 
 	ret = __qcom_scm_assign_mem(__scm->dev, mem_to_map_phys, mem_to_map_sz,
@@ -1119,11 +1116,47 @@ int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz,
 	if (ret) {
 		dev_err(__scm->dev,
 			"Assign memory protection call failed %d\n", ret);
-		return ret;
+		return quarantine_on_failure ? -EADDRNOTAVAIL : ret;
 	}
 
 	*srcvm = next_vm;
 	return 0;
+}
+
+/*
+ * Submit discontiguous extents in one MP_ASSIGN call. An SCM failure leaves
+ * ownership ambiguous; callers must keep these pages out of all allocators.
+ * Errors preparing the call retain their original errno.
+ */
+int qcom_scm_assign_mem_regions(const struct qcom_scm_mem_region *regions,
+				unsigned int nr_regions, u64 srcvm,
+				const struct qcom_scm_vmperm *newvm,
+				unsigned int dest_cnt)
+{
+	return qcom_scm_assign_regions(regions, nr_regions, &srcvm, newvm,
+				       dest_cnt, true);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_assign_mem_regions);
+
+/**
+ * qcom_scm_assign_mem() - Make a secure call to reassign memory ownership
+ * @mem_addr: mem region whose ownership need to be reassigned
+ * @mem_sz:   size of the region.
+ * @srcvm:    vmid for current set of owners, each set bit in
+ *            flag indicate a unique owner
+ * @newvm:    array having new owners and corresponding permission
+ *            flags
+ * @dest_cnt: number of owners in next set.
+ *
+ * Return negative errno on failure or 0 on success with @srcvm updated.
+ */
+int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz, u64 *srcvm,
+			const struct qcom_scm_vmperm *newvm,
+			unsigned int dest_cnt)
+{
+	const struct qcom_scm_mem_region region = { mem_addr, mem_sz };
+
+	return qcom_scm_assign_regions(&region, 1, srcvm, newvm, dest_cnt, false);
 }
 EXPORT_SYMBOL_GPL(qcom_scm_assign_mem);
 
