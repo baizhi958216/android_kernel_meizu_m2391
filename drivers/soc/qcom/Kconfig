@@ -286,6 +286,13 @@ config QCOM_INLINE_CRYPTO_ENGINE
 	tristate
 	select QCOM_SCM
 
+config QCOM_SECURE_BUFFER
+	tristate "Qualcomm secure buffer VM assignments"
+	depends on ARM64 && OF && QCOM_SCM
+	help
+	  Transfer ownership of scatter-gather buffers to peripheral VMs using
+	  SCM, including secure video, camera and compute DSP buffers.
+
 config QCOM_KALAMA_HWKM
 	bool "Qualcomm Kalama UFS hardware-wrapped key protocol"
 	depends on QCOM_INLINE_CRYPTO_ENGINE && MAILBOX && OF
