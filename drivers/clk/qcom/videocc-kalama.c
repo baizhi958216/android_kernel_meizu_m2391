@@ -459,13 +459,56 @@ static struct clk_branch video_cc_mvs1c_clk = {
 	},
 };
 
-/*
- * video_cc_ahb_clk
- * video_cc_xo_clk
- * video_cc_sleep_clk
- */
+static struct clk_branch video_cc_ahb_clk = {
+	.halt_reg = 0x80f4,
+	.halt_check = BRANCH_HALT,
+	.clkr = {
+		.enable_reg = 0x80f4,
+		.enable_mask = BIT(0),
+		.hw.init = &(const struct clk_init_data){
+			.name = "video_cc_ahb_clk",
+			.parent_hws = (const struct clk_hw *[]){ &video_cc_ahb_clk_src.clkr.hw },
+			.num_parents = 1,
+			.ops = &clk_branch2_aon_ops,
+			.flags = CLK_SET_RATE_PARENT,
+		},
+	},
+};
+
+static struct clk_branch video_cc_xo_clk = {
+	.halt_reg = 0x8124,
+	.halt_check = BRANCH_HALT,
+	.clkr = {
+		.enable_reg = 0x8124,
+		.enable_mask = BIT(0),
+		.hw.init = &(const struct clk_init_data){
+			.name = "video_cc_xo_clk",
+			.parent_hws = (const struct clk_hw *[]){ &video_cc_xo_clk_src.clkr.hw },
+			.num_parents = 1,
+			.ops = &clk_branch2_aon_ops,
+			.flags = CLK_SET_RATE_PARENT,
+		},
+	},
+};
+
+static struct clk_branch video_cc_sleep_clk = {
+	.halt_reg = 0x8140,
+	.halt_check = BRANCH_HALT,
+	.clkr = {
+		.enable_reg = 0x8140,
+		.enable_mask = BIT(0),
+		.hw.init = &(const struct clk_init_data){
+			.name = "video_cc_sleep_clk",
+			.parent_hws = (const struct clk_hw *[]){ &video_cc_sleep_clk_src.clkr.hw },
+			.num_parents = 1,
+			.ops = &clk_branch2_aon_ops,
+			.flags = CLK_SET_RATE_PARENT,
+		},
+	},
+};
 
 static struct clk_regmap *video_cc_kalama_clocks[] = {
+	[VIDEO_CC_AHB_CLK] = &video_cc_ahb_clk.clkr,
 	[VIDEO_CC_AHB_CLK_SRC] = &video_cc_ahb_clk_src.clkr,
 	[VIDEO_CC_MVS0_CLK] = &video_cc_mvs0_clk.clkr,
 	[VIDEO_CC_MVS0_CLK_SRC] = &video_cc_mvs0_clk_src.clkr,
@@ -479,7 +522,9 @@ static struct clk_regmap *video_cc_kalama_clocks[] = {
 	[VIDEO_CC_MVS1C_DIV2_DIV_CLK_SRC] = &video_cc_mvs1c_div2_div_clk_src.clkr,
 	[VIDEO_CC_PLL0] = &video_cc_pll0.clkr,
 	[VIDEO_CC_PLL1] = &video_cc_pll1.clkr,
+	[VIDEO_CC_SLEEP_CLK] = &video_cc_sleep_clk.clkr,
 	[VIDEO_CC_SLEEP_CLK_SRC] = &video_cc_sleep_clk_src.clkr,
+	[VIDEO_CC_XO_CLK] = &video_cc_xo_clk.clkr,
 	[VIDEO_CC_XO_CLK_SRC] = &video_cc_xo_clk_src.clkr,
 };
 
