@@ -63,9 +63,15 @@ DEFINE_FREE(qcom_tzmem, void *, if (_T) qcom_tzmem_free(_T))
 phys_addr_t qcom_tzmem_to_phys(void *ptr);
 
 #if IS_ENABLED(CONFIG_QCOM_TZMEM_MODE_SHMBRIDGE)
+bool qcom_tzmem_shm_bridge_enabled(void);
 int qcom_tzmem_shm_bridge_create(phys_addr_t paddr, size_t size, u64 *handle);
 void qcom_tzmem_shm_bridge_delete(u64 handle);
 #else
+static inline bool qcom_tzmem_shm_bridge_enabled(void)
+{
+	return false;
+}
+
 static inline int qcom_tzmem_shm_bridge_create(phys_addr_t paddr,
 					       size_t size, u64 *handle)
 {

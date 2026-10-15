@@ -61,9 +61,9 @@ static int qcom_tzmem_init_area(struct qcom_tzmem_area *area)
 	return 0;
 }
 
-static void qcom_tzmem_cleanup_area(struct qcom_tzmem_area *area)
+static int qcom_tzmem_cleanup_area(struct qcom_tzmem_area *area)
 {
-
+	return 0;
 }
 
 #elif IS_ENABLED(CONFIG_QCOM_TZMEM_MODE_SHMBRIDGE)
@@ -74,6 +74,12 @@ static void qcom_tzmem_cleanup_area(struct qcom_tzmem_area *area)
 #define QCOM_SHM_BRIDGE_NUM_VM_SHIFT 9
 
 static bool qcom_tzmem_using_shm_bridge;
+
+bool qcom_tzmem_shm_bridge_enabled(void)
+{
+	return qcom_tzmem_using_shm_bridge;
+}
+EXPORT_SYMBOL_GPL(qcom_tzmem_shm_bridge_enabled);
 
 /* List of machines that are known to not support SHM bridge correctly. */
 static const char *const qcom_tzmem_blacklist[] = {
@@ -181,15 +187,30 @@ static int qcom_tzmem_init_area(struct qcom_tzmem_area *area)
 	return 0;
 }
 
-static void qcom_tzmem_cleanup_area(struct qcom_tzmem_area *area)
+static int qcom_tzmem_cleanup_area(struct qcom_tzmem_area *area)
 {
 	u64 *handle = area->priv;
+	int ret = 0;
 
-	qcom_tzmem_shm_bridge_delete(*handle);
+	if (qcom_tzmem_using_shm_bridge)
+		ret = qcom_scm_shm_bridge_delete(*handle);
 	kfree(handle);
+	return ret;
 }
 
 #endif /* CONFIG_QCOM_TZMEM_MODE_SHMBRIDGE */
+
+static void qcom_tzmem_release_area(struct qcom_tzmem_area *area)
+{
+	int ret = qcom_tzmem_cleanup_area(area);
+
+	if (ret) {
+		dev_err(qcom_tzmem_dev, "Unable to revoke SHM bridge, retaining %zu bytes: %d\n",
+			area->size, ret);
+		return;
+	}
+	dma_free_coherent(qcom_tzmem_dev, area->size, area->vaddr, area->paddr);
+}
 
 static int qcom_tzmem_pool_add_memory(struct qcom_tzmem_pool *pool,
 				      size_t size, gfp_t gfp)
@@ -216,10 +237,9 @@ static int qcom_tzmem_pool_add_memory(struct qcom_tzmem_pool *pool,
 	}
 
 	ret = gen_pool_add_virt(pool->genpool, (unsigned long)area->vaddr,
-				(phys_addr_t)area->paddr, size, -1);
+				(phys_addr_t)area->paddr, area->size, -1);
 	if (ret) {
-		dma_free_coherent(qcom_tzmem_dev, area->size,
-				  area->vaddr, area->paddr);
+		qcom_tzmem_release_area(area);
 		return ret;
 	}
 
@@ -326,9 +346,7 @@ void qcom_tzmem_pool_free(struct qcom_tzmem_pool *pool)
 
 	list_for_each_entry_safe(area, next, &pool->areas, list) {
 		list_del(&area->list);
-		qcom_tzmem_cleanup_area(area);
-		dma_free_coherent(qcom_tzmem_dev, area->size,
-				  area->vaddr, area->paddr);
+		qcom_tzmem_release_area(area);
 		kfree(area);
 	}
 
