@@ -132,6 +132,9 @@ struct rsc_drv {
 	wait_queue_head_t tcs_wait;
 	struct rpmh_ctrlr client;
 	struct device *dev;
+	struct clk *iface;
+	bool has_solver;
+	bool in_solver; /* protected by lock */
 	struct rsc_ver ver;
 	u32 *regs;
 };
@@ -144,5 +147,6 @@ void rpmh_rsc_write_next_wakeup(struct rsc_drv *drv);
 
 void rpmh_tx_done(const struct tcs_request *msg);
 int rpmh_flush(struct rpmh_ctrlr *ctrlr);
+int rpmh_flush_locked(struct rpmh_ctrlr *ctrlr);
 
 #endif /* __RPM_INTERNAL_H__ */

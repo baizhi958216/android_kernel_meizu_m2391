@@ -21,6 +21,8 @@ int rpmh_write_batch(const struct device *dev, enum rpmh_state state,
 		     const struct tcs_cmd *cmd, u32 *n);
 
 void rpmh_invalidate(const struct device *dev);
+int rpmh_write_sleep_and_wake(const struct device *dev);
+int rpmh_mode_solver_set(const struct device *dev, bool enable);
 
 #else
 

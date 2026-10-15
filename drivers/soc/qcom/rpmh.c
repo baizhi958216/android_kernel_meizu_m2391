@@ -236,7 +236,10 @@ int rpmh_write_async(const struct device *dev, enum rpmh_state state,
 		return ret;
 	}
 
-	return __rpmh_write(dev, state, rpm_msg);
+	ret = __rpmh_write(dev, state, rpm_msg);
+	if (ret)
+		kfree(rpm_msg);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(rpmh_write_async);
 
@@ -417,29 +420,12 @@ static int send_single(struct rpmh_ctrlr *ctrlr, enum rpmh_state state,
 	return rpmh_rsc_write_ctrl_data(ctrlr_to_drv(ctrlr), &rpm_msg.msg);
 }
 
-/**
- * rpmh_flush() - Flushes the buffered sleep and wake sets to TCSes
- *
- * @ctrlr: Controller making request to flush cached data
- *
- * Return:
- * * 0          - Success
- * * Error code - Otherwise
- */
-int rpmh_flush(struct rpmh_ctrlr *ctrlr)
+int rpmh_flush_locked(struct rpmh_ctrlr *ctrlr)
 {
 	struct cache_req *p;
 	int ret = 0;
 
-	lockdep_assert_irqs_disabled();
-
-	/*
-	 * Currently rpmh_flush() is only called when we think we're running
-	 * on the last processor.  If the lock is busy it means another
-	 * processor is up and it's better to abort than spin.
-	 */
-	if (!spin_trylock(&ctrlr->cache_lock))
-		return -EBUSY;
+	lockdep_assert_held(&ctrlr->cache_lock);
 
 	if (!ctrlr->dirty) {
 		pr_debug("Skipping flush, TCS has latest data.\n");
@@ -475,6 +461,33 @@ int rpmh_flush(struct rpmh_ctrlr *ctrlr)
 write_next_wakeup:
 	rpmh_rsc_write_next_wakeup(ctrlr_to_drv(ctrlr));
 exit:
+	return ret;
+}
+
+/**
+ * rpmh_flush() - Flushes the buffered sleep and wake sets to TCSes
+ *
+ * @ctrlr: Controller making request to flush cached data
+ *
+ * Return:
+ * * 0          - Success
+ * * Error code - Otherwise
+ */
+int rpmh_flush(struct rpmh_ctrlr *ctrlr)
+{
+	int ret;
+
+	lockdep_assert_irqs_disabled();
+
+	/*
+	 * Currently rpmh_flush() is only called when we think we're running
+	 * on the last processor.  If the lock is busy it means another
+	 * processor is up and it's better to abort than spin.
+	 */
+	if (!spin_trylock(&ctrlr->cache_lock))
+		return -EBUSY;
+
+	ret = rpmh_flush_locked(ctrlr);
 	spin_unlock(&ctrlr->cache_lock);
 	return ret;
 }

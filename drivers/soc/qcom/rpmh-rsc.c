@@ -8,6 +8,7 @@
 
 #include <linux/atomic.h>
 #include <linux/cpu_pm.h>
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -30,6 +31,7 @@
 #include <clocksource/arm_arch_timer.h>
 #include <soc/qcom/cmd-db.h>
 #include <soc/qcom/tcs.h>
+#include <soc/qcom/rpmh.h>
 #include <dt-bindings/soc/qcom,rpmh-rsc.h>
 
 #include "rpmh-internal.h"
@@ -472,8 +474,11 @@ skip:
 			enable_tcs_irq(drv, i, false);
 		spin_unlock(&drv->lock);
 		wake_up(&drv->tcs_wait);
-		if (req)
+		if (req) {
 			rpmh_tx_done(req);
+			if (drv->iface)
+				pm_runtime_put(drv->dev);
+		}
 	}
 
 	return IRQ_HANDLED;
@@ -642,7 +647,7 @@ static int claim_tcs_for_req(struct rsc_drv *drv, struct tcs_group *tcs,
 int rpmh_rsc_send_data(struct rsc_drv *drv, const struct tcs_request *msg)
 {
 	struct tcs_group *tcs;
-	int tcs_id;
+	int tcs_id = 0, ret;
 
 	might_sleep();
 
@@ -650,12 +655,26 @@ int rpmh_rsc_send_data(struct rsc_drv *drv, const struct tcs_request *msg)
 	if (IS_ERR(tcs))
 		return PTR_ERR(tcs);
 
+	if (drv->iface) {
+		ret = pm_runtime_resume_and_get(drv->dev);
+		if (ret < 0)
+			return ret;
+	}
+
 	spin_lock_irq(&drv->lock);
 
 	/* Wait forever for a free tcs. It better be there eventually! */
 	wait_event_lock_irq(drv->tcs_wait,
+			    drv->in_solver ||
 			    (tcs_id = claim_tcs_for_req(drv, tcs, msg)) >= 0,
 			    drv->lock);
+
+	if (drv->in_solver) {
+		spin_unlock_irq(&drv->lock);
+		if (drv->iface)
+			pm_runtime_put(drv->dev);
+		return -EBUSY;
+	}
 
 	tcs->req[tcs_id - tcs->offset] = msg;
 	set_bit(tcs_id, drv->tcs_in_use);
@@ -666,6 +685,9 @@ int rpmh_rsc_send_data(struct rsc_drv *drv, const struct tcs_request *msg)
 		 * cleaned from rpmh_flush() by invoking rpmh_rsc_invalidate()
 		 */
 		write_tcs_reg_sync(drv, drv->regs[RSC_DRV_CMD_ENABLE], tcs_id, 0);
+		spin_lock(&drv->client.cache_lock);
+		drv->client.dirty = true;
+		spin_unlock(&drv->client.cache_lock);
 		enable_tcs_irq(drv, tcs_id, true);
 	}
 	spin_unlock_irq(&drv->lock);
@@ -789,6 +811,54 @@ static bool rpmh_rsc_ctrlr_is_busy(struct rsc_drv *drv)
 
 	return set < max;
 }
+
+/* The display coordinator programs the solver before announcing its mode. */
+int rpmh_mode_solver_set(const struct device *dev, bool enable)
+{
+	struct rsc_drv *drv = dev_get_drvdata(dev->parent);
+	unsigned long flags;
+	int ret = 0;
+
+	if (!drv || !drv->has_solver)
+		return -EOPNOTSUPP;
+	spin_lock_irqsave(&drv->lock, flags);
+	if (enable && rpmh_rsc_ctrlr_is_busy(drv))
+		ret = -EBUSY;
+	else
+		drv->in_solver = enable;
+	spin_unlock_irqrestore(&drv->lock, flags);
+	wake_up(&drv->tcs_wait);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(rpmh_mode_solver_set);
+
+int rpmh_write_sleep_and_wake(const struct device *dev)
+{
+	struct rsc_drv *drv = dev_get_drvdata(dev->parent);
+	unsigned long flags;
+	int ret;
+
+	if (!drv || !drv->has_solver)
+		return -EOPNOTSUPP;
+	if (drv->iface) {
+		ret = pm_runtime_resume_and_get(drv->dev);
+		if (ret < 0)
+			return ret;
+	}
+	spin_lock_irqsave(&drv->lock, flags);
+	if (rpmh_rsc_ctrlr_is_busy(drv)) {
+		ret = -EBUSY;
+	} else {
+		spin_lock(&drv->client.cache_lock);
+		ret = rpmh_flush_locked(&drv->client);
+		spin_unlock(&drv->client.cache_lock);
+	}
+	spin_unlock_irqrestore(&drv->lock, flags);
+	if (drv->iface)
+		pm_runtime_put(drv->dev);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(rpmh_write_sleep_and_wake);
 
 /**
  * rpmh_rsc_write_next_wakeup() - Write next wakeup in CONTROL_TCS.
@@ -1065,12 +1135,34 @@ static void rpmh_remove_cpu_notifier(void *data)
 	cpu_pm_unregister_notifier(data);
 }
 
+static int rpmh_rsc_runtime_resume(struct device *dev)
+{
+	struct rsc_drv *drv = dev_get_drvdata(dev);
+
+	return clk_prepare_enable(drv->iface);
+}
+
+static int rpmh_rsc_runtime_suspend(struct device *dev)
+{
+	struct rsc_drv *drv = dev_get_drvdata(dev);
+
+	clk_disable_unprepare(drv->iface);
+	return 0;
+}
+
+static DEFINE_RUNTIME_DEV_PM_OPS(rpmh_rsc_pm_ops, rpmh_rsc_runtime_suspend,
+				 rpmh_rsc_runtime_resume, NULL);
+
+DEFINE_FREE(rpmh_put_probe_vote, struct device *, if (_T) pm_runtime_put_sync(_T));
+
 static int rpmh_rsc_probe(struct platform_device *pdev)
 {
 	struct device_node *dn = pdev->dev.of_node;
 	struct device_node *nested __free(device_node) = NULL;
 	struct device_node *channel __free(device_node) = NULL;
 	struct device *client_parent = &pdev->dev;
+	struct device *probe_vote __free(rpmh_put_probe_vote) = NULL;
+	bool display = of_property_match_string(dn, "label", "disp_rsc") >= 0;
 	struct rsc_drv *drv;
 	char drv_id[10] = {0};
 	int ret, irq;
@@ -1090,20 +1182,30 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	if (!drv)
 		return -ENOMEM;
 
-	/*
-	 * The Kalama AP owns one DRV in a bank of three. Display and camera
-	 * controllers have independent clocks and a different channel layout.
-	 */
+	drv->dev = &pdev->dev;
+	platform_set_drvdata(pdev, drv);
 	if (of_property_present(dn, "qcom,drv-count")) {
 		u32 count;
 
-		if (of_property_match_string(dn, "label", "apps_rsc") < 0 ||
-		    of_property_present(dn, "clocks") ||
-		    of_property_present(dn, "qcom,hw-channel"))
+		if (of_property_present(dn, "qcom,hw-channel"))
+			return -EOPNOTSUPP;
+		if (!display && of_property_match_string(dn, "label", "apps_rsc") < 0)
 			return -EOPNOTSUPP;
 		if (of_property_read_u32(dn, "qcom,drv-count", &count) ||
-		    count != 3 || of_get_available_child_count(dn) != 1)
+		    count != (display ? 1 : 3) || of_get_available_child_count(dn) != 1)
 			return -EINVAL;
+		if (display) {
+			drv->iface = devm_clk_get(&pdev->dev, NULL);
+			if (IS_ERR(drv->iface))
+				return dev_err_probe(&pdev->dev, PTR_ERR(drv->iface), "RSC bus clock\n");
+			ret = devm_pm_runtime_enable(&pdev->dev);
+			if (ret)
+				return ret;
+			ret = pm_runtime_resume_and_get(&pdev->dev);
+			if (ret < 0)
+				return ret;
+			probe_vote = &pdev->dev;
+		}
 		nested = of_get_next_available_child(dn, NULL);
 		if (!of_node_name_eq(nested, "drv"))
 			return -EINVAL;
@@ -1122,7 +1224,7 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	if (nested && drv->id >= 3)
+	if (nested && drv->id != (display ? 0 : 2))
 		return -EINVAL;
 
 	drv->name = of_get_property(dn, "label", NULL);
@@ -1176,6 +1278,9 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	solver_config = readl_relaxed(drv->base + drv->regs[DRV_SOLVER_CONFIG]);
 	solver_config &= DRV_HW_SOLVER_MASK << DRV_HW_SOLVER_SHIFT;
 	solver_config = solver_config >> DRV_HW_SOLVER_SHIFT;
+	drv->has_solver = solver_config;
+	if (display && !drv->has_solver)
+		return dev_err_probe(&pdev->dev, -ENODEV, "display solver unavailable\n");
 	if (!solver_config || (nested && pdev->dev.pm_domain)) {
 		if (pdev->dev.pm_domain) {
 			ret = rpmh_rsc_pd_attach(drv, &pdev->dev);
@@ -1226,6 +1331,7 @@ static struct platform_driver rpmh_driver = {
 	.driver = {
 		  .name = "rpmh",
 		  .of_match_table = rpmh_drv_match,
+		  .pm = pm_ptr(&rpmh_rsc_pm_ops),
 		  .suppress_bind_attrs = true,
 	},
 };
