@@ -33,7 +33,7 @@ BOARD_KERNEL_IMAGE_NAME := Image
 BOARD_KERNEL_BASE := 0x00000000
 BOARD_KERNEL_CMDLINE := video=vfb:640x400,bpp=32,memsize=3072000 \
     qcom_geni_serial.con_enabled=1 nosoftlockup page_poison=1 \
-    sysrq_always_enabled bootconfig
+    sysrq_always_enabled firmware_class.path=/vendor/firmware bootconfig
 BOARD_BOOTCONFIG := androidboot.hardware=qcom androidboot.memcg=1 \
     androidboot.usbcontroller=a600000.dwc3
 BOARD_MKBOOTIMG_ARGS += --header_version 4 --kernel_offset 0x00008000 \
