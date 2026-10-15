@@ -41,6 +41,13 @@ config QCOM_TZMEM_MODE_SHMBRIDGE
 
 endchoice
 
+config QCOM_KALAMA_SHMBRIDGE
+	tristate "Kalama QTEE shared-memory bridge"
+	depends on QCOM_SCM && QCOM_TZMEM_MODE_SHMBRIDGE
+	help
+	  Provide the firmware-authorized shared memory pool and per-VM
+	  DMA buffer permissions for Kalama secure applications.
+
 config QCOM_QSEECOM
 	bool "Qualcomm QSEECOM interface driver"
 	depends on QCOM_SCM=y

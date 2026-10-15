@@ -13,3 +13,4 @@ obj-$(CONFIG_QCOM_TZMEM)	+= qcom_tzmem.o
 endif
 obj-$(CONFIG_QCOM_QSEECOM)	+= qcom_qseecom.o
 obj-$(CONFIG_QCOM_QSEECOM_UEFISECAPP) += qcom_qseecom_uefisecapp.o
+obj-$(CONFIG_QCOM_KALAMA_SHMBRIDGE) += kalama-shmbridge.o
