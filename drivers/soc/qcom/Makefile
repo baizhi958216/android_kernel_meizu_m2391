@@ -48,3 +48,4 @@ obj-$(CONFIG_QCOM_UBWC_CONFIG) += ubwc_config.o
 
 obj-$(CONFIG_MSM_QBT_HANDLER) += qbt_handler.o
 obj-$(CONFIG_QCOM_SECURE_BUFFER) += secure_buffer.o
+obj-y += mem_buf/

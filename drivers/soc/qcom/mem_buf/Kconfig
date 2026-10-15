@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config QCOM_MEM_BUF_DEV
+	tristate "Qualcomm Kalama DMA-BUF VM permissions"
+	depends on DMA_SHARED_BUFFER && QCOM_SECURE_BUFFER && GUNYAH_KALAMA_RM
+	depends on ZONE_DEVICE
+	help
+	  Track buffer ACLs and transfer memory between HLOS, peripheral VMs
+	  and Gunyah guests through SCM and the Resource Manager.
