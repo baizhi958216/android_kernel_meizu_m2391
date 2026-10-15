@@ -66,3 +66,12 @@ config GUNYAH_QCOM_TRUSTED_VM
 	  firmware.
 
 	  Say Y/M here if unsure and you want to support QTVMs.
+
+config GUNYAH_KALAMA_RM
+	tristate "Kalama firmware resource manager and trusted peripheral lending"
+	depends on ARM64 && OF && ARCH_QCOM
+	help
+	  Handle the original RM 1.0 message queues, doorbells, virtual IRQs
+	  and memory parcels exposed by the Kalama boot firmware. The trusted
+	  touch client uses these services to transfer its controller and IRQ
+	  between the phone OS and the trusted VM.
