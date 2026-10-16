@@ -38,6 +38,15 @@ struct gh_irq_entry {
 static struct gh_irq_entry gh_irq_entries[GH_IRQ_LABEL_MAX];
 static DEFINE_SPINLOCK(gh_irq_lend_lock);
 
+static void gh_irq_notify(struct gh_irq_entry *entry, unsigned long cmd,
+			  enum gh_irq_label label)
+{
+	if (entry->v2_handle)
+		entry->v2_handle(entry->data, cmd, label);
+	else
+		entry->handle(entry->data, label);
+}
+
 static int gh_irq_released_accepted_nb_handler(struct notifier_block *this,
 				      unsigned long cmd, void *data)
 {
@@ -66,7 +75,7 @@ static int gh_irq_released_accepted_nb_handler(struct notifier_block *this,
 				entry->state = GH_IRQ_STATE_RELEASED;
 				spin_unlock_irqrestore(&gh_irq_lend_lock,
 									flags);
-				entry->v2_handle(entry->data, cmd, label);
+				gh_irq_notify(entry, cmd, label);
 				return NOTIFY_OK;
 			}
 
@@ -77,7 +86,7 @@ static int gh_irq_released_accepted_nb_handler(struct notifier_block *this,
 				entry->state = GH_IRQ_STATE_ACCEPTED;
 				spin_unlock_irqrestore(&gh_irq_lend_lock,
 									flags);
-				entry->v2_handle(entry->data, cmd, label);
+				gh_irq_notify(entry, cmd, label);
 				return NOTIFY_OK;
 			}
 
@@ -130,7 +139,7 @@ static int gh_irq_lent_nb_handler(struct notifier_block *this,
 			spin_unlock_irqrestore(&gh_irq_lend_lock,
 					       flags);
 
-			entry->v2_handle(entry->data, cmd, label);
+			gh_irq_notify(entry, cmd, label);
 
 			return NOTIFY_OK;
 		}
@@ -155,14 +164,15 @@ static struct notifier_block gh_irq_lent_nb = {
  * Returns 0 on success also the handle corresponding to Linux IRQ#.
  * Returns < 0 on error
  */
-int gh_irq_lend_v2(enum gh_irq_label label, enum gh_vm_names name,
-		int irq, gh_irq_handle_fn_v2 cb_handle, void *data)
+static int gh_irq_do_lend(enum gh_irq_label label, enum gh_vm_names name,
+			  int irq, gh_irq_handle_fn legacy, gh_irq_handle_fn_v2 cb_handle,
+			  void *data)
 {
 	int ret, virq;
 	unsigned long flags;
 	struct gh_irq_entry *entry;
 
-	if (label >= GH_IRQ_LABEL_MAX || !cb_handle)
+	if ((unsigned int)label >= GH_IRQ_LABEL_MAX || (!legacy && !cb_handle))
 		return -EINVAL;
 
 	entry = &gh_irq_entries[label];
@@ -183,12 +193,24 @@ int gh_irq_lend_v2(enum gh_irq_label label, enum gh_vm_names name,
 		return ret;
 	}
 
+	entry->handle = legacy;
 	entry->v2_handle = cb_handle;
 	entry->data = data;
 	entry->state = GH_IRQ_STATE_WAIT_RELEASE_OR_ACCEPT;
 	spin_unlock_irqrestore(&gh_irq_lend_lock, flags);
 
-	return gh_rm_vm_irq_lend(entry->vmid, virq, label, &entry->virq_handle);
+	ret = gh_rm_vm_irq_lend(entry->vmid, virq, label, &entry->virq_handle);
+	if (ret) {
+		spin_lock_irqsave(&gh_irq_lend_lock, flags);
+		entry->state = GH_IRQ_STATE_NONE;
+		spin_unlock_irqrestore(&gh_irq_lend_lock, flags);
+	}
+	return ret;
+}
+int gh_irq_lend_v2(enum gh_irq_label label, enum gh_vm_names name,
+		int irq, gh_irq_handle_fn_v2 cb_handle, void *data)
+{
+	return gh_irq_do_lend(label, name, irq, NULL, cb_handle, data);
 }
 EXPORT_SYMBOL(gh_irq_lend_v2);
 
@@ -206,15 +228,7 @@ EXPORT_SYMBOL(gh_irq_lend_v2);
 int gh_irq_lend(enum gh_irq_label label, enum gh_vm_names name,
 		int irq, gh_irq_handle_fn cb_handle, void *data)
 {
-	struct gh_irq_entry *entry;
-
-	if (label >= GH_IRQ_LABEL_MAX || !cb_handle)
-		return -EINVAL;
-
-	entry = &gh_irq_entries[label];
-	entry->handle = cb_handle;
-
-	return 0;
+	return gh_irq_do_lend(label, name, irq, cb_handle, NULL, data);
 }
 EXPORT_SYMBOL(gh_irq_lend);
 
@@ -228,7 +242,7 @@ int gh_irq_lend_notify(enum gh_irq_label label)
 {
 	struct gh_irq_entry *entry;
 
-	if (label >= GH_IRQ_LABEL_MAX)
+	if ((unsigned int)label >= GH_IRQ_LABEL_MAX)
 		return -EINVAL;
 
 	entry = &gh_irq_entries[label];
@@ -254,7 +268,7 @@ int gh_irq_reclaim(enum gh_irq_label label)
 	int ret;
 	struct gh_irq_entry *entry;
 
-	if (label >= GH_IRQ_LABEL_MAX)
+	if ((unsigned int)label >= GH_IRQ_LABEL_MAX)
 		return -EINVAL;
 
 	entry = &gh_irq_entries[label];
@@ -277,13 +291,13 @@ EXPORT_SYMBOL(gh_irq_reclaim);
  * @on_lend: callback to invoke when other VM lends the interrupt
  * @data: Argument to pass to on_lend
  */
-int gh_irq_wait_for_lend_v2(enum gh_irq_label label, enum gh_vm_names name,
-			 gh_irq_handle_fn_v2 on_lend, void *data)
+static int gh_irq_do_wait(enum gh_irq_label label, enum gh_vm_names name,
+			  gh_irq_handle_fn legacy, gh_irq_handle_fn_v2 on_lend, void *data)
 {
 	unsigned long flags;
 	struct gh_irq_entry *entry;
 
-	if (label >= GH_IRQ_LABEL_MAX || !on_lend)
+	if ((unsigned int)label >= GH_IRQ_LABEL_MAX || (!legacy && !on_lend))
 		return -EINVAL;
 
 	entry = &gh_irq_entries[label];
@@ -295,12 +309,18 @@ int gh_irq_wait_for_lend_v2(enum gh_irq_label label, enum gh_vm_names name,
 	}
 
 	entry->vm_name = name;
+	entry->handle = legacy;
 	entry->v2_handle = on_lend;
 	entry->data = data;
 	entry->state = GH_IRQ_STATE_WAIT_LEND;
 	spin_unlock_irqrestore(&gh_irq_lend_lock, flags);
 
 	return 0;
+}
+int gh_irq_wait_for_lend_v2(enum gh_irq_label label, enum gh_vm_names name,
+			 gh_irq_handle_fn_v2 on_lend, void *data)
+{
+	return gh_irq_do_wait(label, name, NULL, on_lend, data);
 }
 EXPORT_SYMBOL(gh_irq_wait_for_lend_v2);
 
@@ -314,7 +334,7 @@ EXPORT_SYMBOL(gh_irq_wait_for_lend_v2);
 int gh_irq_wait_for_lend(enum gh_irq_label label, enum gh_vm_names name,
 			 gh_irq_handle_fn on_lend, void *data)
 {
-	return 0;
+	return gh_irq_do_wait(label, name, on_lend, NULL, data);
 }
 EXPORT_SYMBOL(gh_irq_wait_for_lend);
 
@@ -335,7 +355,7 @@ int gh_irq_accept(enum gh_irq_label label, int irq, int type)
 	struct gh_irq_entry *entry;
 	int virq;
 
-	if (label >= GH_IRQ_LABEL_MAX)
+	if ((unsigned int)label >= GH_IRQ_LABEL_MAX)
 		return -EINVAL;
 
 	entry = &gh_irq_entries[label];
@@ -375,7 +395,7 @@ int gh_irq_accept_notify(enum gh_irq_label label)
 {
 	struct gh_irq_entry *entry;
 
-	if (label >= GH_IRQ_LABEL_MAX)
+	if ((unsigned int)label >= GH_IRQ_LABEL_MAX)
 		return -EINVAL;
 
 	entry = &gh_irq_entries[label];
@@ -399,7 +419,7 @@ int gh_irq_release(enum gh_irq_label label)
 	int ret;
 	struct gh_irq_entry *entry;
 
-	if (label >= GH_IRQ_LABEL_MAX)
+	if ((unsigned int)label >= GH_IRQ_LABEL_MAX)
 		return -EINVAL;
 
 	entry = &gh_irq_entries[label];
@@ -418,7 +438,7 @@ int gh_irq_release_notify(enum gh_irq_label label)
 {
 	struct gh_irq_entry *entry;
 
-	if (label >= GH_IRQ_LABEL_MAX)
+	if ((unsigned int)label >= GH_IRQ_LABEL_MAX)
 		return -EINVAL;
 
 	entry = &gh_irq_entries[label];
