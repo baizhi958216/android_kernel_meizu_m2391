@@ -370,6 +370,10 @@ bool mem_buf_vmperm_can_mmap(struct mem_buf_vmperm *vmperm, struct vm_area_struc
 	if (!(vmperm->current_vm_perms & PERM_EXEC) &&
 		vma->vm_flags & VM_EXEC)
 		goto unlock;
+	if (!(vmperm->current_vm_perms & PERM_WRITE))
+		vm_flags_clear(vma, VM_MAYWRITE);
+	if (!(vmperm->current_vm_perms & PERM_EXEC))
+		vm_flags_clear(vma, VM_MAYEXEC);
 	ret = true;
 unlock:
 	mutex_unlock(&vmperm->lock);
@@ -693,4 +697,3 @@ err_vmids:
 	return ret;
 }
 EXPORT_SYMBOL(mem_buf_dma_buf_copy_vmperm);
-

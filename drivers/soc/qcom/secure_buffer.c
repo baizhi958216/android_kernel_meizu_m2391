@@ -21,6 +21,12 @@ struct secure_buffer_acl {
 static bool secure_buffer_ready;
 static bool vmid_cp_camera_preview_ro;
 
+bool msm_secure_buffer_ready(void)
+{
+	return smp_load_acquire(&secure_buffer_ready);
+}
+EXPORT_SYMBOL_GPL(msm_secure_buffer_ready);
+
 static int secure_buffer_acl_init(struct secure_buffer_acl *acl,
 		const u32 *sources, int nr_sources, const int *dest,
 		const int *perms, int nr_dest)

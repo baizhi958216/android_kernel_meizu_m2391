@@ -23,7 +23,7 @@ static struct class *mem_buf_vm_class;
  */
 static DEFINE_XARRAY_ALLOC(mem_buf_vm_minors);
 static DEFINE_XARRAY(mem_buf_vms);
-int current_vmid;
+int current_vmid = VMID_INVAL;
 
 #define PERIPHERAL_VM(_uname, _lname)		\
 static struct mem_buf_vm vm_ ## _lname = {	\
@@ -98,7 +98,7 @@ struct mem_buf_vm *pdata_array[] = {
 
 int mem_buf_current_vmid(void)
 {
-	return current_vmid;
+	return smp_load_acquire(&mem_buf_dev) ? current_vmid : -EPROBE_DEFER;
 }
 EXPORT_SYMBOL(mem_buf_current_vmid);
 

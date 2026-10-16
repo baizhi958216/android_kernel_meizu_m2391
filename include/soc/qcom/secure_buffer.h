@@ -49,6 +49,7 @@ enum vmid {
 #define PERM_EXEC			0x1
 
 
+bool msm_secure_buffer_ready(void);
 int hyp_assign_table(struct sg_table *table,
 			u32 *source_vm_list, int source_nelems,
 			int *dest_vmids, int *dest_perms,

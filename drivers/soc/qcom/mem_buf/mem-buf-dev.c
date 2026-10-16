@@ -106,6 +106,9 @@ static int mem_buf_probe(struct platform_device *pdev)
 	u64 dma_mask = IS_ENABLED(CONFIG_ARM64) ? DMA_BIT_MASK(64) :
 		DMA_BIT_MASK(32);
 
+	if (!msm_secure_buffer_ready())
+		return -EPROBE_DEFER;
+
 	if (of_property_match_string(dev->of_node, "qcom,mem-buf-capabilities",
 				     "supplier") >= 0)
 		mem_buf_capability = MEM_BUF_CAP_SUPPLIER;
@@ -132,13 +135,13 @@ static int mem_buf_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	mem_buf_dev = dev;
+	smp_store_release(&mem_buf_dev, dev);
 	return 0;
 }
 
 static void mem_buf_remove(struct platform_device *pdev)
 {
-	mem_buf_dev = NULL;
+	smp_store_release(&mem_buf_dev, NULL);
 	mem_buf_vm_exit();
 }
 
