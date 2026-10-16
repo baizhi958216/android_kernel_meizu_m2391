@@ -2188,27 +2188,13 @@ static int qcom_scm_qseecom_init(struct qcom_scm *scm)
 
 #endif /* CONFIG_QCOM_QSEECOM */
 
-/**
- * qcom_scm_qtee_invoke_smc() - Invoke a QTEE object.
- * @inbuf: start address of memory area used for inbound buffer.
- * @inbuf_size: size of the memory area used for inbound buffer.
- * @outbuf: start address of memory area used for outbound buffer.
- * @outbuf_size: size of the memory area used for outbound buffer.
- * @result: result of QTEE object invocation.
- * @response_type: response type returned by QTEE.
- *
- * @response_type determines how the contents of @inbuf and @outbuf
- * should be processed.
- *
- * Return: On success, return 0 or <0 on failure.
- */
-int qcom_scm_qtee_invoke_smc(phys_addr_t inbuf, size_t inbuf_size,
+static int qcom_scm_qtee_invoke(u32 cmd, phys_addr_t inbuf, size_t inbuf_size,
 			     phys_addr_t outbuf, size_t outbuf_size,
 			     u64 *result, u64 *response_type)
 {
 	struct qcom_scm_desc desc = {
 		.svc = QCOM_SCM_SVC_SMCINVOKE,
-		.cmd = QCOM_SCM_SMCINVOKE_INVOKE,
+		.cmd = cmd,
 		.owner = ARM_SMCCC_OWNER_TRUSTED_OS,
 		.args[0] = inbuf,
 		.args[1] = inbuf_size,
@@ -2232,7 +2218,39 @@ int qcom_scm_qtee_invoke_smc(phys_addr_t inbuf, size_t inbuf_size,
 
 	return 0;
 }
+
+/**
+ * qcom_scm_qtee_invoke_smc() - Invoke a QTEE object.
+ * @inbuf: start address of memory area used for inbound buffer.
+ * @inbuf_size: size of the memory area used for inbound buffer.
+ * @outbuf: start address of memory area used for outbound buffer.
+ * @outbuf_size: size of the memory area used for outbound buffer.
+ * @result: result of QTEE object invocation.
+ * @response_type: response type returned by QTEE.
+ *
+ * @response_type determines how the contents of @inbuf and @outbuf
+ * should be processed.
+ *
+ * Return: On success, return 0 or <0 on failure.
+ */
+int qcom_scm_qtee_invoke_smc(phys_addr_t inbuf, size_t inbuf_size,
+			     phys_addr_t outbuf, size_t outbuf_size,
+			     u64 *result, u64 *response_type)
+{
+	return qcom_scm_qtee_invoke(QCOM_SCM_SMCINVOKE_INVOKE, inbuf, inbuf_size,
+				    outbuf, outbuf_size, result, response_type);
+}
 EXPORT_SYMBOL(qcom_scm_qtee_invoke_smc);
+
+int qcom_scm_qtee_invoke_smc_legacy(phys_addr_t inbuf, size_t inbuf_size,
+			     phys_addr_t outbuf, size_t outbuf_size,
+			     u64 *result, u64 *response_type)
+{
+	return qcom_scm_qtee_invoke(QCOM_SCM_SMCINVOKE_INVOKE_LEGACY, inbuf, inbuf_size,
+				    outbuf, outbuf_size, result, response_type);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_qtee_invoke_smc_legacy);
+
 
 /**
  * qcom_scm_qtee_callback_response() - Submit response for callback request.
