@@ -1017,6 +1017,39 @@ int qcom_scm_mem_protect_video_var(u32 cp_start, u32 cp_size,
 }
 EXPORT_SYMBOL_GPL(qcom_scm_mem_protect_video_var);
 
+int qcom_scm_mem_protect_sd_ctrl(u32 devid, const u32 *sids, size_t nr_sids, u32 vmid)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_MP,
+		.cmd = QCOM_SCM_MP_SD_CTRL,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.arginfo = QCOM_SCM_ARGS(4, QCOM_SCM_VAL, QCOM_SCM_RW,
+					 QCOM_SCM_VAL, QCOM_SCM_VAL),
+		.args[0] = devid,
+		.args[3] = vmid,
+	};
+	struct qcom_scm_res res;
+	__le32 *list __free(qcom_tzmem) = NULL;
+	size_t i, bytes;
+	int ret;
+
+	if (!qcom_scm_is_available())
+		return -EPROBE_DEFER;
+	if (!nr_sids || !sids || check_mul_overflow(nr_sids, sizeof(*list), &bytes) ||
+	    bytes > SIZE_MAX - (PAGE_SIZE - 1))
+		return -EINVAL;
+	list = qcom_tzmem_alloc(__scm->mempool, bytes, GFP_KERNEL);
+	if (!list)
+		return -ENOMEM;
+	for (i = 0; i < nr_sids; i++)
+		list[i] = cpu_to_le32(sids[i]);
+	desc.args[1] = qcom_tzmem_to_phys(list);
+	desc.args[2] = bytes;
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	return ret ?: res.result[0];
+}
+EXPORT_SYMBOL_GPL(qcom_scm_mem_protect_sd_ctrl);
+
 static int __qcom_scm_assign_mem(struct device *dev, phys_addr_t mem_region,
 				 size_t mem_sz, phys_addr_t src, size_t src_sz,
 				 phys_addr_t dest, size_t dest_sz)
