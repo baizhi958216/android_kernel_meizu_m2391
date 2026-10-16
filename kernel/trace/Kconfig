@@ -128,6 +128,18 @@ config BUILDTIME_MCOUNT_SORT
 config TRACER_MAX_TRACE
 	bool
 
+config IPC_LOGGING
+	tristate "Qualcomm IPC driver event logs"
+	depends on ARM64 && DEBUG_FS
+	help
+	  Keep per-device circular logs for Qualcomm IPC clients and expose
+	  their decoded records and continuous streams through debugfs.
+
+config IPC_LOG_MINIDUMP_BUFFERS
+	int "Maximum IPC log regions in the Qualcomm minidump"
+	depends on IPC_LOGGING && QCOM_MINIDUMP
+	default 16
+
 config TRACE_CLOCK
 	bool
 
