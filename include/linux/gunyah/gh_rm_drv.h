@@ -347,6 +347,17 @@ int gh_rm_vm_irq_reclaim(gh_virq_handle_t virq_handle);
 
 int gh_rm_set_virtio_mmio_cb(gh_virtio_mmio_cb_t fnptr);
 void gh_rm_unset_virtio_mmio_cb(void);
+struct gh_rm_sched_ops {
+	gh_wdog_manage_cb_t wdog_manage;
+	gh_vcpu_affinity_set_cb_t vcpu_affinity_set;
+	gh_vcpu_affinity_reset_cb_t vcpu_affinity_reset;
+	gh_vpm_grp_set_cb_t vpm_grp_set;
+	gh_vpm_grp_reset_cb_t vpm_grp_reset;
+	gh_all_res_populated_cb_t all_res_populated;
+};
+
+int gh_rm_register_sched_ops(const struct gh_rm_sched_ops *ops);
+void gh_rm_unregister_sched_ops(const struct gh_rm_sched_ops *ops);
 int gh_rm_set_wdog_manage_cb(gh_wdog_manage_cb_t fnptr);
 int gh_rm_set_vcpu_affinity_cb(gh_vcpu_affinity_set_cb_t fnptr);
 int gh_rm_reset_vcpu_affinity_cb(gh_vcpu_affinity_reset_cb_t fnptr);

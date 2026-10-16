@@ -75,3 +75,12 @@ config GUNYAH_KALAMA_RM
 	  and memory parcels exposed by the Kalama boot firmware. The trusted
 	  touch client uses these services to transfer its controller and IRQ
 	  between the phone OS and the trusted VM.
+
+config GUNYAH_KALAMA_VM
+	tristate "Kalama secure VM userspace interface"
+	depends on GUNYAH_KALAMA_RM && QCOM_MDT_LOADER && QCOM_SECURE_BUFFER
+	depends on EVENTFD && SYSFS
+	select SYS_HYPERVISOR
+	help
+	  Load the firmware specified by Kalama's secure VM device tree and
+	  expose its virtio backend and vCPU scheduling ABI to the vendor VMM.

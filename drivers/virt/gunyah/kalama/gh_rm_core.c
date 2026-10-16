@@ -88,6 +88,7 @@ static struct workqueue_struct *gh_rm_notif_wq;
 static bool gh_rm_status_registered;
 static struct gh_msgq_desc *gh_rm_msgq_desc;
 static gh_virtio_mmio_cb_t gh_virtio_mmio_fn;
+static DECLARE_RWSEM(gh_sched_lock);
 static gh_wdog_manage_cb_t gh_wdog_manage_fn;
 static gh_vcpu_affinity_set_cb_t gh_vcpu_affinity_set_fn;
 static gh_vcpu_affinity_reset_cb_t gh_vcpu_affinity_reset_fn;
@@ -894,7 +895,7 @@ EXPORT_SYMBOL(gh_rm_get_vm_id_info);
  * The function encodes the error codes via ERR_PTR. Hence, the caller is
  * responsible to check it with IS_ERR_OR_NULL().
  */
-int gh_rm_populate_hyp_res(gh_vmid_t vmid, const char *vm_name)
+static int __gh_rm_populate_hyp_res(gh_vmid_t vmid, const char *vm_name)
 {
 	struct gh_vm_get_hyp_res_resp_entry *res_entries = NULL;
 	int linux_irq, ret = 0;
@@ -1017,6 +1018,15 @@ out:
 	kfree(res_entries);
 	return ret;
 }
+int gh_rm_populate_hyp_res(gh_vmid_t vmid, const char *vm_name)
+{
+	int ret;
+
+	down_read(&gh_sched_lock);
+	ret = __gh_rm_populate_hyp_res(vmid, vm_name);
+	up_read(&gh_sched_lock);
+	return ret;
+}
 EXPORT_SYMBOL(gh_rm_populate_hyp_res);
 
 static void
@@ -1035,7 +1045,7 @@ gh_rm_put_irq(struct gh_vm_get_hyp_res_resp_entry *res_entry, int irq)
  *
  * Returns 0 on success and a negative error code upon failure.
  */
-int gh_rm_unpopulate_hyp_res(gh_vmid_t vmid, const char *vm_name)
+static int __gh_rm_unpopulate_hyp_res(gh_vmid_t vmid, const char *vm_name)
 {
 	struct gh_vm_get_hyp_res_resp_entry *res_entries = NULL;
 	gh_label_t label;
@@ -1104,6 +1114,15 @@ out:
 	kfree(res_entries);
 	return ret;
 }
+int gh_rm_unpopulate_hyp_res(gh_vmid_t vmid, const char *vm_name)
+{
+	int ret;
+
+	down_read(&gh_sched_lock);
+	ret = __gh_rm_unpopulate_hyp_res(vmid, vm_name);
+	up_read(&gh_sched_lock);
+	return ret;
+}
 EXPORT_SYMBOL(gh_rm_unpopulate_hyp_res);
 
 /**
@@ -1167,6 +1186,7 @@ int gh_rm_set_wdog_manage_cb(gh_wdog_manage_cb_t fnptr)
 	if (!fnptr)
 		return -EINVAL;
 
+	guard(rwsem_write)(&gh_sched_lock);
 	if (gh_wdog_manage_fn)
 		return -EBUSY;
 
@@ -1192,6 +1212,7 @@ int gh_rm_set_vcpu_affinity_cb(gh_vcpu_affinity_set_cb_t fnptr)
 	if (!fnptr)
 		return -EINVAL;
 
+	guard(rwsem_write)(&gh_sched_lock);
 	if (gh_vcpu_affinity_set_fn)
 		return -EBUSY;
 
@@ -1217,6 +1238,7 @@ int gh_rm_reset_vcpu_affinity_cb(gh_vcpu_affinity_reset_cb_t fnptr)
 	if (!fnptr)
 		return -EINVAL;
 
+	guard(rwsem_write)(&gh_sched_lock);
 	if (gh_vcpu_affinity_reset_fn)
 		return -EBUSY;
 
@@ -1242,6 +1264,7 @@ int gh_rm_set_vpm_grp_cb(gh_vpm_grp_set_cb_t fnptr)
 	if (!fnptr)
 		return -EINVAL;
 
+	guard(rwsem_write)(&gh_sched_lock);
 	if (gh_vpm_grp_set_fn)
 		return -EBUSY;
 
@@ -1267,6 +1290,7 @@ int gh_rm_reset_vpm_grp_cb(gh_vpm_grp_reset_cb_t fnptr)
 	if (!fnptr)
 		return -EINVAL;
 
+	guard(rwsem_write)(&gh_sched_lock);
 	if (gh_vpm_grp_reset_fn)
 		return -EBUSY;
 
@@ -1292,6 +1316,7 @@ int gh_rm_all_res_populated_cb(gh_all_res_populated_cb_t fnptr)
 	if (!fnptr)
 		return -EINVAL;
 
+	guard(rwsem_write)(&gh_sched_lock);
 	if (gh_all_res_populated_fn)
 		return -EBUSY;
 
@@ -1300,6 +1325,36 @@ int gh_rm_all_res_populated_cb(gh_all_res_populated_cb_t fnptr)
 	return 0;
 }
 EXPORT_SYMBOL(gh_rm_all_res_populated_cb);
+
+int gh_rm_register_sched_ops(const struct gh_rm_sched_ops *ops)
+{
+	guard(rwsem_write)(&gh_sched_lock);
+	if (gh_wdog_manage_fn || gh_vcpu_affinity_set_fn || gh_vcpu_affinity_reset_fn ||
+	    gh_vpm_grp_set_fn || gh_vpm_grp_reset_fn || gh_all_res_populated_fn)
+		return -EBUSY;
+	gh_wdog_manage_fn = ops->wdog_manage;
+	gh_vcpu_affinity_set_fn = ops->vcpu_affinity_set;
+	gh_vcpu_affinity_reset_fn = ops->vcpu_affinity_reset;
+	gh_vpm_grp_set_fn = ops->vpm_grp_set;
+	gh_vpm_grp_reset_fn = ops->vpm_grp_reset;
+	gh_all_res_populated_fn = ops->all_res_populated;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(gh_rm_register_sched_ops);
+
+void gh_rm_unregister_sched_ops(const struct gh_rm_sched_ops *ops)
+{
+	guard(rwsem_write)(&gh_sched_lock);
+	if (gh_wdog_manage_fn != ops->wdog_manage)
+		return;
+	gh_wdog_manage_fn = NULL;
+	gh_vcpu_affinity_set_fn = NULL;
+	gh_vcpu_affinity_reset_fn = NULL;
+	gh_vpm_grp_set_fn = NULL;
+	gh_vpm_grp_reset_fn = NULL;
+	gh_all_res_populated_fn = NULL;
+}
+EXPORT_SYMBOL_GPL(gh_rm_unregister_sched_ops);
 
 static void gh_rm_get_svm_res_work_fn(struct work_struct *work)
 {
