@@ -52,6 +52,10 @@ extbuild "$touch" TOUCH_ROOT="$external/$touch" CONFIG_ARCH_KALAMA=y CONFIG_MSM_
 	KBUILD_EXTRA_SYMBOLS="${touch_symbols[*]}"
 extbuild qcom/opensource/mmrm-driver MMRM_ROOT="$external/qcom/opensource/mmrm-driver"
 
+secure=qcom/opensource/securemsm-kernel
+extbuild "$secure/smcinvoke"
+extbuild "$secure/hdcp" KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$secure/smcinvoke/Module.symvers"
+
 release=$(<"$out/include/config/kernel.release")
 cat "${symvers[@]}" > "$stage/Module.symvers"
 depmod -ae -E "$stage/Module.symvers" -b "$stage" "$release" 2>"$stage/depmod.log"
