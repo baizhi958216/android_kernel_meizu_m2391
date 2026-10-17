@@ -40,6 +40,16 @@ extbuild() {
 extbuild meizu/system
 extbuild qcom/opensource/touch-drivers/mz_gesture \
 	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/system/Module.symvers"
+extbuild meizu/power-notify
+touch=qcom/opensource/touch-drivers
+touch_symbols=("$out/m2391-external/meizu/system/Module.symvers"
+	      "$out/m2391-external/$touch/mz_gesture/Module.symvers"
+	      "$out/m2391-external/meizu/power-notify/Module.symvers")
+extbuild "$touch" TOUCH_ROOT="$external/$touch" CONFIG_ARCH_KALAMA=y CONFIG_MSM_TOUCH=m \
+	CONFIG_QTS_ENABLE=y CONFIG_TOUCHSCREEN_GOODIX_BRL=y \
+	CONFIG_TOUCHSCREEN_GOODIX_BRL_MEIZU=y CONFIG_TOUCHSCREEN_NT36XXX_I2C=n \
+	CONFIG_TOUCHSCREEN_ATMEL_MXT=n CONFIG_TOUCHSCREEN_DUMMY=n \
+	KBUILD_EXTRA_SYMBOLS="${touch_symbols[*]}"
 extbuild qcom/opensource/mmrm-driver MMRM_ROOT="$external/qcom/opensource/mmrm-driver"
 
 release=$(<"$out/include/config/kernel.release")
