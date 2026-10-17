@@ -916,13 +916,14 @@ bool qcom_scm_set_gpu_smmu_aperture_is_available(void)
 }
 EXPORT_SYMBOL_GPL(qcom_scm_set_gpu_smmu_aperture_is_available);
 
-int qcom_scm_set_gpu_smmu_aperture(unsigned int context_bank)
+static int qcom_scm_gpu_set_aperture(unsigned int reg, unsigned int context_bank)
 {
 	struct qcom_scm_desc desc = {
 		.svc = QCOM_SCM_SVC_MP,
 		.cmd = QCOM_SCM_MP_CP_SMMU_APERTURE_ID,
 		.arginfo = QCOM_SCM_ARGS(4),
-		.args[0] = 0xffff0000 | FIELD_PREP(QCOM_SCM_CP_APERTURE_CONTEXT_MASK, context_bank),
+		.args[0] = 0xffff0000 | FIELD_PREP(GENMASK(15, 8), reg) |
+			   FIELD_PREP(QCOM_SCM_CP_APERTURE_CONTEXT_MASK, context_bank),
 		.args[1] = 0xffffffff,
 		.args[2] = 0xffffffff,
 		.args[3] = 0xffffffff,
@@ -931,7 +932,20 @@ int qcom_scm_set_gpu_smmu_aperture(unsigned int context_bank)
 
 	return qcom_scm_call(__scm->dev, &desc, NULL);
 }
+
+int qcom_scm_set_gpu_smmu_aperture(unsigned int context_bank)
+{
+	return qcom_scm_gpu_set_aperture(0, context_bank);
+}
 EXPORT_SYMBOL_GPL(qcom_scm_set_gpu_smmu_aperture);
+
+int qcom_scm_set_gpu_lpac_smmu_aperture(unsigned int context_bank)
+{
+	if (!FIELD_FIT(QCOM_SCM_CP_APERTURE_CONTEXT_MASK, context_bank))
+		return -EINVAL;
+	return qcom_scm_gpu_set_aperture(1, context_bank);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_set_gpu_lpac_smmu_aperture);
 
 int qcom_scm_iommu_secure_ptbl_size(u32 spare, size_t *size)
 {
