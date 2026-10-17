@@ -15,6 +15,8 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
+#include <linux/of_platform.h>
+#include <linux/soc/qcom/spmi-pmic-arb.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/spmi.h>
@@ -1917,6 +1919,79 @@ static struct platform_driver spmi_pmic_arb_driver = {
 		.of_match_table = spmi_pmic_arb_match_table,
 	},
 };
+/**
+ * spmi_pmic_arb_map_address() - resolve a PMIC register's writable channel window
+ * @dev: consumer carrying the qcom,pmic-arb phandle
+ * @spmi_address: four-bit slave ID followed by the 16-bit SPMI address
+ * @res_out: physical MMIO range available to the requesting execution environment
+ */
+int spmi_pmic_arb_map_address(const struct device *dev, u32 spmi_address,
+			      struct resource *res_out)
+{
+	struct device_node *np __free(device_node) = NULL;
+	struct platform_device *pdev;
+	struct spmi_pmic_arb *arb;
+	struct spmi_pmic_arb_bus *bus = NULL;
+	struct resource *window;
+	resource_size_t size;
+	unsigned long flags;
+	int offset, i, ret = -EPROBE_DEFER;
+
+	if (!dev || !res_out || spmi_address > GENMASK(19, 0))
+		return -EINVAL;
+	np = of_parse_phandle(dev->of_node, "qcom,pmic-arb", 0);
+	if (!np)
+		return -ENODEV;
+	pdev = of_find_device_by_node(np);
+	if (!pdev)
+		pdev = of_find_device_by_node(np->parent);
+	if (!pdev)
+		return -EPROBE_DEFER;
+
+	device_lock(&pdev->dev);
+	if (pdev->dev.driver != &spmi_pmic_arb_driver.driver)
+		goto out;
+	arb = platform_get_drvdata(pdev);
+	for (i = 0; i < arb->buses_available; i++)
+		if (arb->buses[i]->spmic->dev.of_node == np) {
+			bus = arb->buses[i];
+			break;
+		}
+	if (!bus) {
+		ret = -ENODEV;
+		goto out;
+	}
+
+	if (arb->ver_ops == &pmic_arb_v1)
+		size = 0x80;
+	else if (arb->ver_ops == &pmic_arb_v5)
+		size = SZ_64K;
+	else
+		size = SZ_4K;
+	window = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+					      arb->ver_ops == &pmic_arb_v1 ? "core" : "chnls");
+	raw_spin_lock_irqsave(&bus->lock, flags);
+	offset = arb->ver_ops->offset(bus, spmi_address >> 16, (u16)spmi_address,
+				      PMIC_ARB_CHANNEL_RW);
+	raw_spin_unlock_irqrestore(&bus->lock, flags);
+	if (offset < 0) {
+		ret = offset;
+		goto out;
+	}
+	if (!window || resource_size(window) < size || offset > resource_size(window) - size) {
+		ret = -ERANGE;
+		goto out;
+	}
+
+	*res_out = (struct resource)DEFINE_RES_MEM(window->start + offset, size);
+	ret = 0;
+out:
+	device_unlock(&pdev->dev);
+	put_device(&pdev->dev);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(spmi_pmic_arb_map_address);
+
 module_platform_driver(spmi_pmic_arb_driver);
 
 MODULE_DESCRIPTION("Qualcomm MSM SPMI Controller (PMIC Arbiter) driver");
