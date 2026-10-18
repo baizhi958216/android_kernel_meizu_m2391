@@ -721,12 +721,20 @@ static const struct arm_smmu_impl kalama_smmu_impl = {
 	.reset = kalama_smmu_reset,
 };
 
+static void kalama_adreno_write_sctlr(struct arm_smmu_device *smmu, int idx, u32 reg)
+{
+	if (idx < 2)
+		qcom_adreno_smmu_write_sctlr(smmu, idx, reg);
+	else
+		arm_smmu_cb_write(smmu, idx, ARM_SMMU_CB_SCTLR, reg);
+}
+
 static const struct arm_smmu_impl kalama_adreno_impl = {
 	.init_context = kalama_adreno_init_context,
 	.alloc_context_bank = kalama_adreno_alloc_cb,
 	.cfg_probe = kalama_smmu_cfg_probe,
 	.reset = kalama_smmu_reset,
-	.write_sctlr = qcom_adreno_smmu_write_sctlr,
+	.write_sctlr = kalama_adreno_write_sctlr,
 	.context_fault_needs_threaded_irq = true,
 };
 
