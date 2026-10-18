@@ -96,6 +96,8 @@ struct io_pgtable_cfg {
 	 *	kernel bug, which would justify the WARN_ON().  But for GPU
 	 *	drivers, this could be under control of userspace.  Which
 	 *	deserves an error return, but not to spam dmesg.
+	 * IO_PGTABLE_QUIRK_QCOM_USE_LLC_NWA: Use outer write-back, read-allocate
+	 * attributes for noncoherent Qualcomm GPU page-table walks.
 	 * IO_PGTABLE_QUIRK_IDMAP: Page table only supports identity map
 	 */
 	#define IO_PGTABLE_QUIRK_ARM_NS			BIT(0)
@@ -108,6 +110,7 @@ struct io_pgtable_cfg {
 	#define IO_PGTABLE_QUIRK_ARM_S2FWB		BIT(8)
 	#define IO_PGTABLE_QUIRK_NO_WARN		BIT(9)
 	#define IO_PGTABLE_QUIRK_IDMAP			BIT(10)
+	#define IO_PGTABLE_QUIRK_QCOM_USE_LLC_NWA	BIT(11)
 	unsigned long			quirks;
 	unsigned long			pgsize_bitmap;
 	unsigned int			ias;

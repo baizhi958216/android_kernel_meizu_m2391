@@ -986,6 +986,7 @@ arm_64_lpae_alloc_pgtable_s1(struct io_pgtable_cfg *cfg, void *cookie)
 	if (cfg->quirks & ~(IO_PGTABLE_QUIRK_ARM_NS |
 			    IO_PGTABLE_QUIRK_ARM_TTBR1 |
 			    IO_PGTABLE_QUIRK_ARM_OUTER_WBWA |
+			    IO_PGTABLE_QUIRK_QCOM_USE_LLC_NWA |
 			    IO_PGTABLE_QUIRK_ARM_HD |
 			    IO_PGTABLE_QUIRK_NO_WARN))
 		return NULL;
@@ -999,15 +1000,18 @@ arm_64_lpae_alloc_pgtable_s1(struct io_pgtable_cfg *cfg, void *cookie)
 		tcr->sh = ARM_LPAE_TCR_SH_IS;
 		tcr->irgn = ARM_LPAE_TCR_RGN_WBWA;
 		tcr->orgn = ARM_LPAE_TCR_RGN_WBWA;
-		if (cfg->quirks & IO_PGTABLE_QUIRK_ARM_OUTER_WBWA)
+		if (cfg->quirks & (IO_PGTABLE_QUIRK_ARM_OUTER_WBWA |
+				   IO_PGTABLE_QUIRK_QCOM_USE_LLC_NWA))
 			goto out_free_data;
 	} else {
 		tcr->sh = ARM_LPAE_TCR_SH_OS;
 		tcr->irgn = ARM_LPAE_TCR_RGN_NC;
-		if (!(cfg->quirks & IO_PGTABLE_QUIRK_ARM_OUTER_WBWA))
-			tcr->orgn = ARM_LPAE_TCR_RGN_NC;
-		else
+		if (cfg->quirks & IO_PGTABLE_QUIRK_ARM_OUTER_WBWA)
 			tcr->orgn = ARM_LPAE_TCR_RGN_WBWA;
+		else if (cfg->quirks & IO_PGTABLE_QUIRK_QCOM_USE_LLC_NWA)
+			tcr->orgn = ARM_LPAE_TCR_RGN_WB;
+		else
+			tcr->orgn = ARM_LPAE_TCR_RGN_NC;
 	}
 
 	tg1 = cfg->quirks & IO_PGTABLE_QUIRK_ARM_TTBR1;
