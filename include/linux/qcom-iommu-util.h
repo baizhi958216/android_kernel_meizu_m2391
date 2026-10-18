@@ -4,6 +4,10 @@
 
 #include <linux/bits.h>
 
+/* Stage-1 outer system cache attributes for Qualcomm LLCC clients. */
+#define IOMMU_SYS_CACHE			BIT(6)
+#define IOMMU_SYS_CACHE_NWA		BIT(7)
+
 #define IOMMU_FAULT_TRANSLATION		BIT(2)
 #define IOMMU_FAULT_PERMISSION		BIT(3)
 #define IOMMU_FAULT_EXTERNAL		BIT(4)
