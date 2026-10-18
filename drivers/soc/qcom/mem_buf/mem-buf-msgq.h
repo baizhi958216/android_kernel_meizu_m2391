@@ -194,6 +194,7 @@ static inline u32 get_relinquish_req_obj_id(struct mem_buf_alloc_relinquish *rel
 
 #if IS_ENABLED(CONFIG_QCOM_MEM_BUF_MSGQ)
 void *mem_buf_msgq_register(const char *msgq_name, struct mem_buf_msgq_hdlr_info *info);
+void mem_buf_msgq_stop(void *mem_buf_msgq_hdl);
 void mem_buf_msgq_unregister(void *mem_buf_msgq_hdl);
 void *mem_buf_init_txn(void *mem_buf_msgq_hdl, void *resp_buf);
 int mem_buf_msgq_send(void *mem_buf_msgq_hdl, void *msg);

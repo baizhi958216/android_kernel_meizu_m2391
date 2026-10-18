@@ -126,5 +126,4 @@ int mem_buf_current_vmid(void);
 int mem_buf_map_mem_s1(struct gh_sgl_desc *sgl_desc);
 int mem_buf_unmap_mem_s1(struct gh_sgl_desc *sgl_desc);
 
- /* CONFIG_QCOM_MEM_BUF_DEV_GH */
 #endif /* _MEM_BUF_H */

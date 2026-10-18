@@ -23,31 +23,11 @@
 int mem_buf_acl_to_vmid_perms_list(unsigned int nr_acl_entries, const void __user *acl_entries,
 				   int **dst_vmids, int **dst_perms);
 
-#if IS_ENABLED(CONFIG_QCOM_MEM_BUF_GH)
+
 #include <linux/gunyah/gh_rm_drv.h>
 
-int mem_buf_alloc_fd(struct mem_buf_alloc_ioctl_arg *allocation_args);
-int mem_buf_retrieve_user(struct mem_buf_retrieve_ioctl_arg *uarg);
+int mem_buf_retrieve_user(struct mem_buf_retrieve_ioctl_arg *uarg, struct dma_buf **result);
 int mem_buf_msgq_alloc(struct device *dev);
 void mem_buf_msgq_free(struct device *dev);
-#else
-static inline int mem_buf_alloc_fd(struct mem_buf_alloc_ioctl_arg *allocation_args)
-{
-	return -EOPNOTSUPP;
-}
 
-static inline int mem_buf_retrieve_user(struct mem_buf_retrieve_ioctl_arg *uarg)
-{
-	return -EOPNOTSUPP;
-}
-
-static inline int mem_buf_msgq_alloc(struct device *dev)
-{
-	return 0;
-}
-
-static inline void mem_buf_msgq_free(struct device *dev)
-{
-}
-#endif
 #endif

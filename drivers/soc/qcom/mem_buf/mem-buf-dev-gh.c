@@ -34,7 +34,13 @@ struct gh_acl_desc *mem_buf_vmid_perm_list_to_gh_acl(int *vmids, int *perms,
 	size_t size;
 	unsigned int i;
 
-	size = offsetof(struct gh_acl_desc, acl_entries[nr_acl_entries]);
+	if (!vmids || !perms || !nr_acl_entries || nr_acl_entries > 64)
+		return ERR_PTR(-EINVAL);
+	for (i = 0; i < nr_acl_entries; i++)
+		if ((unsigned int)vmids[i] >= 64 || !perms[i] ||
+		    perms[i] & ~(PERM_READ | PERM_WRITE | PERM_EXEC))
+			return ERR_PTR(-EINVAL);
+	size = struct_size(gh_acl, acl_entries, nr_acl_entries);
 	gh_acl = kmalloc(size, GFP_KERNEL);
 	if (!gh_acl)
 		return ERR_PTR(-ENOMEM);
@@ -56,8 +62,10 @@ struct gh_sgl_desc *mem_buf_sgt_to_gh_sgl_desc(struct sg_table *sgt)
 	int i;
 	struct scatterlist *sg;
 
-	size = offsetof(struct gh_sgl_desc, sgl_entries[sgt->orig_nents]);
-	gh_sgl = kvmalloc(size, GFP_KERNEL);
+	if (!sgt || !sgt->orig_nents || sgt->orig_nents > U16_MAX)
+		return ERR_PTR(-EINVAL);
+	size = struct_size(gh_sgl, sgl_entries, sgt->orig_nents);
+	gh_sgl = kvzalloc(size, GFP_KERNEL);
 	if (!gh_sgl)
 		return ERR_PTR(-ENOMEM);
 
@@ -114,6 +122,14 @@ struct sg_table *dup_gh_sgl_desc_to_sgt(struct gh_sgl_desc *sgl_desc)
 	if (!sgl_desc || !sgl_desc->n_sgl_entries)
 		return ERR_PTR(-EINVAL);
 
+	for (i = 0; i < sgl_desc->n_sgl_entries; i++) {
+		u64 base = sgl_desc->sgl_entries[i].ipa_base;
+		u64 len = sgl_desc->sgl_entries[i].size;
+
+		if (!len || len > UINT_MAX || !PAGE_ALIGNED(base | len) ||
+		    base > PHYS_ADDR_MAX - (len - 1))
+			return ERR_PTR(-EINVAL);
+	}
 	new_table = kzalloc(sizeof(*new_table), GFP_KERNEL);
 	if (!new_table)
 		return ERR_PTR(-ENOMEM);

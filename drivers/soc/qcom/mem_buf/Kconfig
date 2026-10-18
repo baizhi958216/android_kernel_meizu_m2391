@@ -7,3 +7,14 @@ config QCOM_MEM_BUF_DEV
 	help
 	  Track buffer ACLs and transfer memory between HLOS, peripheral VMs
 	  and Gunyah guests through SCM and the Resource Manager.
+
+config QCOM_MEM_BUF_MSGQ
+	tristate "Qualcomm Kalama memory parcel request channel"
+	depends on QCOM_MEM_BUF_DEV
+
+config QCOM_MEM_BUF
+	tristate "Qualcomm Kalama host memory supplier"
+	depends on QCOM_MEM_BUF_MSGQ && QCOM_DMABUF_HEAPS
+	help
+	  Supply protected memory to the trusted VM and expose the Android
+	  /dev/membuf lend, share, retrieve and reclaim operations.
