@@ -462,15 +462,31 @@ static irqreturn_t arm_smmu_context_fault(int irq, void *dev)
 	static DEFINE_RATELIMIT_STATE(rs, DEFAULT_RATELIMIT_INTERVAL,
 				      DEFAULT_RATELIMIT_BURST);
 	int idx = smmu_domain->cfg.cbndx;
-	int ret;
+	int flags, ret;
+	bool kgsl;
 
 	arm_smmu_read_context_fault_info(smmu, idx, &cfi);
 
 	if (!(cfi.fsr & ARM_SMMU_CB_FSR_FAULT))
 		return IRQ_NONE;
 
-	ret = report_iommu_fault(&smmu_domain->domain, NULL, cfi.iova,
-		cfi.fsynr & ARM_SMMU_CB_FSYNR0_WNR ? IOMMU_FAULT_WRITE : IOMMU_FAULT_READ);
+	flags = cfi.fsynr & ARM_SMMU_CB_FSYNR0_WNR ? IOMMU_FAULT_WRITE : IOMMU_FAULT_READ;
+	kgsl = of_device_is_compatible(smmu->dev->of_node, "qcom,qsmmu-v500") &&
+	       of_device_is_compatible(smmu->dev->of_node, "qcom,adreno-smmu");
+	if (kgsl) {
+		if (cfi.fsr & ARM_SMMU_CB_FSR_TF)
+			flags |= IOMMU_FAULT_TRANSLATION;
+		if (cfi.fsr & ARM_SMMU_CB_FSR_PF)
+			flags |= IOMMU_FAULT_PERMISSION;
+		if (cfi.fsr & ARM_SMMU_CB_FSR_EF)
+			flags |= IOMMU_FAULT_EXTERNAL;
+		if (cfi.fsr & ARM_SMMU_CB_FSR_SS)
+			flags |= IOMMU_FAULT_TRANSACTION_STALLED;
+	}
+	ret = report_iommu_fault(&smmu_domain->domain, NULL, cfi.iova, flags);
+	/* KGSL masks the IRQ and resumes the stalled transaction after recovery. */
+	if (ret == -EBUSY && (flags & IOMMU_FAULT_TRANSACTION_STALLED))
+		return IRQ_HANDLED;
 
 	if (ret == -ENOSYS && __ratelimit(&rs))
 		arm_smmu_print_context_fault_info(smmu, idx, &cfi);
@@ -1277,6 +1293,35 @@ int qcom_iommu_sid_switch(struct device *dev, enum sid_switch_direction dir)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(qcom_iommu_sid_switch);
+
+static struct arm_smmu_domain *kalama_gpu_domain(struct iommu_domain *domain)
+{
+	struct arm_smmu_domain *d;
+
+	if (!domain || domain->ops != arm_smmu_ops.default_domain_ops)
+		return NULL;
+	d = to_smmu_domain(domain);
+	if (!d->smmu || d->stage != ARM_SMMU_DOMAIN_S1 ||
+	    !of_device_is_compatible(d->smmu->dev->of_node, "qcom,adreno-smmu"))
+		return NULL;
+	return d;
+}
+
+int qcom_iommu_get_context_bank_nr(struct iommu_domain *domain)
+{
+	struct arm_smmu_domain *d = kalama_gpu_domain(domain);
+
+	return d ? d->cfg.cbndx : -EINVAL;
+}
+EXPORT_SYMBOL_GPL(qcom_iommu_get_context_bank_nr);
+
+int qcom_iommu_get_asid_nr(struct iommu_domain *domain)
+{
+	struct arm_smmu_domain *d = kalama_gpu_domain(domain);
+
+	return d ? d->cfg.asid : -EINVAL;
+}
+EXPORT_SYMBOL_GPL(qcom_iommu_get_asid_nr);
 
 int qcom_iommu_enable_s1_translation(struct iommu_domain *domain)
 {

@@ -327,8 +327,10 @@ static int qcom_adreno_smmu_init_context(struct arm_smmu_domain *smmu_domain,
 	if (client_match)
 		qcom_smmu_set_actlr_dev(dev, smmu, cbndx, client_match);
 
-	/* Only enable split pagetables for the GPU device (SID 0) */
-	if (!qcom_adreno_smmu_is_gpu_device(dev))
+	/* KGSL also exposes LPAC through a dedicated single-stream device. */
+	if (!qcom_adreno_smmu_is_gpu_device(dev) &&
+	    !(of_device_is_compatible(np, "qcom,qsmmu-v500") &&
+	      of_device_is_compatible(dev->of_node, "qcom,smmu-kgsl-cb") && cbndx == 1))
 		return 0;
 
 	/*
@@ -669,6 +671,42 @@ static int kalama_smmu_init_context(struct arm_smmu_domain *domain,
 	return 0;
 }
 
+/* CP hardware switches TTBR0 in CB0 (graphics) and CB1 (LPAC). Default
+ * DMA domains, GMU and protected commands must use other context banks.
+ */
+static int kalama_adreno_alloc_cb(struct arm_smmu_domain *domain,
+				 struct arm_smmu_device *smmu, struct device *dev, int start)
+{
+	struct iommu_fwspec *fw = dev_iommu_fwspec_get(dev);
+	u32 sid;
+
+	if (domain->domain.type == IOMMU_DOMAIN_UNMANAGED &&
+	    of_device_is_compatible(dev->of_node, "qcom,smmu-kgsl-cb") &&
+	    fw->num_ids == 1 && !FIELD_GET(ARM_SMMU_SMR_MASK, fw->ids[0])) {
+		sid = FIELD_GET(ARM_SMMU_SMR_ID, fw->ids[0]);
+		if (sid < 2) {
+			if (sid < start || sid >= smmu->num_context_banks)
+				return -EINVAL;
+			return __arm_smmu_alloc_bitmap(smmu->context_map, sid, sid + 1);
+		}
+	}
+
+	return __arm_smmu_alloc_bitmap(smmu->context_map, max(start, 2),
+				       smmu->num_context_banks);
+}
+
+static int kalama_adreno_init_context(struct arm_smmu_domain *domain,
+				      struct io_pgtable_cfg *cfg, struct device *dev)
+{
+	int ret = kalama_smmu_init_context(domain, cfg, dev);
+
+	if (ret || domain->cfg.cbndx >= 2)
+		return ret;
+	if (!dev_get_drvdata(dev))
+		return -EINVAL;
+	return qcom_adreno_smmu_init_context(domain, cfg, dev);
+}
+
 static int kalama_smmu_reset(struct arm_smmu_device *smmu)
 {
 	u32 acr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_sACR);
@@ -681,6 +719,15 @@ static const struct arm_smmu_impl kalama_smmu_impl = {
 	.init_context = kalama_smmu_init_context,
 	.cfg_probe = kalama_smmu_cfg_probe,
 	.reset = kalama_smmu_reset,
+};
+
+static const struct arm_smmu_impl kalama_adreno_impl = {
+	.init_context = kalama_adreno_init_context,
+	.alloc_context_bank = kalama_adreno_alloc_cb,
+	.cfg_probe = kalama_smmu_cfg_probe,
+	.reset = kalama_smmu_reset,
+	.write_sctlr = qcom_adreno_smmu_write_sctlr,
+	.context_fault_needs_threaded_irq = true,
 };
 
 static const struct arm_smmu_impl qcom_smmu_v2_impl = {
@@ -817,7 +864,7 @@ static const struct qcom_smmu_match_data qcom_smmu_500_impl0_data = {
  */
 static const struct qcom_smmu_match_data kalama_v500_data = {
 	.impl = &kalama_smmu_impl,
-	.adreno_impl = &kalama_smmu_impl,
+	.adreno_impl = &kalama_adreno_impl,
 };
 
 static const struct of_device_id __maybe_unused qcom_smmu_impl_of_match[] = {
