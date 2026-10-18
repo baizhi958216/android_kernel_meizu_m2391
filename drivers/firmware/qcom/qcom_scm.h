@@ -98,6 +98,8 @@ int qcom_scm_shm_bridge_enable(struct device *scm_dev);
 #define QCOM_SCM_BOOT_MC_FLAG_COLDBOOT	BIT(1)
 #define QCOM_SCM_BOOT_MC_FLAG_WARMBOOT	BIT(2)
 
+#define QCOM_SCM_PIL_PROTECT_MEM	0x0c
+#define QCOM_SCM_PIL_CLEAR_PROTECT_MEM	0x0d
 #define QCOM_SCM_SVC_PIL		0x02
 #define QCOM_SCM_PIL_PAS_INIT_IMAGE	0x01
 #define QCOM_SCM_PIL_PAS_MEM_SETUP	0x02

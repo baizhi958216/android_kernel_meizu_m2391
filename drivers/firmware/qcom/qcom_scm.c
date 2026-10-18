@@ -696,6 +696,37 @@ disable_clk:
 }
 EXPORT_SYMBOL_GPL(qcom_scm_pas_mem_setup);
 
+/* PIL protects the legacy ADSP heap until the DSP returns a release key. */
+int qcom_scm_adsp_heap_protect(phys_addr_t addr, size_t size, const u8 *release_key)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_PIL,
+		.cmd = release_key ? QCOM_SCM_PIL_CLEAR_PROTECT_MEM : QCOM_SCM_PIL_PROTECT_MEM,
+		.arginfo = release_key ? QCOM_SCM_ARGS(4) : QCOM_SCM_ARGS(3),
+		.args = { 1, addr, size, release_key ? *release_key : 0 },
+		.owner = ARM_SMCCC_OWNER_SIP,
+	};
+	struct qcom_scm_res res;
+	int ret;
+
+	if (!qcom_scm_is_available())
+		return -EPROBE_DEFER;
+
+	ret = qcom_scm_clk_enable();
+	if (ret)
+		return ret;
+	ret = qcom_scm_bw_enable();
+	if (!ret) {
+		ret = qcom_scm_call(__scm->dev, &desc, &res);
+		if (!ret)
+			ret = res.result[0];
+		qcom_scm_bw_disable();
+	}
+	qcom_scm_clk_disable();
+	return ret;
+}
+EXPORT_SYMBOL_GPL(qcom_scm_adsp_heap_protect);
+
 /**
  * qcom_scm_pas_auth_and_reset() - Authenticate the given peripheral firmware
  *				   and reset the remote processor
