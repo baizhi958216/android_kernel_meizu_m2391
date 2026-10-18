@@ -22303,6 +22303,7 @@
 			};
 
 			gfx3d_secure: gfx3d_secure {
+				qcom,iommu-vmid = <0xa>;
 				phandle = <0x598>;
 				qcom,iommu-dma = "disabled";
 				iommus = <0xd6 0x02 0x00>;
