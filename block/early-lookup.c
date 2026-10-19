@@ -5,6 +5,7 @@
  */
 #include <linux/blkdev.h>
 #include <linux/ctype.h>
+#include <linux/export.h>
 
 struct uuidcmp {
 	const char *uuid;
@@ -99,7 +100,7 @@ out_invalid:
  *
  * Returns 1 if the device matches, and 0 otherwise.
  */
-static int __init match_dev_by_label(struct device *dev, const void *data)
+static int match_dev_by_label(struct device *dev, const void *data)
 {
 	struct block_device *bdev = dev_to_bdev(dev);
 	const char *label = data;
@@ -109,10 +110,12 @@ static int __init match_dev_by_label(struct device *dev, const void *data)
 	return 1;
 }
 
-static int __init devt_from_partlabel(const char *label, dev_t *devt)
+int bdev_lookup_by_partlabel(const char *label, dev_t *devt)
 {
 	struct device *dev;
 
+	if (!label || !*label || !devt)
+		return -EINVAL;
 	dev = class_find_device(&block_class, NULL, label, &match_dev_by_label);
 	if (!dev)
 		return -ENODEV;
@@ -120,6 +123,7 @@ static int __init devt_from_partlabel(const char *label, dev_t *devt)
 	put_device(dev);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(bdev_lookup_by_partlabel);
 
 static dev_t __init blk_lookup_devt(const char *name, int partno)
 {
@@ -246,7 +250,7 @@ int __init early_lookup_bdev(const char *name, dev_t *devt)
 	if (strncmp(name, "PARTUUID=", 9) == 0)
 		return devt_from_partuuid(name + 9, devt);
 	if (strncmp(name, "PARTLABEL=", 10) == 0)
-		return devt_from_partlabel(name + 10, devt);
+		return bdev_lookup_by_partlabel(name + 10, devt);
 	if (strncmp(name, "/dev/", 5) == 0)
 		return devt_from_devname(name + 5, devt);
 	return devt_from_devnum(name, devt);
