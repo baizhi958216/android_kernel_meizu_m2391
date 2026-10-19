@@ -41,6 +41,15 @@ extbuild meizu/system
 extbuild qcom/opensource/touch-drivers/mz_gesture \
 	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/system/Module.symvers"
 extbuild meizu/power-notify
+extbuild meizu/storage
+extbuild meizu/power-logger
+extbuild meizu/power-thermal
+extbuild meizu/power-interface KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/system/Module.symvers"
+extbuild meizu/power-battery-logger KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/power-logger/Module.symvers"
+power_symbols=("$out/m2391-external/meizu/storage/Module.symvers"
+	       "$out/m2391-external/meizu/power-logger/Module.symvers"
+	       "$out/m2391-external/meizu/power-interface/Module.symvers")
+extbuild meizu/power-manager KBUILD_EXTRA_SYMBOLS="${power_symbols[*]}"
 touch=qcom/opensource/touch-drivers
 touch_symbols=("$out/m2391-external/meizu/system/Module.symvers"
 	      "$out/m2391-external/$touch/mz_gesture/Module.symvers"
