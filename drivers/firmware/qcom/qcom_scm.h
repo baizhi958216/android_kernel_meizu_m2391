@@ -145,6 +145,16 @@ int qcom_scm_shm_bridge_enable(struct device *scm_dev);
 #define QCOM_SCM_SVC_HDCP		0x11
 #define QCOM_SCM_HDCP_INVOKE		0x01
 
+#define QCOM_SCM_IO_RESET			0x03
+#define QCOM_SCM_SVC_DCVS			0x0D
+#define QCOM_SCM_DCVS_RESET			0x07
+#define QCOM_SCM_DCVS_UPDATE			0x08
+#define QCOM_SCM_DCVS_INIT			0x09
+#define QCOM_SCM_DCVS_UPDATE_V2			0x0a
+#define QCOM_SCM_DCVS_INIT_V2			0x0b
+#define QCOM_SCM_DCVS_INIT_CA_V2		0x0c
+#define QCOM_SCM_DCVS_UPDATE_CA_V2		0x0d
+
 #define QCOM_SCM_SVC_LMH			0x13
 #define QCOM_SCM_LMH_LIMIT_PROFILE_CHANGE	0x01
 #define QCOM_SCM_LMH_LIMIT_DCVSH		0x10

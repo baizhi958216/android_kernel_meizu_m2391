@@ -1899,6 +1899,169 @@ int qcom_scm_lmh_dcvsh(u32 payload_fn, u32 payload_reg, u32 payload_val,
 }
 EXPORT_SYMBOL_GPL(qcom_scm_lmh_dcvsh);
 
+int qcom_scm_io_reset(void)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_IO,
+		.cmd = QCOM_SCM_IO_RESET,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.arginfo = QCOM_SCM_ARGS(2),
+	};
+
+	return qcom_scm_call_atomic(__scm ? __scm->dev : NULL, &desc, NULL);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_io_reset);
+
+bool qcom_scm_dcvs_core_available(void)
+{
+	struct device *dev = __scm ? __scm->dev : NULL;
+
+	return __qcom_scm_is_call_available(dev, QCOM_SCM_SVC_DCVS,
+					    QCOM_SCM_DCVS_INIT) &&
+	       __qcom_scm_is_call_available(dev, QCOM_SCM_SVC_DCVS,
+					    QCOM_SCM_DCVS_UPDATE) &&
+	       __qcom_scm_is_call_available(dev, QCOM_SCM_SVC_DCVS,
+					    QCOM_SCM_DCVS_RESET);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_dcvs_core_available);
+
+/**
+ * qcom_scm_dcvs_ca_available() - check if context aware DCVS operations are
+ * available
+ */
+bool qcom_scm_dcvs_ca_available(void)
+{
+	struct device *dev = __scm ? __scm->dev : NULL;
+
+	return __qcom_scm_is_call_available(dev, QCOM_SCM_SVC_DCVS,
+					    QCOM_SCM_DCVS_INIT_CA_V2) &&
+	       __qcom_scm_is_call_available(dev, QCOM_SCM_SVC_DCVS,
+					    QCOM_SCM_DCVS_UPDATE_CA_V2);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_dcvs_ca_available);
+
+/**
+ * qcom_scm_dcvs_reset()
+ */
+int qcom_scm_dcvs_reset(void)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_DCVS,
+		.cmd = QCOM_SCM_DCVS_RESET,
+		.owner = ARM_SMCCC_OWNER_SIP
+	};
+
+	return qcom_scm_call(__scm ? __scm->dev : NULL, &desc, NULL);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_dcvs_reset);
+
+/* SCM needs coherent, TrustZone-accessible memory for the GPU frequency
+ * table and the two context-aware governor parameters.
+ */
+static int qcom_scm_dcvs_init_table(unsigned int cmd, const u32 *table,
+				    size_t size, int *version)
+{
+	void *buf __free(qcom_tzmem) = NULL;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_DCVS,
+		.cmd = cmd,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.arginfo = QCOM_SCM_ARGS(2, QCOM_SCM_RW, QCOM_SCM_VAL),
+	};
+	struct qcom_scm_res res;
+	int ret;
+
+	if (!__scm)
+		return -EPROBE_DEFER;
+	if (!table || !size)
+		return -EINVAL;
+	buf = qcom_tzmem_alloc(__scm->mempool, size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+	memcpy(buf, table, size);
+	dma_wmb();
+	desc.args[0] = qcom_tzmem_to_phys(buf);
+	desc.args[1] = size;
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	if (!ret && version)
+		*version = res.result[0];
+	return ret;
+}
+
+int qcom_scm_dcvs_init_v2(const u32 *table, size_t size, int *version)
+{
+	return qcom_scm_dcvs_init_table(QCOM_SCM_DCVS_INIT_V2, table, size, version);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_dcvs_init_v2);
+
+int qcom_scm_dcvs_init_ca_v2(const u32 *table, size_t size)
+{
+	return qcom_scm_dcvs_init_table(QCOM_SCM_DCVS_INIT_CA_V2, table, size, NULL);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_dcvs_init_ca_v2);
+
+int qcom_scm_dcvs_update(int level, s64 total_time, s64 busy_time)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_DCVS,
+		.cmd = QCOM_SCM_DCVS_UPDATE,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.args[0] = level,
+		.args[1] = total_time,
+		.args[2] = busy_time,
+		.arginfo = QCOM_SCM_ARGS(3),
+	};
+	struct qcom_scm_res res;
+
+	ret = qcom_scm_call_atomic(__scm->dev, &desc, &res);
+
+	return ret ?: (int)res.result[0];
+}
+EXPORT_SYMBOL_GPL(qcom_scm_dcvs_update);
+
+int qcom_scm_dcvs_update_v2(int level, s64 total_time, s64 busy_time)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_DCVS,
+		.cmd = QCOM_SCM_DCVS_UPDATE_V2,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.args[0] = level,
+		.args[1] = total_time,
+		.args[2] = busy_time,
+		.arginfo = QCOM_SCM_ARGS(3),
+	};
+	struct qcom_scm_res res;
+
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+
+	return ret ?: (int)res.result[0];
+}
+EXPORT_SYMBOL_GPL(qcom_scm_dcvs_update_v2);
+
+int qcom_scm_dcvs_update_ca_v2(int level, s64 total_time, s64 busy_time,
+			       int context_count)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_DCVS,
+		.cmd = QCOM_SCM_DCVS_UPDATE_CA_V2,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.args[0] = level,
+		.args[1] = total_time,
+		.args[2] = busy_time,
+		.args[3] = context_count,
+		.arginfo = QCOM_SCM_ARGS(4),
+	};
+	struct qcom_scm_res res;
+
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+
+	return ret ?: (int)res.result[0];
+}
+EXPORT_SYMBOL_GPL(qcom_scm_dcvs_update_ca_v2);
+
 int qcom_scm_gpu_init_regs(u32 gpu_req)
 {
 	struct qcom_scm_desc desc = {

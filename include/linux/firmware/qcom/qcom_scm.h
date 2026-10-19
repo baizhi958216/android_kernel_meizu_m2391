@@ -163,6 +163,16 @@ bool qcom_scm_lmh_dcvsh_available(void);
  */
 #define QCOM_SCM_GPU_TSENSE_EN_REQ BIT(3)
 
+bool qcom_scm_dcvs_core_available(void);
+bool qcom_scm_dcvs_ca_available(void);
+int qcom_scm_io_reset(void);
+int qcom_scm_dcvs_reset(void);
+int qcom_scm_dcvs_init_v2(const u32 *table, size_t size, int *version);
+int qcom_scm_dcvs_init_ca_v2(const u32 *table, size_t size);
+int qcom_scm_dcvs_update(int level, s64 total_time, s64 busy_time);
+int qcom_scm_dcvs_update_v2(int level, s64 total_time, s64 busy_time);
+int qcom_scm_dcvs_update_ca_v2(int level, s64 total_time, s64 busy_time,
+			       int context_count);
 int qcom_scm_gpu_init_regs(u32 gpu_req);
 
 int qcom_scm_shm_bridge_create(u64 pfn_and_ns_perm_flags,
