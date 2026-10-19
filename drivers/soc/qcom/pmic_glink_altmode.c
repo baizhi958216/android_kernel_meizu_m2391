@@ -12,6 +12,8 @@
 #include <linux/mutex.h>
 #include <linux/property.h>
 #include <linux/soc/qcom/pdr.h>
+#include <linux/soc/qcom/altmode-glink.h>
+#include <linux/srcu.h>
 #include <drm/bridge/aux-bridge.h>
 
 #include <linux/usb/typec_altmode.h>
@@ -101,9 +103,89 @@ struct pmic_glink_altmode {
 	struct pmic_glink_client *client;
 
 	struct work_struct enable_work;
+	struct workqueue_struct *client_wq;
+	struct list_head service_node;
 
 	struct pmic_glink_altmode_port ports[PMIC_GLINK_MAX_PORTS];
 };
+
+/* Phandle clients survive remote-processor and transport reprobes. */
+struct altmode_client {
+	struct list_head node;
+	struct device_node *service;
+	u32 port;
+	struct altmode_client_data data;
+};
+
+struct altmode_event {
+	struct work_struct work;
+	struct pmic_glink_altmode *service;
+	u16 svid;
+	u8 payload[NOTIFY_PAYLOAD_SIZE];
+};
+
+static LIST_HEAD(altmode_clients);
+static LIST_HEAD(altmode_services);
+static DEFINE_MUTEX(altmode_registry_lock);
+DEFINE_STATIC_SRCU(altmode_srcu);
+
+struct altmode_client *altmode_register_client(struct device *dev,
+		const struct altmode_client_data *data)
+{
+	struct pmic_glink_altmode *service;
+	struct altmode_client *client, *other;
+	struct of_phandle_args args;
+	int ret;
+
+	if (!data || !data->callback || !data->svid)
+		return ERR_PTR(-EINVAL);
+	ret = of_parse_phandle_with_args(dev->of_node, "qcom,altmode-dev",
+					 "#altmode-cells", 0, &args);
+	if (ret)
+		return ERR_PTR(ret);
+	if (args.args_count != 1 || args.args[0] >= 4 ||
+	    !of_device_is_available(args.np)) {
+		of_node_put(args.np);
+		return ERR_PTR(-EINVAL);
+	}
+	client = kzalloc(sizeof(*client), GFP_KERNEL);
+	if (!client) {
+		of_node_put(args.np);
+		return ERR_PTR(-ENOMEM);
+	}
+	client->service = args.np;
+	client->port = args.args[0];
+	client->data = *data;
+	guard(mutex)(&altmode_registry_lock);
+	list_for_each_entry(other, &altmode_clients, node) {
+		if (other->service == args.np && other->port == client->port &&
+		    other->data.svid == data->svid) {
+			of_node_put(args.np);
+			kfree(client);
+			return ERR_PTR(-EBUSY);
+		}
+	}
+	list_add_tail_rcu(&client->node, &altmode_clients);
+	list_for_each_entry(service, &altmode_services, service_node) {
+		if (service->dev->of_node == args.np)
+			schedule_work(&service->enable_work);
+	}
+	return client;
+}
+EXPORT_SYMBOL_GPL(altmode_register_client);
+
+void altmode_deregister_client(struct altmode_client *client)
+{
+	if (IS_ERR_OR_NULL(client))
+		return;
+	mutex_lock(&altmode_registry_lock);
+	list_del_rcu(&client->node);
+	mutex_unlock(&altmode_registry_lock);
+	synchronize_srcu(&altmode_srcu);
+	of_node_put(client->service);
+	kfree(client);
+}
+EXPORT_SYMBOL_GPL(altmode_deregister_client);
 
 static int pmic_glink_altmode_request(struct pmic_glink_altmode *altmode, u32 cmd, u32 arg)
 {
@@ -123,6 +205,7 @@ static int pmic_glink_altmode_request(struct pmic_glink_altmode *altmode, u32 cm
 	req.cmd = cpu_to_le32(cmd);
 	req.arg = cpu_to_le32(arg);
 
+	reinit_completion(&altmode->pan_ack);
 	ret = pmic_glink_send(altmode->client, &req, sizeof(req));
 	if (ret) {
 		dev_err(altmode->dev, "failed to send altmode request: %#x (%d)\n", cmd, ret);
@@ -310,6 +393,28 @@ static void pmic_glink_altmode_sc8180xp_notify(struct pmic_glink_altmode *altmod
 #define SC8280XP_HPD_STATE_MASK BIT(6)
 #define SC8280XP_HPD_IRQ_MASK	BIT(7)
 
+static void altmode_dispatch(struct work_struct *work)
+{
+	struct altmode_event *event = container_of(work, struct altmode_event, work);
+	struct altmode_client *client;
+	u8 port = event->payload[0];
+	int idx;
+
+	idx = srcu_read_lock(&altmode_srcu);
+	list_for_each_entry_srcu(client, &altmode_clients, node,
+				 srcu_read_lock_held(&altmode_srcu)) {
+		if (client->service == event->service->dev->of_node &&
+		    client->port == port && client->data.svid == event->svid) {
+			client->data.callback(client->data.priv, event->payload,
+					      sizeof(event->payload));
+			break;
+		}
+	}
+	srcu_read_unlock(&altmode_srcu, idx);
+	pmic_glink_altmode_request(event->service, ALTMODE_PAN_ACK, port);
+	kfree(event);
+}
+
 static void pmic_glink_altmode_sc8280xp_notify(struct pmic_glink_altmode *altmode,
 					       u16 svid, const void *data, size_t len)
 {
@@ -328,6 +433,20 @@ static void pmic_glink_altmode_sc8280xp_notify(struct pmic_glink_altmode *altmod
 	}
 
 	notify = data;
+	if (altmode->client_wq) {
+		struct altmode_event *event = kmalloc(sizeof(*event), GFP_ATOMIC);
+
+		if (!event) {
+			dev_err_ratelimited(altmode->dev, "cannot queue altmode event\n");
+			return;
+		}
+		event->service = altmode;
+		event->svid = svid;
+		memcpy(event->payload, notify->payload, sizeof(event->payload));
+		INIT_WORK(&event->work, altmode_dispatch);
+		queue_work(altmode->client_wq, &event->work);
+		return;
+	}
 
 	port = notify->payload[0];
 	orientation = notify->payload[1];
@@ -535,9 +654,37 @@ static int pmic_glink_altmode_probe(struct auxiliary_device *adev,
 	if (IS_ERR(altmode->client))
 		return PTR_ERR(altmode->client);
 
+	dev_set_drvdata(dev, altmode);
+	if (of_device_is_compatible(dev->of_node, "qcom,altmode-glink")) {
+		altmode->client_wq = alloc_ordered_workqueue("pmic-altmode", 0);
+		if (!altmode->client_wq)
+			return -ENOMEM;
+		mutex_lock(&altmode_registry_lock);
+		list_add(&altmode->service_node, &altmode_services);
+		mutex_unlock(&altmode_registry_lock);
+	}
 	pmic_glink_client_register(altmode->client);
 
 	return 0;
+}
+
+static void pmic_glink_altmode_remove(struct auxiliary_device *adev)
+{
+	struct pmic_glink_altmode *altmode = dev_get_drvdata(&adev->dev);
+	unsigned int i;
+
+	if (altmode->client_wq) {
+		mutex_lock(&altmode_registry_lock);
+		list_del(&altmode->service_node);
+		mutex_unlock(&altmode_registry_lock);
+	}
+	pmic_glink_client_unregister(altmode->client);
+	cancel_work_sync(&altmode->enable_work);
+	if (altmode->client_wq)
+		destroy_workqueue(altmode->client_wq);
+	for (i = 0; i < ARRAY_SIZE(altmode->ports); i++)
+		if (altmode->ports[i].altmode)
+			cancel_work_sync(&altmode->ports[i].work);
 }
 
 static const struct auxiliary_device_id pmic_glink_altmode_id_table[] = {
@@ -549,6 +696,7 @@ MODULE_DEVICE_TABLE(auxiliary, pmic_glink_altmode_id_table);
 static struct auxiliary_driver pmic_glink_altmode_driver = {
 	.name = "pmic_glink_altmode",
 	.probe = pmic_glink_altmode_probe,
+	.remove = pmic_glink_altmode_remove,
 	.id_table = pmic_glink_altmode_id_table,
 };
 

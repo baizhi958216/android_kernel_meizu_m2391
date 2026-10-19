@@ -334,7 +334,13 @@ static int pmic_glink_probe(struct platform_device *pdev)
 			goto out_release_pdr_handle;
 	}
 	if (pg->client_mask & BIT(PMIC_GLINK_CLIENT_ALTMODE)) {
-		ret = pmic_glink_add_aux_device(pg, &pg->altmode_aux, "altmode", "qcom,ucsi-glink");
+		struct device_node *service = of_get_compatible_child(pdev->dev.of_node,
+								    "qcom,altmode-glink");
+		bool has_service = of_device_is_available(service);
+
+		of_node_put(service);
+		ret = pmic_glink_add_aux_device(pg, &pg->altmode_aux, "altmode",
+				has_service ? "qcom,altmode-glink" : "qcom,ucsi-glink");
 		if (ret)
 			goto out_release_ucsi_aux;
 	}
