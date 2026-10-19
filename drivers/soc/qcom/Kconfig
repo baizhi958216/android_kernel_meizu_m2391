@@ -286,6 +286,13 @@ config QCOM_INLINE_CRYPTO_ENGINE
 	tristate
 	select QCOM_SCM
 
+config MSM_PERFORMANCE
+	tristate "Qualcomm graphics performance events"
+	depends on SYSFS
+	help
+	  Report graphics queue, submission and retirement timestamps for the
+	  process selected by the Qualcomm performance HAL.
+
 source "drivers/soc/qcom/mem_buf/Kconfig"
 
 config QCOM_SECURE_BUFFER
