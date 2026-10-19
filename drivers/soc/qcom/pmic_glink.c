@@ -59,15 +59,20 @@ struct pmic_glink_client {
 	void *priv;
 };
 
-static void _devm_pmic_glink_release_client(struct device *dev, void *res)
+void pmic_glink_client_unregister(struct pmic_glink_client *client)
 {
-	struct pmic_glink_client *client = (struct pmic_glink_client *)res;
 	struct pmic_glink *pg = client->pg;
 	unsigned long flags;
 
 	spin_lock_irqsave(&pg->client_lock, flags);
-	list_del(&client->node);
+	list_del_init(&client->node);
 	spin_unlock_irqrestore(&pg->client_lock, flags);
+}
+EXPORT_SYMBOL_GPL(pmic_glink_client_unregister);
+
+static void _devm_pmic_glink_release_client(struct device *dev, void *res)
+{
+	pmic_glink_client_unregister(res);
 }
 
 struct pmic_glink_client *devm_pmic_glink_client_alloc(struct device *dev,
