@@ -4,6 +4,8 @@ soong_namespace {
 cc_binary_host {
     name: "unifdef",
     srcs: ["scripts/unifdef.c"],
+    // Linux 5.15's unifdef uses identifiers that became keywords in C23.
+    c_std: "gnu11",
     sanitize: {
         never: true,
     },
@@ -21,4 +23,22 @@ sh_binary_host {
     name: "headers_install.sh",
     src: ":gen-headers_install.sh",
     required: ["unifdef"],
+}
+
+// Export the core-kernel audio UAPI with declared outputs, like the external
+// audio module headers. This keeps it available across sandboxed clean builds.
+genrule {
+    name: "m2391_generate_audio_core_headers",
+    tools: ["headers_install.sh", "unifdef"],
+    srcs: ["include/uapi/misc/adsp_sleepmon.h"],
+    out: ["misc/adsp_sleepmon.h"],
+    cmd: "LOC_UNIFDEF=$(location unifdef) $(location headers_install.sh) $(in) $(out)",
+}
+
+cc_library_headers {
+    name: "m2391_audio_core_headers",
+    vendor: true,
+    recovery_available: true,
+    generated_headers: ["m2391_generate_audio_core_headers"],
+    export_generated_headers: ["m2391_generate_audio_core_headers"],
 }
