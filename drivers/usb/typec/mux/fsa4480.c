@@ -10,6 +10,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/regmap.h>
+#include <linux/soc/qcom/fsa4480-i2c.h>
 #include <linux/usb/typec_dp.h>
 #include <linux/usb/typec_mux.h>
 #include <linux/regulator/consumer.h>
@@ -66,6 +67,8 @@ struct fsa4480 {
 
 	u8 cur_enable;
 	bool swap_sbu_lanes;
+	bool kalama;
+	struct blocking_notifier_head accessory_notifiers;
 };
 
 static const struct regmap_config fsa4480_regmap_config = {
@@ -75,6 +78,128 @@ static const struct regmap_config fsa4480_regmap_config = {
 	/* Accesses only done under fsa4480->lock */
 	.disable_locking = true,
 };
+
+/* Break before make when changing the Kalama AUX and analog-audio paths. */
+static int fsa4480_kalama_route(struct fsa4480 *fsa, u8 select, u8 enable)
+{
+	unsigned int status;
+	int ret;
+
+	ret = regmap_write(fsa->regmap, FSA4480_SWITCH_ENABLE, FSA4480_ENABLE_DEVICE);
+	if (ret)
+		return ret;
+	ret = regmap_write(fsa->regmap, FSA4480_SWITCH_SELECT, select);
+	if (ret)
+		return ret;
+	usleep_range(50, 55);
+	ret = regmap_write(fsa->regmap, FSA4480_SWITCH_ENABLE, enable);
+	if (ret)
+		return ret;
+	fsa->cur_enable = enable;
+	if (enable & FSA4480_ENABLE_SBU) {
+		usleep_range(15, 30);
+		ret = regmap_read(fsa->regmap, FSA4480_SWITCH_STATUS1, &status);
+		if (ret)
+			return ret;
+		if (status != 0x23 && status != 0x1c)
+			return -EIO;
+	}
+	return 0;
+}
+
+static struct i2c_driver fsa4480_driver;
+
+/* The device lock pins the bound driver and its devres for each access. */
+static struct i2c_client *fsa4480_get(struct device_node *node)
+{
+	struct i2c_client *client = of_find_i2c_device_by_node(node);
+
+	if (!client)
+		return ERR_PTR(-EPROBE_DEFER);
+	device_lock(&client->dev);
+	if (client->dev.driver != &fsa4480_driver.driver || !i2c_get_clientdata(client)) {
+		device_unlock(&client->dev);
+		put_device(&client->dev);
+		return ERR_PTR(-EPROBE_DEFER);
+	}
+	return client;
+}
+
+static void fsa4480_put(struct i2c_client *client)
+{
+	device_unlock(&client->dev);
+	put_device(&client->dev);
+}
+
+int fsa4480_switch_event(struct device_node *node, enum fsa_function event)
+{
+	struct i2c_client *client = fsa4480_get(node);
+	struct fsa4480 *fsa;
+	unsigned int select;
+	int ret;
+
+	if (IS_ERR(client))
+		return PTR_ERR(client);
+	fsa = i2c_get_clientdata(client);
+	mutex_lock(&fsa->lock);
+	switch (event) {
+	case FSA_MIC_GND_SWAP:
+		ret = regmap_read(fsa->regmap, FSA4480_SWITCH_SELECT, &select);
+		if (!ret)
+			ret = fsa4480_kalama_route(fsa, (select & 7) == 7 ? 0 : 7, 0x9f);
+		break;
+	case FSA_USBC_ORIENTATION_CC1:
+	case FSA_USBC_ORIENTATION_CC2:
+		ret = fsa4480_kalama_route(fsa, event == FSA_USBC_ORIENTATION_CC1 ?
+					   0x18 : 0x78, 0xf8);
+		break;
+	case FSA_USBC_DISPLAYPORT_DISCONNECTED:
+		ret = fsa4480_kalama_route(fsa, 0x18, 0x98);
+		break;
+	default:
+		ret = -EINVAL;
+	}
+	mutex_unlock(&fsa->lock);
+	fsa4480_put(client);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(fsa4480_switch_event);
+
+int fsa4480_reg_notifier(struct notifier_block *nb, struct device_node *node)
+{
+	struct i2c_client *client = fsa4480_get(node);
+	struct fsa4480 *fsa;
+	bool audio;
+	int ret;
+
+	if (IS_ERR(client))
+		return PTR_ERR(client);
+	fsa = i2c_get_clientdata(client);
+	ret = blocking_notifier_chain_register(&fsa->accessory_notifiers, nb);
+	mutex_lock(&fsa->lock);
+	audio = fsa->mode == TYPEC_MODE_AUDIO;
+	mutex_unlock(&fsa->lock);
+	fsa4480_put(client);
+	if (!ret && audio)
+		nb->notifier_call(nb, TYPEC_ACCESSORY_AUDIO, NULL);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(fsa4480_reg_notifier);
+
+int fsa4480_unreg_notifier(struct notifier_block *nb, struct device_node *node)
+{
+	struct i2c_client *client = fsa4480_get(node);
+	struct fsa4480 *fsa;
+	int ret;
+
+	if (IS_ERR(client))
+		return PTR_ERR(client);
+	fsa = i2c_get_clientdata(client);
+	ret = blocking_notifier_chain_unregister(&fsa->accessory_notifiers, nb);
+	fsa4480_put(client);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(fsa4480_unreg_notifier);
 
 static int fsa4480_set(struct fsa4480 *fsa)
 {
@@ -118,6 +243,12 @@ static int fsa4480_set(struct fsa4480 *fsa)
 		enable |= FSA4480_ENABLE_USB | FSA4480_ENABLE_AGND;
 	} else
 		return -EOPNOTSUPP;
+
+	if (fsa->kalama) {
+		if (fsa->mode == TYPEC_MODE_AUDIO && !fsa->svid)
+			return fsa4480_kalama_route(fsa, 0x00, 0x9f);
+		return fsa4480_kalama_route(fsa, sel, enable);
+	}
 
 	if (fsa->cur_enable & FSA4480_ENABLE_SBU) {
 		/* Disable SBU output while re-configuring the switch */
@@ -168,22 +299,30 @@ static int fsa4480_switch_set(struct typec_switch_dev *sw,
 static int fsa4480_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *state)
 {
 	struct fsa4480 *fsa = typec_mux_get_drvdata(mux);
+	unsigned int svid = state->alt ? state->alt->svid : 0;
+	unsigned long old_mode;
+	unsigned int old_svid;
+	bool was_audio, audio;
 	int ret = 0;
 
 	mutex_lock(&fsa->lock);
-
-	if (fsa->mode != state->mode) {
+	old_mode = fsa->mode;
+	old_svid = fsa->svid;
+	was_audio = old_mode == TYPEC_MODE_AUDIO && !old_svid;
+	if (old_mode != state->mode || old_svid != svid) {
 		fsa->mode = state->mode;
-
-		if (state->alt)
-			fsa->svid = state->alt->svid;
-		else
-			fsa->svid = 0; // No SVID
-
+		fsa->svid = svid;
 		ret = fsa4480_set(fsa);
+		if (ret) {
+			fsa->mode = old_mode;
+			fsa->svid = old_svid;
+		}
 	}
-
+	audio = fsa->mode == TYPEC_MODE_AUDIO && !fsa->svid;
 	mutex_unlock(&fsa->lock);
+	if (was_audio != audio)
+		blocking_notifier_call_chain(&fsa->accessory_notifiers,
+				audio ? TYPEC_ACCESSORY_AUDIO : TYPEC_ACCESSORY_NONE, NULL);
 
 	return ret;
 }
@@ -264,6 +403,8 @@ static int fsa4480_probe(struct i2c_client *client)
 		return -ENOMEM;
 
 	fsa->client = client;
+	fsa->kalama = of_device_is_compatible(dev->of_node, "qcom,fsa4480-i2c");
+	BLOCKING_INIT_NOTIFIER_HEAD(&fsa->accessory_notifiers);
 	mutex_init(&fsa->lock);
 
 	ret = fsa4480_parse_data_lanes_mapping(fsa);
@@ -343,6 +484,7 @@ MODULE_DEVICE_TABLE(i2c, fsa4480_table);
 
 static const struct of_device_id fsa4480_of_table[] = {
 	{ .compatible = "fcs,fsa4480" },
+	{ .compatible = "qcom,fsa4480-i2c" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, fsa4480_of_table);
