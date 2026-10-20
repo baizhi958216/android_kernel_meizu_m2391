@@ -10,6 +10,8 @@
 #include <linux/delay.h>
 #include <linux/export.h>
 #include <linux/clk-provider.h>
+#include <linux/clk/qcom-kalama.h>
+#include <linux/xarray.h>
 #include <linux/regmap.h>
 
 #include "clk-branch.h"
@@ -165,7 +167,62 @@ static void clk_branch2_mem_disable(struct clk_hw *hw)
 	return clk_branch2_disable(hw);
 }
 
+/* The consumer may pass any CCF clock. Check its provider type before
+ * accessing the branch register, including during provider removal.
+ */
+static DEFINE_XARRAY(retention_branches);
+static DEFINE_MUTEX(retention_lock);
+
+static int clk_branch2_register_retention(struct clk_hw *hw)
+{
+	return xa_insert(&retention_branches, (unsigned long)hw, to_clk_branch(hw), GFP_KERNEL);
+}
+
+static void clk_branch2_unregister_retention(struct clk_hw *hw)
+{
+	mutex_lock(&retention_lock);
+	xa_erase(&retention_branches, (unsigned long)hw);
+	mutex_unlock(&retention_lock);
+}
+
+int qcom_clk_set_flags(struct clk *clk, enum qcom_clk_retention flag)
+{
+	struct clk_branch *br;
+	struct clk_hw *hw;
+	u32 mask, value;
+	int ret = -EOPNOTSUPP;
+
+	if (IS_ERR_OR_NULL(clk))
+		return -EINVAL;
+	switch (flag) {
+	case CLKFLAG_RETAIN_PERIPH:
+	case CLKFLAG_NORETAIN_PERIPH:
+		mask = CBCR_FORCE_MEM_PERIPH_ON;
+		break;
+	case CLKFLAG_RETAIN_MEM:
+	case CLKFLAG_NORETAIN_MEM:
+		mask = CBCR_FORCE_MEM_CORE_ON;
+		break;
+	default:
+		return -EINVAL;
+	}
+	value = flag == CLKFLAG_RETAIN_PERIPH || flag == CLKFLAG_RETAIN_MEM ? mask : 0;
+	hw = __clk_get_hw(clk);
+	mutex_lock(&retention_lock);
+	br = xa_load(&retention_branches, (unsigned long)hw);
+	if (br) {
+		ret = regmap_update_bits(br->clkr.regmap, br->halt_reg, mask, value);
+		mb();
+		udelay(1);
+	}
+	mutex_unlock(&retention_lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(qcom_clk_set_flags);
+
 const struct clk_ops clk_branch2_mem_ops = {
+	.init = clk_branch2_register_retention,
+	.terminate = clk_branch2_unregister_retention,
 	.enable = clk_branch2_mem_enable,
 	.disable = clk_branch2_mem_disable,
 	.is_enabled = clk_is_enabled_regmap,
@@ -173,6 +230,8 @@ const struct clk_ops clk_branch2_mem_ops = {
 EXPORT_SYMBOL_GPL(clk_branch2_mem_ops);
 
 const struct clk_ops clk_branch2_ops = {
+	.init = clk_branch2_register_retention,
+	.terminate = clk_branch2_unregister_retention,
 	.enable = clk_branch2_enable,
 	.disable = clk_branch2_disable,
 	.is_enabled = clk_is_enabled_regmap,
@@ -180,12 +239,16 @@ const struct clk_ops clk_branch2_ops = {
 EXPORT_SYMBOL_GPL(clk_branch2_ops);
 
 const struct clk_ops clk_branch2_aon_ops = {
+	.init = clk_branch2_register_retention,
+	.terminate = clk_branch2_unregister_retention,
 	.enable = clk_branch2_enable,
 	.is_enabled = clk_is_enabled_regmap,
 };
 EXPORT_SYMBOL_GPL(clk_branch2_aon_ops);
 
 const struct clk_ops clk_branch_simple_ops = {
+	.init = clk_branch2_register_retention,
+	.terminate = clk_branch2_unregister_retention,
 	.enable = clk_enable_regmap,
 	.disable = clk_disable_regmap,
 	.is_enabled = clk_is_enabled_regmap,
