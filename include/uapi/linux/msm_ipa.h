@@ -1619,7 +1619,7 @@ struct IpaDscpVlanPcpMap_t {
 	uint8_t dscp[IPA_EoGRE_MAX_VLAN][IPA_EoGRE_MAX_PCP_IDX];
 	uint8_t num_vlan; /* indicate how many vlans valid */
 	uint8_t reserved0;
-} __packed;
+} __attribute__((__packed__));
 
 struct ipa_ipgre_info {
 	/* ip address type */

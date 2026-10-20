@@ -8,6 +8,7 @@ M2391_KERNEL_DEFCONFIG := $(M2391_KERNEL_PATH)/arch/arm64/configs/m2391_defconfi
 TARGET_KERNEL_SOURCE := $(M2391_KERNEL_SRC)
 TARGET_KERNEL_CONFIG := m2391_defconfig
 TARGET_KERNEL_VERSION := 5.15
+TARGET_BOARD_KERNEL_HEADERS += $(M2391_KERNEL_PATH)/kernel-headers
 
 # Pin the toolchain the kernel itself designates.  This 5.15 ACK source
 # declares CLANG_VERSION=r450784e in build.config.constants, and the defconfig
