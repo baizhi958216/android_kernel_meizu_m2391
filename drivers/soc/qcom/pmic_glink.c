@@ -345,7 +345,12 @@ static int pmic_glink_probe(struct platform_device *pdev)
 			goto out_release_ucsi_aux;
 	}
 	if (pg->client_mask & BIT(PMIC_GLINK_CLIENT_BATT)) {
-		ret = pmic_glink_add_aux_device(pg, &pg->ps_aux, "power-supply",
+		struct device_node *charger = of_get_compatible_child(pdev->dev.of_node,
+								     "meizu,m2391-battery-charger");
+		const char *name = of_device_is_available(charger) ? "m2391-charger" : "power-supply";
+
+		of_node_put(charger);
+		ret = pmic_glink_add_aux_device(pg, &pg->ps_aux, name,
 						"qcom,battery-charger");
 		if (ret)
 			goto out_release_altmode_aux;

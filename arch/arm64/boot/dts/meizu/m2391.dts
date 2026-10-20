@@ -11899,7 +11899,7 @@
 			depends-on-supply = <0x44>;
 
 			battery_charger: qcom,battery_charger {
-				compatible = "qcom,battery-charger";
+				compatible = "meizu,m2391-battery-charger", "qcom,battery-charger";
 				phandle = <0x3c9>;
 			};
 
