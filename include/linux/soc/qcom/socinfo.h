@@ -84,6 +84,16 @@ struct socinfo {
 	__le32 boot_core;
 };
 
+struct qcom_socinfo_adreno {
+	u32 chip_id;
+	u32 vulkan_id;
+	u32 feature_code;
+	u32 pcode;
+	char part_name[SMEM_SOCINFO_CHIP_ID_LENGTH];
+};
+
+int qcom_socinfo_get_adreno(struct qcom_socinfo_adreno *gpu);
+
 /* Internal feature codes */
 enum qcom_socinfo_feature_code {
 	/* External feature codes */

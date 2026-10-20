@@ -783,6 +783,43 @@ static void socinfo_debugfs_init(struct qcom_socinfo *qcom_socinfo,
 static void socinfo_debugfs_exit(struct qcom_socinfo *qcom_socinfo) {  }
 #endif /* CONFIG_DEBUG_FS */
 
+/* The version 16 SMEM part map has fixed-size, potentially unaligned records. */
+int qcom_socinfo_get_adreno(struct qcom_socinfo_adreno *gpu)
+{
+	struct socinfo *info;
+	const u8 *entry;
+	size_t size;
+	u32 count, offset;
+	const size_t stride = 3 * sizeof(__le32) + SMEM_SOCINFO_CHIP_ID_LENGTH;
+
+	memset(gpu, 0, sizeof(*gpu));
+	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_HW_SW_BUILD_ID, &size);
+	if (IS_ERR(info))
+		return PTR_ERR(info);
+	if (size < offsetofend(struct socinfo, nnum_partname_mapping) ||
+	    le32_to_cpu(info->fmt) < SOCINFO_VERSION(0, 16))
+		return -ENODATA;
+
+	offset = le32_to_cpu(info->npartnamemap_offset);
+	count = le32_to_cpu(info->nnum_partname_mapping);
+	if (offset > size || count > (size - offset) / stride)
+		return -EINVAL;
+	gpu->feature_code = le32_to_cpu(info->feature_code);
+	gpu->pcode = le32_to_cpu(info->pcode);
+	entry = (const u8 *)info + offset;
+	while (count--) {
+		if (get_unaligned_le32(entry) == 1) {
+			gpu->chip_id = get_unaligned_le32(entry + 4);
+			gpu->vulkan_id = get_unaligned_le32(entry + 8);
+			strscpy(gpu->part_name, entry + 12, sizeof(gpu->part_name));
+			break;
+		}
+		entry += stride;
+	}
+	return 0;
+}
+EXPORT_SYMBOL_GPL(qcom_socinfo_get_adreno);
+
 static int qcom_socinfo_probe(struct platform_device *pdev)
 {
 	struct qcom_socinfo *qs;
