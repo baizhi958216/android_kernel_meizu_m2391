@@ -27,7 +27,15 @@
  */
 int spec_sync_wait_bind_array(struct dma_fence_array *fence_array, u32 timeout_ms);
 
+/* The returned array is borrowed for the lifetime of fence_array. */
+struct dma_fence_array *spec_sync_bound_inputs(struct dma_fence_array *fence_array);
+
 #else
+
+static inline struct dma_fence_array *spec_sync_bound_inputs(struct dma_fence_array *fence_array)
+{
+	return NULL;
+}
 
 static inline int spec_sync_wait_bind_array(struct dma_fence_array *fence_array, u32 timeout_ms)
 {
