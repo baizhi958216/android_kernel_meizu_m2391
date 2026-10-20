@@ -61,8 +61,8 @@ main() {
     mkdir -p "$out"
     out=$(cd "$out" && pwd)
     cd "$top"
-    original="$top/kernel/sm8550-modules"
-    mirror="$out/m2391-external-src/sm8550-modules"
+    original="$top/kernel/meizu/m2391-modules"
+    mirror="$out/m2391-external-src/m2391-modules"
     source="$mirror/qcom/opensource"
     clang="$top/prebuilts/clang/kernel/linux-x86/clang-r450784e"
     READELF="$clang/bin/llvm-readelf"

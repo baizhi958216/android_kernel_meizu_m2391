@@ -254,7 +254,7 @@ M2391_SOURCE_MODULE_PATHS := \
     sound/usb/snd-usb-audio-qmi.ko
 
 # External groups are built in dependency order. Entries use installed-name:source-path, with paths relative to
-# kernel/sm8550-modules/qcom/opensource. This preserves the Wi-Fi module alias.
+# kernel/meizu/m2391-modules/qcom/opensource. This preserves the Wi-Fi module alias.
 M2391_EXTERNAL_GROUPS := \
     dataipa/drivers/platform/msm \
     datarmnet-ext/sch \

@@ -72,7 +72,7 @@ $(foreach module,$(M2391_SOURCE_MODULE_PATHS),$(eval $(call m2391-source-module,
 M2391_EXTERNAL_PLAN := $(M2391_KERNEL_BUILD_OUT)/m2391-external-plan.tsv
 M2391_EXTERNAL_STAMP := $(M2391_KERNEL_BUILD_OUT)/m2391-external.stamp
 M2391_EXTERNAL_OUTPUTS := $(addprefix $(M2391_SOURCE_MODULES_OUT)/,$(M2391_SOURCE_EXTERNAL_MODULE_NAMES))
-M2391_EXTERNAL_INPUTS := $(shell find kernel/sm8550-modules -type f \( -name '*.c' -o -name '*.h' -o -name Kbuild -o -name Makefile -o -name '*.conf' \) ! -name '*.mod.c')
+M2391_EXTERNAL_INPUTS := $(shell find kernel/meizu/m2391-modules -type f \( -name '*.c' -o -name '*.h' -o -name Kbuild -o -name Makefile -o -name '*.conf' \) ! -name '*.mod.c')
 $(M2391_EXTERNAL_STAMP): .KATI_IMPLICIT_OUTPUTS := $(M2391_EXTERNAL_OUTPUTS)
 .KATI_RESTAT: $(M2391_EXTERNAL_STAMP)
 $(M2391_EXTERNAL_STAMP): $(M2391_KERNEL_STAMP) $(M2391_KERNEL_MODULE_OUTPUTS) $(M2391_KERNEL_RAW_MODULES) $(M2391_EXTERNAL_INPUTS) $(LOCAL_PATH)/source-modules.mk $(LOCAL_PATH)/scripts/m2391/build_external.sh $(wildcard vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/*.ko) $(wildcard vendor/meizu/m2391/proprietary/vendor_boot/lib/modules/*.ko)
