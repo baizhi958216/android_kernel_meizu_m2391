@@ -17,6 +17,7 @@
 #include <linux/gfp.h>
 #include <linux/huge_mm.h>
 #include <linux/iommu.h>
+#include <linux/qcom-iommu-util.h>
 #include <linux/iommu-dma.h>
 #include <linux/iova.h>
 #include <linux/irq.h>
@@ -687,6 +688,27 @@ static int iommu_dma_init_domain(struct iommu_domain *domain, struct device *dev
 	base_pfn = max_t(unsigned long, base_pfn,
 			 domain->geometry.aperture_start >> order);
 
+	/* The DSP puts its session ID in the high word of the IOVA.
+	 * Firmware reserves the low part of the remaining 32-bit window.
+	 */
+	if (of_device_is_compatible(dev->of_node, "qcom,msm-fastrpc-compute-cb")) {
+		u32 pool[2];
+		u64 end;
+
+		ret = of_property_read_u32_array(dev->of_node, "qcom,iommu-dma-addr-pool",
+						 pool, ARRAY_SIZE(pool));
+		if (ret || !pool[1])
+			return -EINVAL;
+		end = (u64)pool[0] + pool[1] - 1;
+		if (end > U32_MAX || !IS_ALIGNED(pool[0], 1UL << order) ||
+		    !IS_ALIGNED(end + 1, 1UL << order))
+			return -EINVAL;
+		base_pfn = max(base_pfn, (unsigned long)pool[0] >> order);
+		dev->bus_dma_limit = min_not_zero(dev->bus_dma_limit, end);
+		if (base_pfn > (min(dev->bus_dma_limit, domain->geometry.aperture_end) >> order))
+			return -EINVAL;
+	}
+
 	/* start_pfn is always nonzero for an already-initialised domain */
 	if (iovad->start_pfn) {
 		if (1UL << order != iovad->granule ||
@@ -737,6 +759,8 @@ static int dma_info_to_prot(enum dma_data_direction dir, bool coherent,
 
 	if (attrs & DMA_ATTR_PRIVILEGED)
 		prot |= IOMMU_PRIV;
+	if (attrs & DMA_ATTR_SYS_CACHE_ONLY)
+		prot |= IOMMU_SYS_CACHE;
 
 	trace_android_rvh_iommu_dma_info_to_prot(attrs, &prot);
 

@@ -4,6 +4,9 @@
 
 #include <linux/bits.h>
 
+/* DMA allocation with inner non-cacheable, outer system cacheable pages. */
+#define DMA_ATTR_SYS_CACHE_ONLY		BIT(16)
+
 /* Stage-1 outer system cache attributes for Qualcomm LLCC clients. */
 #define IOMMU_SYS_CACHE			BIT(6)
 #define IOMMU_SYS_CACHE_NWA		BIT(7)
