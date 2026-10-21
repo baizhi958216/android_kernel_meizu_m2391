@@ -50,6 +50,12 @@ power_symbols=("$out/m2391-external/meizu/storage/Module.symvers"
 	       "$out/m2391-external/meizu/power-logger/Module.symvers"
 	       "$out/m2391-external/meizu/power-interface/Module.symvers")
 extbuild meizu/power-manager KBUILD_EXTRA_SYMBOLS="${power_symbols[*]}"
+charger_symbols=("$out/m2391-external/meizu/power-notify/Module.symvers"
+		 "$out/m2391-external/meizu/power-battery-logger/Module.symvers"
+		 "$out/m2391-external/meizu/power-manager/Module.symvers"
+		 "$out/m2391-external/meizu/power-thermal/Module.symvers"
+		 "${power_symbols[@]}")
+extbuild meizu/power-charger KBUILD_EXTRA_SYMBOLS="${charger_symbols[*]}"
 touch=qcom/opensource/touch-drivers
 touch_symbols=("$out/m2391-external/meizu/system/Module.symvers"
 	      "$out/m2391-external/$touch/mz_gesture/Module.symvers"
@@ -64,6 +70,11 @@ extbuild qcom/opensource/mmrm-driver MMRM_ROOT="$external/qcom/opensource/mmrm-d
 secure=qcom/opensource/securemsm-kernel
 extbuild "$secure/smcinvoke"
 extbuild "$secure/hdcp" KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$secure/smcinvoke/Module.symvers"
+
+mm=qcom/opensource/mm-drivers
+extbuild "$mm/msm_ext_display" MSM_EXT_DISPLAY_ROOT="$external/$mm/"
+extbuild "$mm/sync_fence" SYNC_FENCE_ROOT="$external/$mm/"
+extbuild "$mm/hw_fence" MSM_HW_FENCE_ROOT="$external/$mm/"
 
 release=$(<"$out/include/config/kernel.release")
 cat "${symvers[@]}" > "$stage/Module.symvers"
