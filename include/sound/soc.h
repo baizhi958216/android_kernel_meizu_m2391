@@ -252,6 +252,14 @@ struct platform_device;
 	.get = xhandler_get, .put = xhandler_put, \
 	.private_value = SOC_DOUBLE_R_VALUE(reg_left, reg_right, xshift, \
 					    0, xmax, xinvert) }
+#define SOC_SINGLE_MULTI_EXT(xname, xreg, xshift, xmax, xinvert, xcount,\
+	xhandler_get, xhandler_put) \
+{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
+	.info = snd_soc_info_multi_ext, \
+	.get = xhandler_get, .put = xhandler_put, \
+	.private_value = (unsigned long)&(struct soc_multi_mixer_control) \
+		{.reg = xreg, .shift = xshift, .rshift = xshift, .max = xmax, \
+		.count = xcount, .platform_max = xmax, .invert = xinvert} }
 #define SOC_SINGLE_EXT_TLV(xname, xreg, xshift, xmax, xinvert,\
 	 xhandler_get, xhandler_put, tlv_array) \
 {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
@@ -553,6 +561,7 @@ int snd_soc_get_enum_double(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol);
 int snd_soc_put_enum_double(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol);
+int snd_soc_info_multi_ext(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo);
 int snd_soc_info_volsw(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_info *uinfo);
 int snd_soc_info_volsw_sx(struct snd_kcontrol *kcontrol,
@@ -1230,6 +1239,11 @@ snd_soc_substream_to_rtd(const struct snd_pcm_substream *substream)
 void snd_soc_close_delayed_work(struct snd_soc_pcm_runtime *rtd);
 
 /* mixer control */
+struct soc_multi_mixer_control {
+	int min, max, platform_max, count;
+	unsigned int reg, rreg, shift, rshift, invert;
+};
+
 struct soc_mixer_control {
 	/* Minimum and maximum specified as written to the hardware */
 	int min, max;

@@ -319,6 +319,23 @@ static int soc_get_volsw(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+/* Qualcomm codecs use arrays of mixer values for IIR and display selection. */
+int snd_soc_info_multi_ext(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo)
+{
+	const struct soc_multi_mixer_control *mc = (void *)kcontrol->private_value;
+	int max = mc->platform_max ?: mc->max;
+
+	if (mc->count <= 0 || mc->count > ARRAY_SIZE(((struct snd_ctl_elem_value *)0)->value.integer.value))
+		return -EINVAL;
+	uinfo->type = max == 1 && !strnstr(kcontrol->id.name, " Volume", 30) ?
+		      SNDRV_CTL_ELEM_TYPE_BOOLEAN : SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->count = mc->count;
+	uinfo->value.integer.min = 0;
+	uinfo->value.integer.max = max;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(snd_soc_info_multi_ext);
+
 /**
  * snd_soc_info_volsw - single mixer info callback with range.
  * @kcontrol: mixer control
