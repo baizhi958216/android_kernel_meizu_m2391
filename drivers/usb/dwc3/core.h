@@ -1383,6 +1383,7 @@ struct dwc3 {
 	unsigned		three_stage_setup:1;
 	unsigned		dis_start_transfer_quirk:1;
 	unsigned		usb3_lpm_capable:1;
+	unsigned		ss_lanes_released:1;
 	unsigned		usb2_lpm_disable:1;
 	unsigned		usb2_gadget_lpm_disable:1;
 

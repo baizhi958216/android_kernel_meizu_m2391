@@ -1597,6 +1597,10 @@ static int dwc3_core_get_phy(struct dwc3 *dwc)
 		}
 	}
 
+	/* The Kalama wrapper has handed the SS lanes to a four-lane DP sink. */
+	if (dwc->ss_lanes_released)
+		return 0;
+
 	for (i = 0; i < dwc->num_usb3_ports; i++) {
 		if (dwc->num_usb3_ports == 1)
 			snprintf(phy_name, sizeof(phy_name), "usb3-phy");
@@ -1753,8 +1757,12 @@ static void dwc3_get_properties(struct dwc3 *dwc)
 	    dev->parent && of_device_is_compatible(dev->parent->of_node, "qcom,dwc-usb3-msm")) {
 		const struct dwc3_kalama_glue *glue = dev_get_drvdata(dev->parent);
 
-		if (glue)
+		if (glue) {
 			dwc->dr_mode = glue->child_mode;
+			dwc->ss_lanes_released = glue->usb2_only;
+			if (glue->usb2_only)
+				dwc->maximum_speed = USB_SPEED_HIGH;
+		}
 	}
 	dwc->hsphy_mode = of_usb_get_phy_mode(dev->of_node);
 

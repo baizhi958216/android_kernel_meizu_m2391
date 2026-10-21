@@ -2625,6 +2625,8 @@
 
 		__overlay__ {
 			usb-role-switch;
+			mode-switch = <0xffffffff>;
+			orientation-switch = <0xffffffff>;
 
 			port {
 
@@ -3607,7 +3609,9 @@
 		altmode = "/fragment@63/__overlay__/qcom,dp_display@ae90000:qcom,altmode-dev:0";
 		fsa4480 = "/fragment@63/__overlay__/qcom,dp_display@ae90000:qcom,dp-aux-switch:0",
 			  "/fragment@22/__overlay__/connector:mode-switch:0";
-		usb_qmp_dp_phy = "/fragment@63/__overlay__/qcom,dp_display@ae90000:usb-phy:0";
+		usb_qmp_dp_phy = "/fragment@63/__overlay__/qcom,dp_display@ae90000:usb-phy:0",
+				 "/fragment@21/__overlay__:mode-switch:0",
+				 "/fragment@21/__overlay__:orientation-switch:0";
 		rpmhcc = "/fragment@62/__overlay__/qcom,mdss_dsi_ctrl0@ae94000:clocks:48\0/fragment@62/__overlay__/qcom,mdss_dsi_ctrl1@ae96000:clocks:48\0/fragment@63/__overlay__/qcom,dp_display@ae90000:clocks:8\0/fragment@84/__overlay__/sr100@0:clocks:0\0/fragment@86/__overlay__/nq@28:clocks:0";
 		config_noc = "/fragment@62/__overlay__/qcom,mdss_mdp@ae00000:interconnects:40";
 		mc_virt = "/fragment@62/__overlay__/qcom,mdss_mdp@ae00000:interconnects:16\0/fragment@62/__overlay__/qcom,mdss_mdp@ae00000:interconnects:24\0/fragment@63/__overlay__/qcom,sde_rscc@af20000:interconnects:8";

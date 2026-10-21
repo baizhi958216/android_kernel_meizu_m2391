@@ -25,6 +25,7 @@ struct dwc3_probe_data {
 /* Parent driver data for the Kalama nested DWC3 core. */
 struct dwc3_kalama_glue {
 	enum usb_dr_mode child_mode;
+	bool usb2_only;
 };
 
 int dwc3_core_probe(const struct dwc3_probe_data *data);

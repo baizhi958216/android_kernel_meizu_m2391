@@ -20,6 +20,9 @@
 #include <linux/usb/of.h>
 #include <linux/regulator/consumer.h>
 #include <linux/usb/role.h>
+#include <linux/usb/dwc3-qcom.h>
+#include <linux/usb/typec_dp.h>
+#include <linux/usb/typec_mux.h>
 #include <linux/reset.h>
 #include <linux/iopoll.h>
 #include <linux/usb/hcd.h>
@@ -98,6 +101,10 @@ struct dwc3_qcom {
 	/* The Kalama connector remains registered when data is disabled. */
 	bool			kalama;
 	struct mutex		role_lock;
+	struct typec_switch	*lane_switch;
+	struct typec_mux	*lane_mux;
+	enum typec_orientation	lane_orientation;
+	unsigned int		dp_lanes;
 	void __iomem		*usb_access;
 	struct usb_role_switch	*role_sw;
 	enum usb_role		requested_role;
@@ -548,7 +555,7 @@ static irqreturn_t qcom_dwc3_resume_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static void dwc3_qcom_select_utmi_clk(struct dwc3_qcom *qcom)
+static void dwc3_qcom_select_pipe_clk(struct dwc3_qcom *qcom, bool use_utmi)
 {
 	/* Configure dwc3 to use UTMI clock as PIPE clock not present */
 	dwc3_qcom_setbits(qcom->qscratch_base, QSCRATCH_GENERAL_CFG,
@@ -556,8 +563,12 @@ static void dwc3_qcom_select_utmi_clk(struct dwc3_qcom *qcom)
 
 	usleep_range(100, 1000);
 
-	dwc3_qcom_setbits(qcom->qscratch_base, QSCRATCH_GENERAL_CFG,
-			  PIPE_UTMI_CLK_SEL | PIPE3_PHYSTATUS_SW);
+	if (use_utmi)
+		dwc3_qcom_setbits(qcom->qscratch_base, QSCRATCH_GENERAL_CFG,
+				   PIPE_UTMI_CLK_SEL | PIPE3_PHYSTATUS_SW);
+	else
+		dwc3_qcom_clrbits(qcom->qscratch_base, QSCRATCH_GENERAL_CFG,
+				   PIPE_UTMI_CLK_SEL | PIPE3_PHYSTATUS_SW);
 
 	usleep_range(100, 1000);
 
@@ -805,7 +816,7 @@ static int kalama_update_core(struct dwc3_qcom *qcom)
 	if (qcom->requested_role == USB_ROLE_NONE)
 		rate = qcom->rate_idle;
 	else if (mode == USB_DR_MODE_HOST &&
-		 device_property_read_bool(qcom->dev, "qcom,select-utmi-as-pipe-clk"))
+		 (qcom->glue.usb2_only || device_property_read_bool(qcom->dev, "qcom,select-utmi-as-pipe-clk")))
 		rate = qcom->rate_hs;
 	ret = clk_set_rate(qcom->core_clk, rate);
 	if (ret)
@@ -818,6 +829,123 @@ static int kalama_update_core(struct dwc3_qcom *qcom)
 	qcom->glue.child_mode = mode;
 	return dwc3_qcom_of_register_core(to_platform_device(qcom->dev));
 }
+
+static void kalama_mux_put(void *data)
+{
+	typec_mux_put(data);
+}
+
+static void kalama_switch_put(void *data)
+{
+	typec_switch_put(data);
+}
+
+static int kalama_get_lane_controls(struct dwc3_qcom *qcom)
+{
+	struct device *dev = qcom->dev;
+	int ret;
+
+	/* Shipping HS-only boards have no USB SuperSpeed lanes to release. */
+	if (!device_property_present(dev, "mode-switch"))
+		return 0;
+	qcom->lane_mux = typec_mux_get(dev);
+	if (IS_ERR_OR_NULL(qcom->lane_mux))
+		return qcom->lane_mux ? PTR_ERR(qcom->lane_mux) : -ENODEV;
+	ret = devm_add_action_or_reset(dev, kalama_mux_put, qcom->lane_mux);
+	if (ret)
+		return ret;
+	qcom->lane_switch = typec_switch_get(dev);
+	if (IS_ERR_OR_NULL(qcom->lane_switch))
+		return qcom->lane_switch ? PTR_ERR(qcom->lane_switch) : -ENODEV;
+	return devm_add_action_or_reset(dev, kalama_switch_put, qcom->lane_switch);
+}
+
+static int kalama_set_lane_route(struct dwc3_qcom *qcom, unsigned int lanes,
+				 enum typec_orientation orientation)
+{
+	struct typec_altmode dp = { .svid = USB_TYPEC_DP_SID, .mode = USB_TYPEC_DP_MODE };
+	struct typec_mux_state mux = { .mode = TYPEC_STATE_USB };
+	int ret;
+
+	if (lanes) {
+		mux.alt = &dp;
+		mux.mode = lanes == 4 ? TYPEC_DP_STATE_C : TYPEC_DP_STATE_D;
+		ret = typec_switch_set(qcom->lane_switch, orientation);
+		if (ret)
+			return ret;
+	}
+	return typec_mux_set(qcom->lane_mux, &mux);
+}
+
+static struct platform_driver dwc3_qcom_driver;
+
+int dwc3_qcom_set_dp_lanes(struct device *dev, unsigned int lanes,
+			   enum typec_orientation orientation)
+{
+	struct dwc3_qcom *qcom;
+	bool old_usb2;
+	int ret;
+
+	if (lanes && ((lanes != 2 && lanes != 4) || orientation == TYPEC_ORIENTATION_NONE))
+		return -EINVAL;
+	device_lock(dev);
+	if (dev->driver != &dwc3_qcom_driver.driver || !device_is_bound(dev)) {
+		ret = -EAGAIN;
+		goto out_unlock;
+	}
+	qcom = dev_get_drvdata(dev);
+	if (!qcom->kalama) {
+		ret = -ENODEV;
+		goto out_unlock;
+	}
+	if (!qcom->lane_mux) {
+		ret = device_property_read_bool(dev, "qcom,select-utmi-as-pipe-clk") ? 0 : -ENODEV;
+		goto out_unlock;
+	}
+	ret = pm_runtime_resume_and_get(dev);
+	if (ret < 0)
+		goto out_unlock;
+	mutex_lock(&qcom->role_lock);
+	if (readl(qcom->usb_access) != 0xf) {
+		ret = -EACCES;
+		goto out_pm;
+	}
+	if (qcom->dp_lanes == lanes && (!lanes || qcom->lane_orientation == orientation))
+		goto out_pm;
+
+	/* The combo PHY can reset its PLL when orientation or allocation changes.
+	 * Quiesce xHCI or the gadget before the reset, preserving the UCSI role.
+	 */
+	old_usb2 = qcom->glue.usb2_only;
+	kalama_remove_core(qcom);
+	ret = kalama_set_lane_route(qcom, lanes, orientation);
+	if (!ret) {
+		qcom->glue.usb2_only = lanes == 4;
+		dwc3_qcom_select_pipe_clk(qcom, qcom->glue.usb2_only);
+		ret = kalama_update_core(qcom);
+	}
+	if (ret) {
+		int restore;
+
+		restore = kalama_set_lane_route(qcom, qcom->dp_lanes, qcom->lane_orientation);
+		qcom->glue.usb2_only = old_usb2;
+		dwc3_qcom_select_pipe_clk(qcom, old_usb2);
+		if (!restore)
+			restore = kalama_update_core(qcom);
+		if (restore)
+			dev_err(dev, "could not restore USB lane allocation: %d\n", restore);
+	} else {
+		qcom->dp_lanes = lanes;
+		qcom->lane_orientation = orientation;
+	}
+out_pm:
+	mutex_unlock(&qcom->role_lock);
+	pm_runtime_put(dev);
+out_unlock:
+	device_unlock(dev);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(dwc3_qcom_set_dp_lanes);
 
 static int kalama_set_role(struct usb_role_switch *sw, enum usb_role role)
 {
@@ -946,6 +1074,9 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 		    of_property_read_u32(np, "qcom,core-clk-rate-disconnected", &qcom->rate_idle))
 			return dev_err_probe(dev, -EINVAL, "missing controller clock rates\n");
 
+		ret = kalama_get_lane_controls(qcom);
+		if (ret)
+			return dev_err_probe(dev, ret, "USB/DP combo lane controls unavailable\n");
 		ret = devm_regulator_get_enable(dev, "USB3_GDSC");
 		if (ret)
 			return dev_err_probe(dev, ret, "USB domain unavailable\n");
@@ -1020,7 +1151,7 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 	ignore_pipe_clk = device_property_read_bool(dev,
 				"qcom,select-utmi-as-pipe-clk");
 	if (ignore_pipe_clk && (!qcom->kalama || readl(qcom->usb_access) == 0xf))
-		dwc3_qcom_select_utmi_clk(qcom);
+		dwc3_qcom_select_pipe_clk(qcom, true);
 
 	if (qcom->kalama) {
 		struct usb_role_switch_desc desc = {
