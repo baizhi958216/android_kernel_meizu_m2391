@@ -526,6 +526,76 @@ static void __tcs_buffer_write(struct rsc_drv *drv, int tcs_id, int cmd_id,
 	write_tcs_reg(drv, drv->regs[RSC_DRV_CMD_ENABLE], tcs_id, cmd_enable);
 }
 
+/* Kalama channel 0 reserves the TCS immediately following the normal pool
+ * for low-latency DDR/LLCC votes. This slot never generates an AMC IRQ.
+ */
+int rpmh_init_fast_path(const struct device *dev, struct tcs_cmd *cmds, u32 count)
+{
+	struct rsc_drv *drv = dev_get_drvdata(dev->parent);
+	struct tcs_request req = { .state = RPMH_ACTIVE_ONLY_STATE, .cmds = cmds, .num_cmds = count };
+	unsigned long flags;
+	int id;
+
+	if (!drv || !drv->fast_cmd_slots)
+		return -ENODEV;
+	if (!cmds || !count || count > min(drv->fast_cmd_slots, 32U))
+		return -EINVAL;
+	id = drv->num_tcs;
+	spin_lock_irqsave(&drv->lock, flags);
+	if (drv->fast_cmd_count && !read_tcs_reg(drv, drv->regs[RSC_DRV_STATUS], id)) {
+		spin_unlock_irqrestore(&drv->lock, flags);
+		return -EBUSY;
+	}
+	enable_tcs_irq(drv, id, false);
+	write_tcs_reg(drv, drv->regs[RSC_DRV_CMD_ENABLE], id, 0);
+	__tcs_buffer_write(drv, id, 0, &req);
+	drv->fast_cmd_count = count;
+	spin_unlock_irqrestore(&drv->lock, flags);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(rpmh_init_fast_path);
+
+int rpmh_update_fast_path(const struct device *dev, struct tcs_cmd *cmds, u32 count, u32 mask)
+{
+	struct rsc_drv *drv = dev_get_drvdata(dev->parent);
+	unsigned long flags;
+	int i, id, ret = 0;
+
+	if (!drv || !drv->fast_cmd_slots)
+		return -ENODEV;
+	if (!cmds || !count || count > 32 || !mask || (mask & ~GENMASK(count - 1, 0)))
+		return -EINVAL;
+	id = drv->num_tcs;
+	spin_lock_irqsave(&drv->lock, flags);
+	if (count != drv->fast_cmd_count) {
+		ret = -EINVAL;
+		goto unlock;
+	}
+	for (i = 0; i < 5; i++) {
+		if (read_tcs_reg(drv, drv->regs[RSC_DRV_STATUS], id))
+			break;
+		udelay(1);
+	}
+	if (i == 5) {
+		ret = -EBUSY;
+		goto unlock;
+	}
+	for (i = 0; i < count; i++) {
+		if (cmds[i].addr != read_tcs_cmd(drv, drv->regs[RSC_DRV_CMD_ADDR], id, i)) {
+			ret = -EINVAL;
+			goto unlock;
+		}
+	}
+	for (i = 0; i < count; i++)
+		if (mask & BIT(i))
+			write_tcs_cmd(drv, drv->regs[RSC_DRV_CMD_DATA], id, i, cmds[i].data);
+	__tcs_set_trigger(drv, id, true);
+unlock:
+	spin_unlock_irqrestore(&drv->lock, flags);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(rpmh_update_fast_path);
+
 /**
  * check_for_req_inflight() - Look to see if conflicting cmds are in flight.
  * @drv: The controller.
@@ -1108,6 +1178,7 @@ static int rpmh_probe_tcs_config(struct device_node *dn, struct device_node *cha
 						 2 * TCS_TYPE_NR + 1, &fast_count);
 		if (ret || fast_count > 1 || st + fast_count > max_tcs)
 			return -EINVAL;
+		drv->fast_cmd_slots = fast_count ? ncpt : 0;
 	}
 
 	drv->num_tcs = st;
