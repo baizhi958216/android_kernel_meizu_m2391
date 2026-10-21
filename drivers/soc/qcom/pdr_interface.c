@@ -15,6 +15,7 @@
 struct pdr_service {
 	char service_name[SERVREG_NAME_LENGTH + 1];
 	char service_path[SERVREG_NAME_LENGTH + 1];
+	char domain_path[SERVREG_NAME_LENGTH + 1];
 
 	struct sockaddr_qrtr addr;
 
@@ -418,7 +419,7 @@ static int pdr_locate_service(struct pdr_handle *pdr, struct pdr_service *pds)
 			if (strnlen(entry->name, sizeof(entry->name)) == sizeof(entry->name))
 				continue;
 
-			if (!strcmp(entry->name, pds->service_path)) {
+			if (!strcmp(entry->name, pds->domain_path)) {
 				pds->service_data_valid = entry->service_data_valid;
 				pds->service_data = entry->service_data;
 				pds->instance = entry->instance;
@@ -496,20 +497,9 @@ static void pdr_locator_work(struct work_struct *work)
 	mutex_unlock(&pdr->list_lock);
 }
 
-/**
- * pdr_add_lookup() - register a tracking request for a PD
- * @pdr:		PDR client handle
- * @service_name:	service name of the tracking request
- * @service_path:	service path of the tracking request
- *
- * Registering a pdr lookup allows for tracking the life cycle of the PD.
- *
- * Return: pdr_service object on success, ERR_PTR on failure. -EALREADY is
- * returned if a lookup is already in progress for the given service path.
- */
-struct pdr_service *pdr_add_lookup(struct pdr_handle *pdr,
+static struct pdr_service *pdr_add_path(struct pdr_handle *pdr,
 				   const char *service_name,
-				   const char *service_path)
+				   const char *service_path, bool within_domain)
 {
 	struct pdr_service *tmp;
 
@@ -526,12 +516,19 @@ struct pdr_service *pdr_add_lookup(struct pdr_handle *pdr,
 
 	pds->service = SERVREG_NOTIFIER_SERVICE;
 	strscpy(pds->service_name, service_name, sizeof(pds->service_name));
-	strscpy(pds->service_path, service_path, sizeof(pds->service_path));
+	strscpy(pds->domain_path, service_path, sizeof(pds->domain_path));
+	if (within_domain) {
+		if (snprintf(pds->service_path, sizeof(pds->service_path), "%s/%s",
+			     service_path, service_name) >= sizeof(pds->service_path))
+			return ERR_PTR(-ENAMETOOLONG);
+	} else {
+		strscpy(pds->service_path, service_path, sizeof(pds->service_path));
+	}
 	pds->need_locator_lookup = true;
 
 	mutex_lock(&pdr->list_lock);
 	list_for_each_entry(tmp, &pdr->lookups, node) {
-		if (strcmp(tmp->service_path, service_path))
+		if (strcmp(tmp->service_path, pds->service_path))
 			continue;
 
 		mutex_unlock(&pdr->list_lock);
@@ -545,7 +542,30 @@ struct pdr_service *pdr_add_lookup(struct pdr_handle *pdr,
 
 	return_ptr(pds);
 }
+/**
+ * pdr_add_lookup() - register a tracking request for a PD
+ * @pdr:		PDR client handle
+ * @service_name:	service name of the tracking request
+ * @service_path:	service path of the tracking request
+ *
+ * Registering a pdr lookup allows for tracking the life cycle of the PD.
+ *
+ * Return: pdr_service object on success, ERR_PTR on failure. -EALREADY is
+ * returned if a lookup is already in progress for the given service path.
+ */
+struct pdr_service *pdr_add_lookup(struct pdr_handle *pdr, const char *service_name,
+				   const char *service_path)
+{
+	return pdr_add_path(pdr, service_name, service_path, false);
+}
 EXPORT_SYMBOL_GPL(pdr_add_lookup);
+
+struct pdr_service *pdr_add_service_lookup(struct pdr_handle *pdr, const char *service_name,
+					   const char *domain_path)
+{
+	return pdr_add_path(pdr, service_name, domain_path, true);
+}
+EXPORT_SYMBOL_GPL(pdr_add_service_lookup);
 
 /**
  * pdr_restart_pd() - restart PD
@@ -565,7 +585,8 @@ int pdr_restart_pd(struct pdr_handle *pdr, struct pdr_service *pds)
 	struct qmi_txn txn;
 	int ret;
 
-	if (IS_ERR_OR_NULL(pdr) || IS_ERR_OR_NULL(pds))
+	if (IS_ERR_OR_NULL(pdr) || IS_ERR_OR_NULL(pds) ||
+	    strcmp(pds->domain_path, pds->service_path))
 		return -EINVAL;
 
 	mutex_lock(&pdr->list_lock);

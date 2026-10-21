@@ -24,6 +24,8 @@ struct pdr_handle *pdr_handle_alloc(void (*status)(int state,
 struct pdr_service *pdr_add_lookup(struct pdr_handle *pdr,
 				   const char *service_name,
 				   const char *service_path);
+struct pdr_service *pdr_add_service_lookup(struct pdr_handle *pdr, const char *service_name,
+					   const char *domain_path);
 int pdr_restart_pd(struct pdr_handle *pdr, struct pdr_service *pds);
 void pdr_handle_release(struct pdr_handle *pdr);
 
