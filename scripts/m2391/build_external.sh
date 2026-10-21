@@ -75,8 +75,10 @@ main() {
     # Keep Kbuild writes under out while including tracked worktree edits.
     mkdir -p "$mirror" "$symbols/stock" "$symbols/built"
     git --no-optional-locks -C "$original" ls-files -z > "$out/m2391-external-files.list"
-    tar -C "$original" --null -T "$out/m2391-external-files.list" --format=pax -cf - |
-        tar -C "$mirror" -xf -
+    # Android's sanitized PATH may resolve tar to Toybox, which lacks --format.
+    # Use the host tar for the NUL-delimited list and pax archive on both sides.
+    /usr/bin/tar -C "$original" --null -T "$out/m2391-external-files.list" --format=pax -cf - |
+        /usr/bin/tar -C "$mirror" -xf -
     # Symbol metadata must describe this build, including removed OEM modules.
     rm -f "$symbols/stock/"*.symvers "$symbols/built/"*.symvers
     local module name seen=" "
