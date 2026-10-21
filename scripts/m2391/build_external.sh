@@ -57,6 +57,8 @@ module_symvers() {
 
 main() {
     local top=$1 out=$2 jobs=$3 original mirror source clang symbols plan
+    # Use the same ACK version arguments as the core kernel build.
+    local -a version_flags=("${@:4}")
     top=$(cd "$top" && pwd)
     mkdir -p "$out"
     out=$(cd "$out" && pwd)
@@ -129,6 +131,7 @@ main() {
         echo "Building m2391 external group: $group"
         "$top/prebuilts/build-tools/linux-x86/bin/make" -j"$jobs" \
             -C "$top/kernel/meizu/m2391" "O=$out" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
+            "${version_flags[@]}" \
             CC=clang LD=ld.lld CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- \
             "M=$source/$group" "KBUILD_EXTRA_SYMBOLS=$symvers" "${groupflags[@]}" modules
         for relative in $selected; do

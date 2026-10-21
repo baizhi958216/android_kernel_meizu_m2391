@@ -8,6 +8,10 @@ M2391_KERNEL_DEFCONFIG := $(M2391_KERNEL_PATH)/arch/arm64/configs/m2391_defconfi
 TARGET_KERNEL_SOURCE := $(M2391_KERNEL_SRC)
 TARGET_KERNEL_CONFIG := m2391_defconfig
 TARGET_KERNEL_VERSION := 5.15
+# Preserve the ACK branch and KMI generation from build.config.constants/common
+# when building directly with Make rather than the upstream build.sh wrapper.
+M2391_KERNEL_VERSION_FLAGS := BRANCH=android13-5.15 KMI_GENERATION=8
+TARGET_KERNEL_ADDITIONAL_FLAGS += $(M2391_KERNEL_VERSION_FLAGS)
 TARGET_BOARD_KERNEL_HEADERS += $(M2391_KERNEL_PATH)/kernel-headers
 TARGET_NO_KERNEL_OVERRIDE := true
 M2391_KERNEL_BUILD_OUT = $(OUT_DIR)/target/product/$(TARGET_DEVICE)/obj/KERNEL_OBJ

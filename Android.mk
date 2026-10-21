@@ -79,7 +79,7 @@ $(M2391_EXTERNAL_STAMP): $(M2391_KERNEL_STAMP) $(M2391_KERNEL_MODULE_OUTPUTS) $(
 	@mkdir -p $(dir $(M2391_EXTERNAL_PLAN))
 	@{ $(foreach group,$(M2391_EXTERNAL_GROUPS),printf '%s\t%s\t%s\n' '$(group)' '$(M2391_EXTERNAL_BUILT_MODULE_NAMES.$(group))' '$(M2391_EXTERNAL_MODULES.$(group))';) } > $(M2391_EXTERNAL_PLAN).tmp
 	mv $(M2391_EXTERNAL_PLAN).tmp $(M2391_EXTERNAL_PLAN)
-	bash $(M2391_KERNEL_PATH)/scripts/m2391/build_external.sh $(abspath .) $(abspath $(M2391_KERNEL_BUILD_OUT)) $(shell getconf _NPROCESSORS_ONLN)
+	bash $(M2391_KERNEL_PATH)/scripts/m2391/build_external.sh $(abspath .) $(abspath $(M2391_KERNEL_BUILD_OUT)) $(shell getconf _NPROCESSORS_ONLN) $(M2391_KERNEL_VERSION_FLAGS)
 	@for output in $(M2391_EXTERNAL_OUTPUTS); do \
 	    test -s "$$output" || { echo "Missing external module: $$output" >&2; exit 1; }; \
 	done
