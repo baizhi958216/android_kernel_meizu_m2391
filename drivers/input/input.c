@@ -425,6 +425,8 @@ static void input_handle_event(struct input_dev *dev,
 		dev->vals[dev->num_vals++] = input_value_sync;
 		input_pass_values(dev, dev->vals, dev->num_vals);
 		dev->num_vals = 0;
+		/* A synthetic SYN_REPORT also ends the timestamp's lifetime. */
+		dev->timestamp[INPUT_CLK_MONO] = ktime_set(0, 0);
 	}
 
 }
