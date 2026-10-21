@@ -1,5 +1,14 @@
 # SPDX-License-Identifier: MIT
 
+config DRM_KALAMA_SDE_HELPERS
+	tristate "DisplayPort helpers for the external Kalama SDE driver"
+	depends on DRM && ARCH_QCOM
+	select DRM_DISPLAY_HELPER
+	select DRM_DISPLAY_DP_HELPER
+	help
+	  Build the DisplayPort AUX, link training and MST topology helpers
+	  used by the external Qualcomm SDE display driver on Kalama.
+
 config DRM_DISPLAY_DP_AUX_BUS
 	tristate
 	depends on DRM
