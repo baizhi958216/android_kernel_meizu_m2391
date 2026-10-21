@@ -50,3 +50,4 @@ obj-$(CONFIG_MSM_QBT_HANDLER) += qbt_handler.o
 obj-$(CONFIG_QCOM_SECURE_BUFFER) += secure_buffer.o
 obj-y += mem_buf/
 obj-$(CONFIG_MSM_PERFORMANCE) += msm_performance.o
+obj-y += dcvs/

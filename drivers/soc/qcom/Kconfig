@@ -293,6 +293,7 @@ config MSM_PERFORMANCE
 	  Report graphics queue, submission and retirement timestamps for the
 	  process selected by the Qualcomm performance HAL.
 
+source "drivers/soc/qcom/dcvs/Kconfig"
 source "drivers/soc/qcom/mem_buf/Kconfig"
 
 config QCOM_SECURE_BUFFER
