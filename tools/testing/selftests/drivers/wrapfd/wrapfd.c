@@ -532,6 +532,132 @@ static void test_load_unmapped(struct __test_metadata *_metadata,
 	close(wrapfd);
 }
 
+static int __test_not_owned_usage(int wrapfd, int fd, size_t size, bool has_other_owner)
+{
+	void *buf;
+	int ret, wrapfd2;
+
+	/*
+	 * If another process owns a buffer, then the current process cannot use it, so it
+	 * cannot use load, lseek, map, or use a passthrough ioctl() on it.
+	 */
+	ret = wrapfd_load(wrapfd, fd, 0, 0, size);
+	if (has_other_owner && (ret != -1 || errno != EBUSY))
+		return EXIT_FAILURE;
+
+	if (!has_other_owner && ret)
+		return EXIT_FAILURE;
+
+	ret = lseek(wrapfd, 0, SEEK_END);
+	if (has_other_owner && (ret != -1 || errno != EBUSY))
+		return EXIT_FAILURE;
+
+	if (!has_other_owner && (ret != ALIGN(size, getpagesize())))
+		return EXIT_FAILURE;
+
+	ret = lseek(wrapfd, 0, SEEK_SET);
+	if (has_other_owner && (ret != -1 || errno != EBUSY))
+		return EXIT_FAILURE;
+
+	if (!has_other_owner && ret)
+		return EXIT_FAILURE;
+
+	ret = ioctl(wrapfd, DMA_BUF_SET_NAME, "test_dmabuf");
+	if (has_other_owner && (ret != -1 || errno != EBUSY))
+		return EXIT_FAILURE;
+
+	if (!has_other_owner && ret)
+		return EXIT_FAILURE;
+
+	buf = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, wrapfd, 0);
+	if (has_other_owner) {
+		if (buf != MAP_FAILED) {
+			munmap(buf, size);
+			return EXIT_FAILURE;
+		}
+
+		if (errno != EBUSY)
+			return EXIT_FAILURE;
+	} else {
+		if (buf == MAP_FAILED)
+			return EXIT_FAILURE;
+
+		munmap(buf, size);
+	}
+
+	ret = wrapfd_acquire_ownership(wrapfd);
+	if (has_other_owner && (ret != -1 || errno != EBUSY))
+		return EXIT_FAILURE;
+
+	if (has_other_owner) {
+		if (wrapfd_release_ownership(wrapfd) != -1 || errno != EBUSY)
+			return EXIT_FAILURE;
+
+		if (wrapfd_allow_guests(wrapfd) != -1 || errno != EBUSY)
+			return EXIT_FAILURE;
+
+		if (wrapfd_prohibit_guests(wrapfd) != -1 || errno != EBUSY)
+			return EXIT_FAILURE;
+
+		wrapfd2 = wrapfd_rewrap(wrapfd, PROT_READ | PROT_WRITE);
+
+		if (wrapfd2 != -1) {
+			close(wrapfd2);
+			return EXIT_FAILURE;
+		}
+
+		if (errno != EBUSY)
+			return EXIT_FAILURE;
+
+		if (wrapfd_empty(wrapfd) != -1 || errno != EBUSY)
+			return EXIT_FAILURE;
+	}
+
+	return EXIT_SUCCESS;
+}
+
+static void test_not_owned_usage(struct __test_metadata *_metadata,
+				 FIXTURE_DATA(wrapfd_tests) *self, int fd)
+{
+	int wrapfd, status;
+	pid_t pid;
+
+	wrapfd = wrapfd_wrap(self->dev_fd, fd, PROT_READ | PROT_WRITE);
+	ASSERT_TRUE(wrapfd >= 0);
+	ASSERT_EQ(wrapfd_acquire_ownership(wrapfd), 0);
+
+	/*
+	 * load, lseek, etc should not work in the context of the child process, since it is owned
+	 * by another process (the parent).
+	 */
+	pid = fork();
+	ASSERT_FALSE(pid < 0);
+	if (pid == 0) {
+		status = __test_not_owned_usage(wrapfd, self->fd, self->size, true);
+		close(wrapfd);
+		exit(status);
+	} else {
+		ASSERT_NE(wait(&status), -1);
+		ASSERT_TRUE(WIFEXITED(status));
+		ASSERT_EQ(WEXITSTATUS(status), 0);
+	}
+	ASSERT_EQ(wrapfd_release_ownership(wrapfd), 0);
+
+	/* Now run the tests while the buffer is unowned; load, lseek, etc should all work. */
+	pid = fork();
+	ASSERT_FALSE(pid < 0);
+	if (pid == 0) {
+		status = __test_not_owned_usage(wrapfd, self->fd, self->size, false);
+		close(wrapfd);
+		exit(status);
+	} else {
+		ASSERT_NE(wait(&status), -1);
+		ASSERT_TRUE(WIFEXITED(status));
+		ASSERT_EQ(WEXITSTATUS(status), 0);
+	}
+	close(wrapfd);
+}
+
 static void test_load_rdonly_file(struct __test_metadata *_metadata,
 				  FIXTURE_DATA(wrapfd_tests) *self, int fd)
 {
@@ -682,18 +808,40 @@ static void test_wrap_fork(struct __test_metadata *_metadata,
 	/* Check content of the buffer before modification */
 	ASSERT_EQ(cmp_content(_metadata, self, wrapfd, 0, 0, self->size), 0);
 
-	/* Modify buffer content */
 	ptr = mmap(NULL, self->size, PROT_READ | PROT_WRITE, MAP_SHARED,
 		   wrapfd, 0);
 	ASSERT_NE(ptr, MAP_FAILED);
 
+	/* Ensure that the mapping is not copied */
 	pid = fork();
 	ASSERT_FALSE(pid < 0);
 	if (pid == 0) {
+		/*
+		 * The mapping should not be inherited, so this should trigger a segfault and
+		 * terminate the process, so control should not get to the exit statement.
+		 *
+		 * Use volatile to ensure this isn't optimized out.
+		 */
+		(void)*(volatile char *)ptr;
+		exit(EXIT_FAILURE);
+	} else {
+		ASSERT_NE(wait(&status), -1);
+		ASSERT_TRUE(WIFSIGNALED(status));
+		ASSERT_EQ(WTERMSIG(status), SIGSEGV);
+	}
+
+	pid = fork();
+	ASSERT_FALSE(pid < 0);
+	if (pid == 0) {
+		ptr = mmap(NULL, self->size, PROT_READ | PROT_WRITE, MAP_SHARED, wrapfd, 0);
+		ASSERT_NE(ptr, MAP_FAILED);
+
 		/* Check the content from the child */
 		ASSERT_EQ(dmabuf_sync_start(wrapfd, DMA_BUF_SYNC_READ), 0);
 		ASSERT_EQ(memcmp(self->content, ptr, self->size), 0);
 		ASSERT_EQ(dmabuf_sync_end(wrapfd, DMA_BUF_SYNC_READ), 0);
+		ASSERT_EQ(munmap(ptr, self->size), 0);
+		close(wrapfd);
 		exit(EXIT_SUCCESS);
 	} else {
 		ASSERT_NE(wait(&status), -1);
@@ -750,12 +898,16 @@ static void test_owner(struct __test_metadata *_metadata,
 		   wrapfd, 0);
 	ASSERT_NE(ptr, MAP_FAILED);
 
-	/* Try releasing ownership while still mapped */
-	ASSERT_TRUE(wrapfd_release_ownership(wrapfd) && errno == EINVAL);
+	/*
+	 * Try releasing ownership while still mapped. This should work, as the content being used
+	 * does not mean that we cannot release our ownership of it. If we do, the buffer is unowned
+	 * and in-use, which is a legal state for a wrapped buffer to be in.
+	 */
+	ASSERT_EQ(wrapfd_release_ownership(wrapfd), 0);
 	ASSERT_EQ(munmap(ptr, self->size), 0);
 
-	/* Release ownership of an unmapped wrapfd */
-	ASSERT_EQ(wrapfd_release_ownership(wrapfd), 0);
+	/* We should not be able to release ownership of a wrap we do not own. */
+	ASSERT_TRUE(wrapfd_release_ownership(wrapfd) && errno == EBUSY);
 	close(wrapfd);
 }
 
@@ -1051,6 +1203,155 @@ static void test_lseek(struct __test_metadata *_metadata,
 }
 
 
+static long get_map_count(int wrapfd)
+{
+	char str[FDINFO_BUF_SIZE];
+	char fdinfo_name[64];
+	int fdinfo_fd;
+	char *maps_str;
+	unsigned long map_count;
+
+	sprintf(fdinfo_name, "/proc/%d/fdinfo/%d", getpid(), wrapfd);
+	fdinfo_fd = open(fdinfo_name, O_RDONLY);
+	if (fdinfo_fd < 0)
+		return -1;
+
+	if (read(fdinfo_fd, str, FDINFO_BUF_SIZE) < 0) {
+		close(fdinfo_fd);
+		return -1;
+	}
+
+	close(fdinfo_fd);
+
+	maps_str = strstr(str, "maps");
+	if (!maps_str)
+		return -1;
+
+	if (sscanf(maps_str, "maps:\t%lu\n", &map_count) != 1)
+		return -1;
+
+	return map_count;
+}
+
+static void test_map_count(struct __test_metadata *_metadata, FIXTURE_DATA(wrapfd_tests) *self,
+			   int fd)
+{
+	const int nr_mappings = 4;
+	int i, status;
+	int wrapfd;
+	void *mappings[nr_mappings];
+	pid_t pid;
+
+	wrapfd = wrapfd_wrap(self->dev_fd, fd, PROT_READ | PROT_WRITE);
+	ASSERT_TRUE(wrapfd >= 0);
+
+	ASSERT_EQ(get_map_count(wrapfd), 0);
+
+	for (i = 0; i < nr_mappings; i++) {
+		mappings[i] = mmap(NULL, self->size, PROT_READ | PROT_WRITE, MAP_SHARED, wrapfd, 0);
+		ASSERT_NE(mappings[i], MAP_FAILED);
+	}
+
+	/* Ensure mappings are accounted correctly within a process. */
+	ASSERT_EQ(get_map_count(wrapfd), nr_mappings);
+
+	/* And across processes. */
+	pid = fork();
+	ASSERT_FALSE(pid < 0);
+	if (pid == 0) {
+		/*
+		 * Note: none of the addresses in buf are mapped in the child process, because
+		 * wrapfd mappings are not inherited across fork().
+		 */
+		for (i = 0; i < nr_mappings; i++) {
+			mappings[i] = mmap(NULL, self->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+					   wrapfd, 0);
+			if (mappings[i] == MAP_FAILED)
+				break;
+		}
+
+		if (i == nr_mappings && get_map_count(wrapfd) == 2 * nr_mappings)
+			status = EXIT_SUCCESS;
+		else
+			status = EXIT_FAILURE;
+
+		for (i -= 1; i >= 0; i--)
+			munmap(mappings[i], self->size);
+
+		close(wrapfd);
+		exit(status);
+	} else {
+		ASSERT_NE(wait(&status), -1);
+		ASSERT_TRUE(WIFEXITED(status));
+		ASSERT_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
+	}
+
+	/* Child process is gone, so we should be back to the amount of mappings we started with. */
+	ASSERT_EQ(get_map_count(wrapfd), nr_mappings);
+
+	for (i -= 1; i >= 0; i--)
+		ASSERT_EQ(munmap(mappings[i], self->size), 0);
+
+	ASSERT_EQ(get_map_count(wrapfd), 0);
+	close(wrapfd);
+}
+
+static void test_prohibit_guests_on_owner_death(struct __test_metadata *_metadata,
+					       FIXTURE_DATA(wrapfd_tests) *self, int fd)
+{
+	int wrapfd = wrapfd_wrap(self->dev_fd, fd, PROT_READ | PROT_WRITE);
+	int status;
+	void *buf;
+	pid_t pid;
+
+	ASSERT_TRUE(wrapfd >= 0);
+
+	pid = fork();
+	ASSERT_FALSE(pid < 0);
+	if (pid == 0) {
+		if ((wrapfd_acquire_ownership(wrapfd) < 0) || (wrapfd_allow_guests(wrapfd) < 0))
+			status = EXIT_FAILURE;
+		else
+			status = EXIT_SUCCESS;
+
+		close(wrapfd);
+		exit(status);
+	} else {
+		ASSERT_NE(wait(&status), -1);
+		ASSERT_TRUE(WIFEXITED(status));
+		ASSERT_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
+	}
+
+	/*
+	 * Now, we can acquire ownership, and if another process tries to perform an operation that
+	 * requires guest access, it should fail, because the ability to allow guests should not
+	 * carry over across changes in ownership due to the original owner's death.
+	 */
+	ASSERT_EQ(wrapfd_acquire_ownership(wrapfd), 0);
+
+	pid = fork();
+	ASSERT_FALSE(pid < 0);
+	if (pid == 0) {
+		buf = mmap(NULL, self->size, PROT_READ | PROT_WRITE, MAP_SHARED, wrapfd, 0);
+		if (buf == MAP_FAILED) {
+			status = errno == EBUSY ? EXIT_SUCCESS : EXIT_FAILURE;
+		} else {
+			munmap(buf, self->size);
+			status = EXIT_FAILURE;
+		}
+
+		close(wrapfd);
+		exit(status);
+	} else {
+		ASSERT_NE(wait(&status), -1);
+		ASSERT_TRUE(WIFEXITED(status));
+		ASSERT_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
+	}
+
+	ASSERT_EQ(wrapfd_release_ownership(wrapfd), 0);
+	close(wrapfd);
+}
+
 static void run_tests(struct __test_metadata *_metadata,
 		      FIXTURE_DATA(wrapfd_tests) *self, int fd, int rdonly_fd)
 {
@@ -1073,6 +1374,9 @@ static void run_tests(struct __test_metadata *_metadata,
 	test_guests(_metadata, self, fd);
 	test_ioctl(_metadata, self, fd);
 	test_lseek(_metadata, self, fd);
+	test_map_count(_metadata, self, fd);
+	test_prohibit_guests_on_owner_death(_metadata, self, fd);
+	test_not_owned_usage(_metadata, self, fd);
 }
 
 TEST_F(wrapfd_tests, wrapfd_test_dmabuf_system_heap)
