@@ -1488,17 +1488,19 @@ static void aer_isr_one_error_type(struct pci_dev *root,
 }
 
 /**
- * aer_isr_one_error - consume error(s) signaled by an AER interrupt from
+ * pci_aer_handle_root_error - consume error(s) signaled by an AER interrupt from
  *		       Root Port or RCEC
  * @root: pointer to Root Port or RCEC that signaled AER interrupt
- * @e_src: pointer to an error source
+ * @status: captured Root Error Status
+ * @id: captured Error Source Identification
+ *
+ * Call from sleepable context after acknowledging the root error interrupt.
  */
-static void aer_isr_one_error(struct pci_dev *root,
-			      struct aer_err_source *e_src)
+void pci_aer_handle_root_error(struct pci_dev *root, u32 status, u32 id)
 {
-	u32 status = e_src->status;
+	struct aer_err_source source = { .status = status, .id = id };
 
-	pci_rootport_aer_stats_incr(root, e_src);
+	pci_rootport_aer_stats_incr(root, &source);
 
 	/*
 	 * There is a possibility that both correctable error and
@@ -1507,7 +1509,7 @@ static void aer_isr_one_error(struct pci_dev *root,
 	if (status & PCI_ERR_ROOT_COR_RCV) {
 		int multi = status & PCI_ERR_ROOT_MULTI_COR_RCV;
 		struct aer_err_info e_info = {
-			.id = ERR_COR_ID(e_src->id),
+			.id = ERR_COR_ID(id),
 			.severity = AER_CORRECTABLE,
 			.level = KERN_WARNING,
 			.multi_error_valid = multi ? 1 : 0,
@@ -1520,7 +1522,7 @@ static void aer_isr_one_error(struct pci_dev *root,
 		int fatal = status & PCI_ERR_ROOT_FATAL_RCV;
 		int multi = status & PCI_ERR_ROOT_MULTI_UNCOR_RCV;
 		struct aer_err_info e_info = {
-			.id = ERR_UNCOR_ID(e_src->id),
+			.id = ERR_UNCOR_ID(id),
 			.severity = fatal ? AER_FATAL : AER_NONFATAL,
 			.level = KERN_ERR,
 			.multi_error_valid = multi ? 1 : 0,
@@ -1529,6 +1531,7 @@ static void aer_isr_one_error(struct pci_dev *root,
 		aer_isr_one_error_type(root, &e_info);
 	}
 }
+EXPORT_SYMBOL_GPL(pci_aer_handle_root_error);
 
 /**
  * aer_isr - consume errors detected by Root Port
@@ -1547,7 +1550,7 @@ static irqreturn_t aer_isr(int irq, void *context)
 		return IRQ_NONE;
 
 	while (kfifo_get(&rpc->aer_fifo, &e_src))
-		aer_isr_one_error(rpc->rpd, &e_src);
+		pci_aer_handle_root_error(rpc->rpd, e_src.status, e_src.id);
 	return IRQ_HANDLED;
 }
 

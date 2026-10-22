@@ -54,6 +54,7 @@ struct aer_capability_regs {
 };
 
 #if defined(CONFIG_PCIEAER)
+void pci_aer_handle_root_error(struct pci_dev *root, u32 status, u32 id);
 int pci_aer_clear_nonfatal_status(struct pci_dev *dev);
 int pcie_aer_is_native(struct pci_dev *dev);
 #else
