@@ -43,6 +43,9 @@ obj-$(CONFIG_QCOM_CDSP_RM) += cdsprm.o
 obj-$(CONFIG_QCOM_SYSMON_SUBSYSTEM_STATS) += sysmon_subsystem_stats.o
 obj-$(CONFIG_QTI_CRYPTO_VIRTUALIZATION) += crypto-qti-virt.o
 obj-$(CONFIG_QCOM_WDT_CORE) += qcom_wdt_core.o
+ifeq ($(CONFIG_QCOM_WDT_MEIZU_DIAGNOSTICS),y)
+obj-$(CONFIG_QCOM_WDT_CORE) += mz_enhance_qcom_wdog.o
+endif
 obj-$(CONFIG_QCOM_SOC_WATCHDOG) += qcom_soc_wdt.o
 obj-$(CONFIG_QCOM_SUBSYSTEM_SLEEP_STATS) += subsystem_sleep_stats.o
 obj-$(CONFIG_MSM_SLATECOM) += slatecom_spi.o
@@ -113,6 +116,23 @@ minidump-$(CONFIG_QCOM_MINIDUMP_RM) += minidump_rm.o
 minidump-$(CONFIG_QCOM_MINIDUMP_SMEM) += minidump_smem.o
 minidump-$(CONFIG_QCOM_MINIDUMP_MMIO) += minidump_mmio.o
 minidump-$(CONFIG_QCOM_MINIDUMP_PANIC_DUMP) += minidump_memory.o
+# M2391's stock minidump supplies the real watchdog panic/memory collector
+# and ftrace/pstore capture even when absent from GKI autoconf.
+# Keep the implementation flags local to this provider, so unrelated core
+# clients do not start invoking additional panic hooks.
+ifeq ($(CONFIG_QCOM_WDT_MEIZU_DIAGNOSTICS),y)
+ifneq ($(CONFIG_QCOM_MINIDUMP_PANIC_DUMP),y)
+minidump-y += minidump_memory.o
+CFLAGS_minidump_log.o += -DCONFIG_QCOM_MINIDUMP_PANIC_DUMP=1
+CFLAGS_minidump_memory.o += -DCONFIG_QCOM_MINIDUMP_PANIC_DUMP=1
+endif
+ifneq ($(CONFIG_QCOM_MINIDUMP_FTRACE),y)
+CFLAGS_minidump_log.o += -DCONFIG_QCOM_MINIDUMP_FTRACE=1
+endif
+ifneq ($(CONFIG_QCOM_MINIDUMP_PSTORE),y)
+CFLAGS_minidump_log.o += -DCONFIG_QCOM_MINIDUMP_PSTORE=1
+endif
+endif
 obj-$(CONFIG_QCOM_VA_MINIDUMP) += qcom_va_minidump.o
 obj-$(CONFIG_QCOM_LOGBUF_VENDOR_HOOKS) += qcom_logbuf_vh.o
 qcom_logbuf_vh-y := qcom_logbuf_vendor_hooks.o
@@ -137,3 +157,5 @@ wcd_usbss_i2c-y += wcd-usbss-regmap.o
 wcd_usbss_i2c-y += wcd-usbss-tables.o
 wcd_usbss_i2c-y += wcd-usbss-utils.o
 wcd_usbss_i2c-y += wcd939x-i2c.o
+
+obj-$(CONFIG_MEIZU_DEVICE_INFO) += mz_info.o

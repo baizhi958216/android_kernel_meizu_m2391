@@ -4,6 +4,14 @@
 #
 menu "Qualcomm SoC drivers"
 
+config MEIZU_DEVICE_INFO
+	tristate "Meizu boot information and diagnostic policy"
+	depends on OF && PROC_FS
+	help
+	  Expose the M2391 bootinfo proc protocol and read-only device identity
+	  and dump policy helpers shared by native and external source drivers.
+
+
 config SPS
 	tristate "SPS support"
 	select GENERIC_ALLOCATOR
@@ -698,6 +706,17 @@ config QCOM_CX_IPEAK
 	  If all clients are going to cross their thresholds then Cx ipeak
 	  hw module will raise an interrupt to cDSP block to throttle cDSP fmax.
 
+config QCOM_WDT_MEIZU_DIAGNOSTICS
+	bool "Meizu watchdog CPU and IRQ diagnostics"
+	depends on QCOM_WDT_CORE && QCOM_MINIDUMP
+	depends on QCOM_WDT_CORE=m || QCOM_MINIDUMP=y
+	select QCOM_IRQ_STAT
+	help
+	  Restore the M2391 watchdog CPU-ping and bark diagnostics, and the
+	  die notifier that extends the watchdog deadline for panic capture.
+	  The diagnostic provider follows the watchdog core's built-in or
+	  module selection. This does not start a hardware watchdog driver.
+
 config QCOM_SOC_WATCHDOG
 	tristate "Qualcomm Technologies, Inc. Soc Watchdog"
 	depends on QCOM_WDT_CORE
@@ -1210,6 +1229,7 @@ config GH_TLMM_VM_MEM_ACCESS
 
 config MSM_PERFORMANCE
         tristate "msm performance driver to support userspace fmin/fmax request"
+        depends on MEIZU_THERMAL_BOOST || !MEIZU_THERMAL_BOOST
         help
           This driver can restrict max freq or min freq of cpu cluster
           when requested by the userspace by changing the cpufreq policy
