@@ -26,6 +26,9 @@
 
 #ifdef CONFIG_MEDIA_CONTROLLER
 
+/* Serialize the complete unregister, including the lock-free ioctl drain. */
+static DEFINE_MUTEX(media_unregister_lock);
+
 /*
  * Legacy defines from linux/media.h. This is the only place we need this
  * so we just define it here. The media.h header doesn't expose it to the
@@ -760,6 +763,7 @@ int __must_check __media_device_register(struct media_device *mdev,
 		/* devnode free is handled in media_devnode_*() */
 		mdev->devnode = NULL;
 		media_devnode_unregister_prepare(devnode);
+		media_devnode_wait_for_io();
 		media_devnode_unregister(devnode);
 		return ret;
 	}
@@ -808,16 +812,21 @@ void media_device_unregister(struct media_device *mdev)
 	if (mdev == NULL)
 		return;
 
+	mutex_lock(&media_unregister_lock);
 	mutex_lock(&mdev->graph_mutex);
 
 	/* Check if mdev was ever registered at all */
 	if (!media_devnode_is_registered(mdev->devnode)) {
 		mutex_unlock(&mdev->graph_mutex);
+		mutex_unlock(&media_unregister_lock);
 		return;
 	}
 
 	/* Clear the devnode register bit to avoid races with media dev open */
 	media_devnode_unregister_prepare(mdev->devnode);
+	mutex_unlock(&mdev->graph_mutex);
+	media_devnode_wait_for_io();
+	mutex_lock(&mdev->graph_mutex);
 
 	/* Remove all entities from the media device */
 	list_for_each_entry_safe(entity, next, &mdev->entities, graph_obj.list)
@@ -847,6 +856,7 @@ void media_device_unregister(struct media_device *mdev)
 	media_devnode_unregister(mdev->devnode);
 	/* devnode free is handled in media_devnode_*() */
 	mdev->devnode = NULL;
+	mutex_unlock(&media_unregister_lock);
 }
 EXPORT_SYMBOL_GPL(media_device_unregister);
 

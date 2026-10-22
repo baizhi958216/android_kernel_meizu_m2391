@@ -128,6 +128,11 @@ int __must_check media_devnode_register(struct media_device *mdev,
  */
 void media_devnode_unregister_prepare(struct media_devnode *devnode);
 
+/* Internal media-controller composite helper. Call after withdrawing
+ * registration and without graph/req_queue locks held.
+ */
+void media_devnode_wait_for_io(void);
+
 /**
  * media_devnode_unregister - unregister a media device node
  * @devnode: the device node to unregister

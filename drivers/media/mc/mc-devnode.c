@@ -20,6 +20,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/srcu.h>
 #include <linux/errno.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -43,6 +44,7 @@ static dev_t media_dev_t;
  *	Active devices
  */
 static DEFINE_MUTEX(media_devnode_lock);
+DEFINE_STATIC_SRCU(media_ioctl_srcu);
 static DECLARE_BITMAP(media_devnode_nums, MEDIA_NUM_DEVICES);
 
 /* Called when the last user of the media device exits. */
@@ -109,14 +111,17 @@ __media_ioctl(struct file *filp, unsigned int cmd, unsigned long arg,
 				 unsigned long arg))
 {
 	struct media_devnode *devnode = media_devnode_data(filp);
+	int idx = srcu_read_lock(&media_ioctl_srcu);
+	long ret;
 
 	if (!ioctl_func)
-		return -ENOTTY;
-
-	if (!media_devnode_is_registered(devnode))
-		return -EIO;
-
-	return ioctl_func(filp, cmd, arg);
+		ret = -ENOTTY;
+	else if (!media_devnode_is_registered(devnode))
+		ret = -EIO;
+	else
+		ret = ioctl_func(filp, cmd, arg);
+	srcu_read_unlock(&media_ioctl_srcu, idx);
+	return ret;
 }
 
 static long media_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
@@ -276,6 +281,14 @@ void media_devnode_unregister_prepare(struct media_devnode *devnode)
 	mutex_lock(&media_devnode_lock);
 	clear_bit(MEDIA_FLAG_REGISTERED, &devnode->flags);
 	mutex_unlock(&media_devnode_lock);
+}
+
+/* Caller has withdrawn registration and holds no graph mutex: admitted
+ * ioctls may themselves need that mutex before they can finish.
+ */
+void media_devnode_wait_for_io(void)
+{
+	synchronize_srcu(&media_ioctl_srcu);
 }
 
 void media_devnode_unregister(struct media_devnode *devnode)
