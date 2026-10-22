@@ -1,0 +1,2943 @@
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000000530 <battery_chg_write>:
+     530: 3f 23 03 d5  	hint	#25
+     534: 5e 86 00 f8  	str	x30, [x18], #8
+     538: fd 7b bc a9  	stp	x29, x30, [sp, #-64]!
+     53c: f7 0b 00 f9  	str	x23, [sp, #16]
+     540: fd 03 00 91  	mov	x29, sp
+     544: f6 57 02 a9  	stp	x22, x21, [sp, #32]
+     548: f4 4f 03 a9  	stp	x20, x19, [sp, #48]
+     54c: 13 60 03 91  	add	x19, x0, #216
+     550: f7 03 00 aa  	mov	x23, x0
+     554: e0 03 13 aa  	mov	x0, x19
+     558: f6 03 02 2a  	mov	w22, w2
+     55c: f4 03 01 aa  	mov	x20, x1
+     560: 00 00 00 94  	bl	0x560 <battery_chg_write+0x30> // down_read+0x0
+     564: e8 d2 08 91  	add	x8, x23, #564
+     568: 08 fd df 88  	ldar	w8, [x8]
+     56c: a8 00 00 34  	cbz	w8, 0x580 <battery_chg_write+0x50>
+     570: e8 3a 4b 39  	ldrb	w8, [x23, #718]
+     574: e8 00 00 34  	cbz	w8, 0x590 <battery_chg_write+0x60>
+     578: e8 32 4b 39  	ldrb	w8, [x23, #716]
+     57c: a8 00 00 34  	cbz	w8, 0x590 <battery_chg_write+0x60>
+     580: e0 03 13 aa  	mov	x0, x19
+     584: 00 00 00 94  	bl	0x584 <battery_chg_write+0x54> // up_read+0x0
+     588: f6 03 1f 2a  	mov	w22, wzr
+     58c: 1d 00 00 14  	b	0x600 <battery_chg_write+0xd0>
+     590: f5 a2 02 91  	add	x21, x23, #168
+     594: e0 03 15 aa  	mov	x0, x21
+     598: 00 00 00 94  	bl	0x598 <battery_chg_write+0x68> // mutex_lock+0x0
+     59c: e0 52 40 f9  	ldr	x0, [x23, #160]
+     5a0: e2 03 16 2a  	mov	w2, w22
+     5a4: e1 03 14 aa  	mov	x1, x20
+     5a8: ff 1a 01 b9  	str	wzr, [x23, #280]
+     5ac: ff 3e 0c 39  	strb	wzr, [x23, #783]
+     5b0: 00 00 00 94  	bl	0x5b0 <battery_chg_write+0x80> // pmic_glink_write+0x0
+     5b4: f6 03 00 2a  	mov	w22, w0
+     5b8: 60 01 00 35  	cbnz	w0, 0x5e4 <battery_chg_write+0xb4>
+     5bc: e0 62 04 91  	add	x0, x23, #280
+     5c0: 41 1f 80 52  	mov	w1, #250
+     5c4: 00 00 00 94  	bl	0x5c4 <battery_chg_write+0x94> // wait_for_completion_timeout+0x0
+     5c8: c0 04 00 34  	cbz	w0, 0x660 <battery_chg_write+0x130>
+     5cc: e8 3e 4c 39  	ldrb	w8, [x23, #783]
+     5d0: 88 00 00 34  	cbz	w8, 0x5e0 <battery_chg_write+0xb0>
+     5d4: 96 07 80 12  	mov	w22, #-61
+     5d8: ff 3e 0c 39  	strb	wzr, [x23, #783]
+     5dc: 02 00 00 14  	b	0x5e4 <battery_chg_write+0xb4>
+     5e0: f6 03 1f 2a  	mov	w22, wzr
+     5e4: e0 03 15 aa  	mov	x0, x21
+     5e8: 00 00 00 94  	bl	0x5e8 <battery_chg_write+0xb8> // mutex_unlock+0x0
+     5ec: e0 03 13 aa  	mov	x0, x19
+     5f0: 00 00 00 94  	bl	0x5f0 <battery_chg_write+0xc0> // up_read+0x0
+     5f4: 88 0a 40 b9  	ldr	w8, [x20, #8]
+     5f8: 1f 1d 01 71  	cmp	w8, #71
+     5fc: 20 01 00 54  	b.eq	0x620 <battery_chg_write+0xf0>
+     600: e0 03 16 2a  	mov	w0, w22
+     604: f7 0b 40 f9  	ldr	x23, [sp, #16]
+     608: f4 4f 43 a9  	ldp	x20, x19, [sp, #48]
+     60c: f6 57 42 a9  	ldp	x22, x21, [sp, #32]
+     610: fd 7b c4 a8  	ldp	x29, x30, [sp], #64
+     614: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+     618: bf 23 03 d5  	hint	#29
+     61c: c0 03 5f d6  	ret
+     620: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_write+0xf0> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: shutdown opcode, dalay'
+     624: 02 00 00 90  	adrp	x2, 0x0 <battery_chg_write+0xf4> // 'battery_chg_write'
+     628: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: shutdown opcode, dalay'
+     62c: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_write'
+     630: a1 3a 80 52  	mov	w1, #469
+     634: 00 00 00 94  	bl	0x634 <battery_chg_write+0x104> // _printk+0x0
+     638: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_write+0x108> // 'shutdown opcode, dalay'
+     63c: 00 00 00 91  	add	x0, x0, #0 // 'shutdown opcode, dalay'
+     640: 00 00 00 94  	bl	0x640 <battery_chg_write+0x110> // mpower_print+0x0
+     644: 73 3e 80 92  	mov	x19, #-500
+     648: 00 2b 91 52  	mov	w0, #35160
+     64c: 20 08 a0 72  	movk	w0, #65, lsl #16
+     650: 00 00 00 94  	bl	0x650 <battery_chg_write+0x120> // __const_udelay+0x0
+     654: 73 06 00 b1  	adds	x19, x19, #1
+     658: 83 ff ff 54  	b.lo	0x648 <battery_chg_write+0x118>
+     65c: e9 ff ff 17  	b	0x600 <battery_chg_write+0xd0>
+     660: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_write+0x130> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Error, timed out sending message\n'
+     664: 02 00 00 90  	adrp	x2, 0x0 <battery_chg_write+0x134> // 'battery_chg_write'
+     668: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Error, timed out sending message\n'
+     66c: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_write'
+     670: 81 37 80 52  	mov	w1, #444
+     674: 00 00 00 94  	bl	0x674 <battery_chg_write+0x144> // _printk+0x0
+     678: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_write+0x148> // 'Error, timed out sending message\n'
+     67c: 00 00 00 91  	add	x0, x0, #0 // 'Error, timed out sending message\n'
+     680: 00 00 00 94  	bl	0x680 <battery_chg_write+0x150> // mpower_print+0x0
+     684: e0 03 13 aa  	mov	x0, x19
+     688: 00 00 00 94  	bl	0x688 <battery_chg_write+0x158> // up_read+0x0
+     68c: e0 03 15 aa  	mov	x0, x21
+     690: 00 00 00 94  	bl	0x690 <battery_chg_write+0x160> // mutex_unlock+0x0
+     694: b6 0d 80 12  	mov	w22, #-110
+     698: da ff ff 17  	b	0x600 <battery_chg_write+0xd0>
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+00000000000006a0 <battery_chg_probe>:
+     6a0: 3f 23 03 d5  	hint	#25
+     6a4: ff 83 03 d1  	sub	sp, sp, #224
+     6a8: 5e 86 00 f8  	str	x30, [x18], #8
+     6ac: fd 7b 08 a9  	stp	x29, x30, [sp, #128]
+     6b0: fd 03 02 91  	add	x29, sp, #128
+     6b4: fc 6f 09 a9  	stp	x28, x27, [sp, #144]
+     6b8: fa 67 0a a9  	stp	x26, x25, [sp, #160]
+     6bc: f8 5f 0b a9  	stp	x24, x23, [sp, #176]
+     6c0: f6 57 0c a9  	stp	x22, x21, [sp, #192]
+     6c4: f4 4f 0d a9  	stp	x20, x19, [sp, #208]
+     6c8: 08 41 38 d5  	mrs	x8, SP_EL0
+     6cc: 14 40 00 91  	add	x20, x0, #16
+     6d0: f6 03 00 aa  	mov	x22, x0
+     6d4: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+     6d8: e0 03 14 aa  	mov	x0, x20
+     6dc: 01 62 80 52  	mov	w1, #784
+     6e0: 02 b8 81 52  	mov	w2, #3520
+     6e4: a8 83 1f f8  	stur	x8, [x29, #-8]
+     6e8: ff ff 02 a9  	stp	xzr, xzr, [sp, #40]
+     6ec: ff ff 01 a9  	stp	xzr, xzr, [sp, #24]
+     6f0: ff 0b 00 f9  	str	xzr, [sp, #16]
+     6f4: 00 00 00 94  	bl	0x6f4 <battery_chg_probe+0x54> // devm_kmalloc+0x0
+     6f8: a0 10 00 b4  	cbz	x0, 0x90c <battery_chg_probe+0x26c>
+     6fc: 08 00 00 90  	adrp	x8, 0x0 <battery_chg_probe+0x5c> // ''
+     700: e9 06 80 d2  	mov	x9, #55
+     704: 08 01 00 91  	add	x8, x8, #0 // ''
+     708: 09 06 c0 f2  	movk	x9, #48, lsl #32
+     70c: 0a 00 00 90  	adrp	x10, 0x0 <battery_chg_probe+0x6c> // '\x04'
+     710: f3 03 00 aa  	mov	x19, x0
+     714: 4a 01 00 91  	add	x10, x10, #0 // '\x04'
+     718: 81 1b 80 52  	mov	w1, #220
+     71c: 08 c4 00 f9  	str	x8, [x0, #392]
+     720: 28 06 80 52  	mov	w8, #49
+     724: 09 cc 00 f9  	str	x9, [x0, #408]
+     728: 69 06 80 52  	mov	w9, #51
+     72c: 0a dc 00 f9  	str	x10, [x0, #440]
+     730: 0a 00 00 90  	adrp	x10, 0x0 <battery_chg_probe+0x90> // '\x04'
+     734: 08 a0 01 b9  	str	w8, [x0, #416]
+     738: 48 04 80 d2  	mov	x8, #34
+     73c: 48 06 c0 f2  	movk	x8, #50, lsl #32
+     740: 4a 01 00 91  	add	x10, x10, #0 // '\x04'
+     744: 09 d0 01 b9  	str	w9, [x0, #464]
+     748: a9 06 80 52  	mov	w9, #53
+     74c: 02 b8 81 52  	mov	w2, #3520
+     750: 08 e4 00 f9  	str	x8, [x0, #456]
+     754: e8 05 80 d2  	mov	x8, #47
+     758: 88 06 c0 f2  	movk	x8, #52, lsl #32
+     75c: 0a f4 00 f9  	str	x10, [x0, #488]
+     760: 09 00 02 b9  	str	w9, [x0, #512]
+     764: 08 fc 00 f9  	str	x8, [x0, #504]
+     768: e0 03 14 aa  	mov	x0, x20
+     76c: 00 00 00 94  	bl	0x76c <battery_chg_probe+0xcc> // devm_kmalloc+0x0
+     770: 60 ca 00 f9  	str	x0, [x19, #400]
+     774: c0 0c 00 b4  	cbz	x0, 0x90c <battery_chg_probe+0x26c>
+     778: 68 ca 41 b9  	ldr	w8, [x19, #456]
+     77c: e0 03 14 aa  	mov	x0, x20
+     780: 02 b8 81 52  	mov	w2, #3520
+     784: 01 f5 7e d3  	lsl	x1, x8, #2
+     788: 00 00 00 94  	bl	0x788 <battery_chg_probe+0xe8> // devm_kmalloc+0x0
+     78c: 60 e2 00 f9  	str	x0, [x19, #448]
+     790: e0 0b 00 b4  	cbz	x0, 0x90c <battery_chg_probe+0x26c>
+     794: 68 fa 41 b9  	ldr	w8, [x19, #504]
+     798: e0 03 14 aa  	mov	x0, x20
+     79c: 02 b8 81 52  	mov	w2, #3520
+     7a0: 01 f5 7e d3  	lsl	x1, x8, #2
+     7a4: 00 00 00 94  	bl	0x7a4 <battery_chg_probe+0x104> // devm_kmalloc+0x0
+     7a8: 60 fa 00 f9  	str	x0, [x19, #496]
+     7ac: 00 0b 00 b4  	cbz	x0, 0x90c <battery_chg_probe+0x26c>
+     7b0: e0 03 14 aa  	mov	x0, x20
+     7b4: 01 10 80 52  	mov	w1, #128
+     7b8: 02 b8 81 52  	mov	w2, #3520
+     7bc: 00 00 00 94  	bl	0x7bc <battery_chg_probe+0x11c> // devm_kmalloc+0x0
+     7c0: 60 c2 00 f9  	str	x0, [x19, #384]
+     7c4: 40 0a 00 b4  	cbz	x0, 0x90c <battery_chg_probe+0x26c>
+     7c8: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x128> // '&bcdev->rw_lock'
+     7cc: 02 00 00 90  	adrp	x2, 0x0 <battery_chg_probe+0x12c> // +0x8
+     7d0: 60 a2 02 91  	add	x0, x19, #168
+     7d4: 21 00 00 91  	add	x1, x1, #0 // '&bcdev->rw_lock'
+     7d8: 42 00 00 91  	add	x2, x2, #0 // +0x8
+     7dc: 00 00 00 94  	bl	0x7dc <battery_chg_probe+0x13c> // __mutex_init+0x0
+     7e0: 75 62 03 91  	add	x21, x19, #216
+     7e4: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x144> // '&bcdev->state_sem'
+     7e8: 02 00 00 90  	adrp	x2, 0x0 <battery_chg_probe+0x148> // +0x8
+     7ec: 21 00 00 91  	add	x1, x1, #0 // '&bcdev->state_sem'
+     7f0: 42 00 00 91  	add	x2, x2, #0 // +0x8
+     7f4: e0 03 15 aa  	mov	x0, x21
+     7f8: 00 00 00 94  	bl	0x7f8 <battery_chg_probe+0x158> // __init_rwsem+0x0
+     7fc: 17 00 00 90  	adrp	x23, 0x0 <battery_chg_probe+0x15c> // '&x->wait'
+     800: 18 00 00 90  	adrp	x24, 0x0 <battery_chg_probe+0x160> // +0x8
+     804: f7 02 00 91  	add	x23, x23, #0 // '&x->wait'
+     808: 18 03 00 91  	add	x24, x24, #0 // +0x8
+     80c: 60 82 04 91  	add	x0, x19, #288
+     810: e1 03 17 aa  	mov	x1, x23
+     814: e2 03 18 aa  	mov	x2, x24
+     818: 7f 1a 01 b9  	str	wzr, [x19, #280]
+     81c: 00 00 00 94  	bl	0x81c <battery_chg_probe+0x17c> // __init_swait_queue_head+0x0
+     820: 60 02 05 91  	add	x0, x19, #320
+     824: e1 03 17 aa  	mov	x1, x23
+     828: e2 03 18 aa  	mov	x2, x24
+     82c: 7f 3a 01 b9  	str	wzr, [x19, #312]
+     830: 00 00 00 94  	bl	0x830 <battery_chg_probe+0x190> // __init_swait_queue_head+0x0
+     834: 60 82 05 91  	add	x0, x19, #352
+     838: e1 03 17 aa  	mov	x1, x23
+     83c: e2 03 18 aa  	mov	x2, x24
+     840: 7f 5a 01 b9  	str	wzr, [x19, #344]
+     844: 00 00 00 94  	bl	0x844 <battery_chg_probe+0x1a4> // __init_swait_queue_head+0x0
+     848: 0a 00 00 90  	adrp	x10, 0x0 <battery_chg_probe+0x1a8> // +0x3a18
+     84c: e8 7b 7b b2  	mov	x8, #68719476704
+     850: 69 02 09 91  	add	x9, x19, #576
+     854: 4a 01 00 91  	add	x10, x10, #0 // +0x3a18
+     858: 6b c2 09 91  	add	x11, x19, #624
+     85c: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x1bc> // 'qcom,display-panels'
+     860: 68 1e 01 f9  	str	x8, [x19, #568]
+     864: 21 00 00 91  	add	x1, x1, #0 // 'qcom,display-panels'
+     868: 69 22 01 f9  	str	x9, [x19, #576]
+     86c: e2 03 1f aa  	mov	x2, xzr
+     870: 69 26 01 f9  	str	x9, [x19, #584]
+     874: 49 21 00 91  	add	x9, x10, #8
+     878: 6a 2a 01 f9  	str	x10, [x19, #592]
+     87c: 68 36 01 f9  	str	x8, [x19, #616]
+     880: 6b 3a 01 f9  	str	x11, [x19, #624]
+     884: 6b 3e 01 f9  	str	x11, [x19, #632]
+     888: 6b 82 0a 91  	add	x11, x19, #672
+     88c: 69 42 01 f9  	str	x9, [x19, #640]
+     890: 68 4e 01 f9  	str	x8, [x19, #664]
+     894: 48 41 00 91  	add	x8, x10, #16
+     898: 6b 52 01 f9  	str	x11, [x19, #672]
+     89c: 6b 56 01 f9  	str	x11, [x19, #680]
+     8a0: d7 82 41 f9  	ldr	x23, [x22, #768]
+     8a4: 68 5a 01 f9  	str	x8, [x19, #688]
+     8a8: 74 02 00 f9  	str	x20, [x19]
+     8ac: e0 03 17 aa  	mov	x0, x23
+     8b0: 00 00 00 94  	bl	0x8b0 <battery_chg_probe+0x210> // of_count_phandle_with_args+0x0
+     8b4: 1f 04 00 71  	cmp	w0, #1
+     8b8: 8b 06 00 54  	b.lt	0x988 <battery_chg_probe+0x2e8>
+     8bc: 1b 00 00 90  	adrp	x27, 0x0 <battery_chg_probe+0x21c> // 'qcom,display-panels'
+     8c0: f8 03 00 2a  	mov	w24, w0
+     8c4: fa 03 1f 2a  	mov	w26, wzr
+     8c8: 7b 03 00 91  	add	x27, x27, #0 // 'qcom,display-panels'
+     8cc: e0 03 17 aa  	mov	x0, x23
+     8d0: e1 03 1b aa  	mov	x1, x27
+     8d4: e2 03 1a 2a  	mov	w2, w26
+     8d8: 00 00 00 94  	bl	0x8d8 <battery_chg_probe+0x238> // of_parse_phandle+0x0
+     8dc: a0 03 00 b4  	cbz	x0, 0x950 <battery_chg_probe+0x2b0>
+     8e0: 00 00 00 94  	bl	0x8e0 <battery_chg_probe+0x240> // of_drm_find_panel+0x0
+     8e4: f9 03 00 aa  	mov	x25, x0
+     8e8: 1f 04 40 b1  	cmn	x0, #1, lsl #12         // =4096
+     8ec: 69 03 00 54  	b.ls	0x958 <battery_chg_probe+0x2b8>
+     8f0: 5a 07 00 11  	add	w26, w26, #1
+     8f4: 1f 03 1a 6b  	cmp	w24, w26
+     8f8: a1 fe ff 54  	b.ne	0x8cc <battery_chg_probe+0x22c>
+     8fc: 3f 17 08 31  	cmn	w25, #517
+     900: e1 0f 00 54  	b.ne	0xafc <battery_chg_probe+0x45c>
+     904: 99 40 80 12  	mov	w25, #-517
+     908: 02 00 00 14  	b	0x910 <battery_chg_probe+0x270>
+     90c: 79 01 80 12  	mov	w25, #-12
+     910: 08 41 38 d5  	mrs	x8, SP_EL0
+     914: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+     918: a9 83 5f f8  	ldur	x9, [x29, #-8]
+     91c: 1f 01 09 eb  	cmp	x8, x9
+     920: a1 33 00 54  	b.ne	0xf94 <battery_chg_probe+0x8f4>
+     924: e0 03 19 2a  	mov	w0, w25
+     928: f4 4f 4d a9  	ldp	x20, x19, [sp, #208]
+     92c: f6 57 4c a9  	ldp	x22, x21, [sp, #192]
+     930: f8 5f 4b a9  	ldp	x24, x23, [sp, #176]
+     934: fa 67 4a a9  	ldp	x26, x25, [sp, #160]
+     938: fc 6f 49 a9  	ldp	x28, x27, [sp, #144]
+     93c: fd 7b 48 a9  	ldp	x29, x30, [sp, #128]
+     940: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+     944: ff 83 03 91  	add	sp, sp, #224
+     948: bf 23 03 d5  	hint	#29
+     94c: c0 03 5f d6  	ret
+     950: 59 02 80 12  	mov	w25, #-19
+     954: ef ff ff 17  	b	0x910 <battery_chg_probe+0x270>
+     958: 39 0d 00 b4  	cbz	x25, 0xafc <battery_chg_probe+0x45c>
+     95c: 03 00 00 90  	adrp	x3, 0x0 <battery_chg_probe+0x2bc> // +0x3a30
+     960: 20 00 80 52  	mov	w0, #1
+     964: 63 00 00 91  	add	x3, x3, #0 // +0x3a30
+     968: 61 00 80 52  	mov	w1, #3
+     96c: e2 03 19 aa  	mov	x2, x25
+     970: e4 03 13 aa  	mov	x4, x19
+     974: 00 00 00 94  	bl	0x974 <battery_chg_probe+0x2d4> // panel_event_notifier_register+0x0
+     978: f9 03 00 aa  	mov	x25, x0
+     97c: 1f fc 3f b1  	cmn	x0, #4095
+     980: 82 10 00 54  	b.hs	0xb90 <battery_chg_probe+0x4f0>
+     984: 79 0a 01 f9  	str	x25, [x19, #528]
+     988: 09 00 00 90  	adrp	x9, 0x0 <battery_chg_probe+0x2e8> // 'battery_charger'
+     98c: 48 01 90 52  	mov	w8, #32778
+     990: 29 01 00 91  	add	x9, x9, #0 // 'battery_charger'
+     994: e1 43 00 91  	add	x1, sp, #16
+     998: e0 03 14 aa  	mov	x0, x20
+     99c: e8 1b 00 b9  	str	w8, [sp, #24]
+     9a0: 08 00 00 90  	adrp	x8, 0x0 <battery_chg_probe+0x300> // +0x3a40
+     9a4: e9 0b 00 f9  	str	x9, [sp, #16]
+     9a8: 09 00 00 90  	adrp	x9, 0x0 <battery_chg_probe+0x308> // +0x3a38
+     9ac: 29 01 00 91  	add	x9, x9, #0 // +0x3a38
+     9b0: 08 01 00 91  	add	x8, x8, #0 // +0x3a40
+     9b4: f3 27 02 a9  	stp	x19, x9, [sp, #32]
+     9b8: e8 1b 00 f9  	str	x8, [sp, #48]
+     9bc: 00 00 00 94  	bl	0x9bc <battery_chg_probe+0x31c> // pmic_glink_register_client+0x0
+     9c0: 1f fc 3f b1  	cmn	x0, #4095
+     9c4: 60 52 00 f9  	str	x0, [x19, #160]
+     9c8: 03 01 00 54  	b.lo	0x9e8 <battery_chg_probe+0x348>
+     9cc: 1f 14 08 31  	cmn	w0, #517
+     9d0: 81 08 00 54  	b.ne	0xae0 <battery_chg_probe+0x440>
+     9d4: 99 40 80 12  	mov	w25, #-517
+     9d8: 60 0a 41 f9  	ldr	x0, [x19, #528]
+     9dc: a0 f9 ff b4  	cbz	x0, 0x910 <battery_chg_probe+0x270>
+     9e0: 00 00 00 94  	bl	0x9e0 <battery_chg_probe+0x340> // panel_event_notifier_unregister+0x0
+     9e4: cb ff ff 17  	b	0x910 <battery_chg_probe+0x270>
+     9e8: e0 03 15 aa  	mov	x0, x21
+     9ec: 78 a2 09 91  	add	x24, x19, #616
+     9f0: 00 00 00 94  	bl	0x9f0 <battery_chg_probe+0x350> // down_write+0x0
+     9f4: 28 00 80 52  	mov	w8, #1
+     9f8: e0 03 15 aa  	mov	x0, x21
+     9fc: 68 36 02 b9  	str	w8, [x19, #564]
+     a00: 68 36 0c 39  	strb	w8, [x19, #781]
+     a04: 00 00 00 94  	bl	0xa04 <battery_chg_probe+0x364> // up_write+0x0
+     a08: 7c 82 0b 91  	add	x28, x19, #736
+     a0c: 09 00 00 90  	adrp	x9, 0x0 <battery_chg_probe+0x36c> // +0x3a48
+     a10: e8 1f 80 52  	mov	w8, #255
+     a14: 29 01 00 91  	add	x9, x9, #0 // +0x3a48
+     a18: e0 03 1c aa  	mov	x0, x28
+     a1c: 69 72 01 f9  	str	x9, [x19, #736]
+     a20: 68 f2 02 b9  	str	w8, [x19, #752]
+     a24: 00 00 00 94  	bl	0xa24 <battery_chg_probe+0x384> // register_reboot_notifier+0x0
+     a28: 68 02 40 f9  	ldr	x8, [x19]
+     a2c: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x38c> // 'qcom,wireless-fw-name'
+     a30: 62 82 08 91  	add	x2, x19, #544
+     a34: 21 00 00 91  	add	x1, x1, #0 // 'qcom,wireless-fw-name'
+     a38: ff 3f 00 b9  	str	wzr, [sp, #60]
+     a3c: 1a 79 41 f9  	ldr	x26, [x8, #752]
+     a40: e0 03 1a aa  	mov	x0, x26
+     a44: 00 00 00 94  	bl	0xa44 <battery_chg_probe+0x3a4> // of_property_read_string+0x0
+     a48: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x3a8> // 'qcom,shutdown-voltage'
+     a4c: 62 c2 08 91  	add	x2, x19, #560
+     a50: 21 00 00 91  	add	x1, x1, #0 // 'qcom,shutdown-voltage'
+     a54: e0 03 1a aa  	mov	x0, x26
+     a58: 23 00 80 52  	mov	w3, #1
+     a5c: e4 03 1f aa  	mov	x4, xzr
+     a60: 00 00 00 94  	bl	0xa60 <battery_chg_probe+0x3c0> // of_property_read_variable_u32_array+0x0
+     a64: 49 01 90 d2  	mov	x9, #32778
+     a68: 68 01 c0 d2  	mov	x8, #47244640256
+     a6c: 29 00 c0 f2  	movk	x9, #1, lsl #32
+     a70: 6a 9e 41 b9  	ldr	w10, [x19, #412]
+     a74: e1 03 01 91  	add	x1, sp, #64
+     a78: e0 03 13 aa  	mov	x0, x19
+     a7c: 02 03 80 52  	mov	w2, #24
+     a80: ff 57 00 b9  	str	wzr, [sp, #84]
+     a84: e8 c3 04 f8  	stur	x8, [sp, #76]
+     a88: e9 23 00 f9  	str	x9, [sp, #64]
+     a8c: ea 4b 00 b9  	str	w10, [sp, #72]
+     a90: 00 00 00 94  	bl	0xa90 <battery_chg_probe+0x3f0> // +0x530
+     a94: e0 03 f8 36  	tbz	w0, #31, 0xb10 <battery_chg_probe+0x470>
+     a98: f9 03 00 2a  	mov	w25, w0
+     a9c: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x3fc> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read prop BATT_CHG_CTRL_LIM_MAX, rc=%d\n'
+     aa0: 02 00 00 90  	adrp	x2, 0x0 <battery_chg_probe+0x400> // 'battery_chg_parse_dt'
+     aa4: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read prop BATT_CHG_CTRL_LIM_MAX, rc=%d\n'
+     aa8: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_parse_dt'
+     aac: 81 28 81 52  	mov	w1, #2372
+     ab0: e3 03 19 2a  	mov	w3, w25
+     ab4: 00 00 00 94  	bl	0xab4 <battery_chg_probe+0x414> // _printk+0x0
+     ab8: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x418> // 'Failed to read prop BATT_CHG_CTRL_LIM_MAX, rc=%d\n'
+     abc: e1 03 19 2a  	mov	w1, w25
+     ac0: 00 00 00 91  	add	x0, x0, #0 // 'Failed to read prop BATT_CHG_CTRL_LIM_MAX, rc=%d\n'
+     ac4: 00 00 00 94  	bl	0xac4 <battery_chg_probe+0x424> // mpower_print+0x0
+     ac8: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x428> // 'Failed to parse dt rc=%d\n'
+     acc: 21 00 00 91  	add	x1, x1, #0 // 'Failed to parse dt rc=%d\n'
+     ad0: e0 03 14 aa  	mov	x0, x20
+     ad4: e2 03 19 2a  	mov	w2, w25
+     ad8: 00 00 00 94  	bl	0xad8 <battery_chg_probe+0x438> // _dev_err+0x0
+     adc: d7 00 00 14  	b	0xe38 <battery_chg_probe+0x798>
+     ae0: f9 03 00 2a  	mov	w25, w0
+     ae4: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x444> // 'Error in registering with pmic_glink %d\n'
+     ae8: 21 00 00 91  	add	x1, x1, #0 // 'Error in registering with pmic_glink %d\n'
+     aec: e0 03 14 aa  	mov	x0, x20
+     af0: e2 03 19 2a  	mov	w2, w25
+     af4: 00 00 00 94  	bl	0xaf4 <battery_chg_probe+0x454> // _dev_err+0x0
+     af8: b8 ff ff 17  	b	0x9d8 <battery_chg_probe+0x338>
+     afc: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x45c> // 'Failed to find active panel, rc=%d\n'
+     b00: 60 02 40 f9  	ldr	x0, [x19]
+     b04: 21 00 00 91  	add	x1, x1, #0 // 'Failed to find active panel, rc=%d\n'
+     b08: 00 00 00 94  	bl	0xb08 <battery_chg_probe+0x468> // _dev_err+0x0
+     b0c: 26 00 00 14  	b	0xba4 <battery_chg_probe+0x504>
+     b10: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x470> // 'qcom,thermal-mitigation'
+     b14: e0 03 1a aa  	mov	x0, x26
+     b18: 21 00 00 91  	add	x1, x1, #0 // 'qcom,thermal-mitigation'
+     b1c: 82 00 80 52  	mov	w2, #4
+     b20: 00 00 00 94  	bl	0xb20 <battery_chg_probe+0x480> // of_property_count_elems_of_size+0x0
+     b24: 1f 00 00 71  	cmp	w0, #0
+     b28: 2c 04 00 54  	b.gt	0xbac <battery_chg_probe+0x50c>
+     b2c: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x48c> // 'qcom,thermal-mitigation-step'
+     b30: e2 f3 00 91  	add	x2, sp, #60
+     b34: 21 00 00 91  	add	x1, x1, #0 // 'qcom,thermal-mitigation-step'
+     b38: e0 03 1a aa  	mov	x0, x26
+     b3c: 23 00 80 52  	mov	w3, #1
+     b40: e4 03 1f aa  	mov	x4, xzr
+     b44: 00 00 00 94  	bl	0xb44 <battery_chg_probe+0x4a4> // of_property_read_variable_u32_array+0x0
+     b48: 60 0e f8 37  	tbnz	w0, #31, 0xd14 <battery_chg_probe+0x674>
+     b4c: e3 3f 40 b9  	ldr	w3, [sp, #60]
+     b50: 09 24 94 52  	mov	w9, #41248
+     b54: e9 00 a0 72  	movk	w9, #7, lsl #16
+     b58: 7f 00 09 6b  	cmp	w3, w9
+     b5c: c3 06 00 54  	b.lo	0xc34 <battery_chg_probe+0x594>
+     b60: 68 ca 40 f9  	ldr	x8, [x19, #400]
+     b64: 0a 2d 40 b9  	ldr	w10, [x8, #44]
+     b68: 7f 00 0a 6b  	cmp	w3, w10
+     b6c: 42 06 00 54  	b.hs	0xc34 <battery_chg_probe+0x594>
+     b70: 63 0a 03 b9  	str	w3, [x19, #776]
+     b74: 0a 2d 40 b9  	ldr	w10, [x8, #44]
+     b78: 4b 09 c3 1a  	udiv	w11, w10, w3
+     b7c: 6a a9 03 1b  	msub	w10, w11, w3, w10
+     b80: 5f 01 09 6b  	cmp	w10, w9
+     b84: e9 27 9f 1a  	cset	w9, lo
+     b88: 7b 01 09 4b  	sub	w27, w11, w9
+     b8c: 5f 00 00 14  	b	0xd08 <battery_chg_probe+0x668>
+     b90: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x4f0> // 'Failed to register panel event notifier, rc=%d\n'
+     b94: 60 02 40 f9  	ldr	x0, [x19]
+     b98: 21 00 00 91  	add	x1, x1, #0 // 'Failed to register panel event notifier, rc=%d\n'
+     b9c: e2 03 19 2a  	mov	w2, w25
+     ba0: 00 00 00 94  	bl	0xba0 <battery_chg_probe+0x500> // _dev_err+0x0
+     ba4: 39 ef ff 36  	tbz	w25, #31, 0x988 <battery_chg_probe+0x2e8>
+     ba8: 5a ff ff 17  	b	0x910 <battery_chg_probe+0x270>
+     bac: 68 ca 40 f9  	ldr	x8, [x19, #400]
+     bb0: 7f 0a 03 b9  	str	wzr, [x19, #776]
+     bb4: fc 63 00 a9  	stp	x28, x24, [sp]
+     bb8: 17 00 00 90  	adrp	x23, 0x0 <battery_chg_probe+0x518> // 'qcom,thermal-mitigation'
+     bbc: fb 03 00 2a  	mov	w27, w0
+     bc0: fc 03 1f 2a  	mov	w28, wzr
+     bc4: 18 2d 40 b9  	ldr	w24, [x8, #44]
+     bc8: f7 02 00 91  	add	x23, x23, #0 // 'qcom,thermal-mitigation'
+     bcc: e3 f3 00 91  	add	x3, sp, #60
+     bd0: e0 03 1a aa  	mov	x0, x26
+     bd4: e1 03 17 aa  	mov	x1, x23
+     bd8: e2 03 1c 2a  	mov	w2, w28
+     bdc: 00 00 00 94  	bl	0xbdc <battery_chg_probe+0x53c> // of_property_read_u32_index+0x0
+     be0: 20 04 f8 37  	tbnz	w0, #31, 0xc64 <battery_chg_probe+0x5c4>
+     be4: e8 3f 40 b9  	ldr	w8, [sp, #60]
+     be8: 1f 01 18 6b  	cmp	w8, w24
+     bec: 28 04 00 54  	b.hi	0xc70 <battery_chg_probe+0x5d0>
+     bf0: 9c 07 00 11  	add	w28, w28, #1
+     bf4: f8 03 08 2a  	mov	w24, w8
+     bf8: 7f 03 1c 6b  	cmp	w27, w28
+     bfc: 81 fe ff 54  	b.ne	0xbcc <battery_chg_probe+0x52c>
+     c00: 68 07 00 11  	add	w8, w27, #1
+     c04: 09 7d 40 93  	sxtw	x9, w8
+     c08: ff fb 49 eb  	cmp	xzr, x9, lsr #62
+     c0c: 61 1c 00 54  	b.ne	0xf98 <battery_chg_probe+0x8f8>
+     c10: 01 7d 7e 93  	sbfiz	x1, x8, #2, #32
+     c14: 60 02 40 f9  	ldr	x0, [x19]
+     c18: 02 b8 81 52  	mov	w2, #3520
+     c1c: 00 00 00 94  	bl	0xc1c <battery_chg_probe+0x57c> // devm_kmalloc+0x0
+     c20: fc 63 40 a9  	ldp	x28, x24, [sp]
+     c24: 60 0e 01 f9  	str	x0, [x19, #536]
+     c28: e0 03 00 b5  	cbnz	x0, 0xca4 <battery_chg_probe+0x604>
+     c2c: 79 01 80 12  	mov	w25, #-12
+     c30: a6 ff ff 17  	b	0xac8 <battery_chg_probe+0x428>
+     c34: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x594> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: thermal_fcc_step %d is invalid\n'
+     c38: 02 00 00 90  	adrp	x2, 0x0 <battery_chg_probe+0x598> // 'battery_chg_parse_dt'
+     c3c: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: thermal_fcc_step %d is invalid\n'
+     c40: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_parse_dt'
+     c44: 61 2a 81 52  	mov	w1, #2387
+     c48: 00 00 00 94  	bl	0xc48 <battery_chg_probe+0x5a8> // _printk+0x0
+     c4c: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x5ac> // 'thermal_fcc_step %d is invalid\n'
+     c50: e1 3f 40 b9  	ldr	w1, [sp, #60]
+     c54: 00 00 00 91  	add	x0, x0, #0 // 'thermal_fcc_step %d is invalid\n'
+     c58: 00 00 00 94  	bl	0xc58 <battery_chg_probe+0x5b8> // mpower_print+0x0
+     c5c: b9 02 80 12  	mov	w25, #-22
+     c60: 9a ff ff 17  	b	0xac8 <battery_chg_probe+0x428>
+     c64: f9 03 00 2a  	mov	w25, w0
+     c68: fc 63 40 a9  	ldp	x28, x24, [sp]
+     c6c: 97 ff ff 17  	b	0xac8 <battery_chg_probe+0x428>
+     c70: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x5d0> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Thermal levels should be in descending order\n'
+     c74: 02 00 00 90  	adrp	x2, 0x0 <battery_chg_probe+0x5d4> // 'battery_chg_parse_dt'
+     c78: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Thermal levels should be in descending order\n'
+     c7c: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_parse_dt'
+     c80: a1 2d 81 52  	mov	w1, #2413
+     c84: 00 00 00 94  	bl	0xc84 <battery_chg_probe+0x5e4> // _printk+0x0
+     c88: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x5e8> // 'Thermal levels should be in descending order\n'
+     c8c: 00 00 00 91  	add	x0, x0, #0 // 'Thermal levels should be in descending order\n'
+     c90: 00 00 00 94  	bl	0xc90 <battery_chg_probe+0x5f0> // mpower_print+0x0
+     c94: fc 63 40 a9  	ldp	x28, x24, [sp]
+     c98: a8 02 80 12  	mov	w8, #-22
+     c9c: 68 2e 02 b9  	str	w8, [x19, #556]
+     ca0: 1d 00 00 14  	b	0xd14 <battery_chg_probe+0x674>
+     ca4: 68 ca 40 f9  	ldr	x8, [x19, #400]
+     ca8: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x608> // 'qcom,thermal-mitigation'
+     cac: e2 03 00 aa  	mov	x2, x0
+     cb0: 63 7f 40 93  	sxtw	x3, w27
+     cb4: 21 00 00 91  	add	x1, x1, #0 // 'qcom,thermal-mitigation'
+     cb8: e0 03 1a aa  	mov	x0, x26
+     cbc: 08 2d 40 b9  	ldr	w8, [x8, #44]
+     cc0: e4 03 1f aa  	mov	x4, xzr
+     cc4: 48 44 00 b8  	str	w8, [x2], #4
+     cc8: 00 00 00 94  	bl	0xcc8 <battery_chg_probe+0x628> // of_property_read_variable_u32_array+0x0
+     ccc: c0 01 f8 36  	tbz	w0, #31, 0xd04 <battery_chg_probe+0x664>
+     cd0: f9 03 00 2a  	mov	w25, w0
+     cd4: 16 7c 80 0a  	and	w22, w0, w0, asr #31
+     cd8: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x638> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Error in reading qcom,thermal-mitigation, rc=%d\n'
+     cdc: 02 00 00 90  	adrp	x2, 0x0 <battery_chg_probe+0x63c> // 'battery_chg_parse_dt'
+     ce0: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Error in reading qcom,thermal-mitigation, rc=%d\n'
+     ce4: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_parse_dt'
+     ce8: a1 30 81 52  	mov	w1, #2437
+     cec: e3 03 16 2a  	mov	w3, w22
+     cf0: 00 00 00 94  	bl	0xcf0 <battery_chg_probe+0x650> // _printk+0x0
+     cf4: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x654> // 'Error in reading qcom,thermal-mitigation, rc=%d\n'
+     cf8: e1 03 16 2a  	mov	w1, w22
+     cfc: 00 00 00 91  	add	x0, x0, #0 // 'Error in reading qcom,thermal-mitigation, rc=%d\n'
+     d00: 71 ff ff 17  	b	0xac4 <battery_chg_probe+0x424>
+     d04: 68 ca 40 f9  	ldr	x8, [x19, #400]
+     d08: 7b 2e 02 b9  	str	w27, [x19, #556]
+     d0c: 08 2d 40 b9  	ldr	w8, [x8, #44]
+     d10: 68 fa 02 b9  	str	w8, [x19, #760]
+     d14: 08 48 88 52  	mov	w8, #16960
+     d18: a9 02 80 12  	mov	w9, #-22
+     d1c: e8 01 a0 72  	movk	w8, #15, lsl #16
+     d20: 60 02 40 f9  	ldr	x0, [x19]
+     d24: d3 56 00 f9  	str	x19, [x22, #168]
+     d28: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x688> // +0x100
+     d2c: 69 ca 02 b9  	str	w9, [x19, #712]
+     d30: 21 00 00 91  	add	x1, x1, #0 // +0x100
+     d34: 68 fe 02 b9  	str	w8, [x19, #764]
+     d38: e2 03 01 91  	add	x2, sp, #64
+     d3c: 08 78 41 f9  	ldr	x8, [x0, #752]
+     d40: ff ff 06 a9  	stp	xzr, xzr, [sp, #104]
+     d44: ff ff 05 a9  	stp	xzr, xzr, [sp, #88]
+     d48: ff cf 04 a9  	stp	xzr, x19, [sp, #72]
+     d4c: e8 23 00 f9  	str	x8, [sp, #64]
+     d50: 00 00 00 94  	bl	0xd50 <battery_chg_probe+0x6b0> // devm_power_supply_register+0x0
+     d54: 1f fc 3f b1  	cmn	x0, #4095
+     d58: 60 d6 00 f9  	str	x0, [x19, #424]
+     d5c: a3 01 00 54  	b.lo	0xd90 <battery_chg_probe+0x6f0>
+     d60: f9 03 00 aa  	mov	x25, x0
+     d64: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x6c4> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to register USB power supply, rc=%d\n'
+     d68: 02 00 00 90  	adrp	x2, 0x0 <battery_chg_probe+0x6c8> // 'battery_chg_init_psy'
+     d6c: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to register USB power supply, rc=%d\n'
+     d70: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_init_psy'
+     d74: 41 d1 80 52  	mov	w1, #1674
+     d78: e3 03 19 2a  	mov	w3, w25
+     d7c: 7f d6 00 f9  	str	xzr, [x19, #424]
+     d80: 00 00 00 94  	bl	0xd80 <battery_chg_probe+0x6e0> // _printk+0x0
+     d84: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x6e4> // 'Failed to register USB power supply, rc=%d\n'
+     d88: 00 00 00 91  	add	x0, x0, #0 // 'Failed to register USB power supply, rc=%d\n'
+     d8c: 28 00 00 14  	b	0xe2c <battery_chg_probe+0x78c>
+     d90: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x6f0> // ''
+     d94: 60 02 40 f9  	ldr	x0, [x19]
+     d98: 21 00 00 91  	add	x1, x1, #0 // ''
+     d9c: e2 03 01 91  	add	x2, sp, #64
+     da0: 00 00 00 94  	bl	0xda0 <battery_chg_probe+0x700> // devm_power_supply_register+0x0
+     da4: 1f fc 3f b1  	cmn	x0, #4095
+     da8: 60 ee 00 f9  	str	x0, [x19, #472]
+     dac: a3 01 00 54  	b.lo	0xde0 <battery_chg_probe+0x740>
+     db0: f9 03 00 aa  	mov	x25, x0
+     db4: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x714> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to register wireless power supply, rc=%d\n'
+     db8: 02 00 00 90  	adrp	x2, 0x0 <battery_chg_probe+0x718> // 'battery_chg_init_psy'
+     dbc: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to register wireless power supply, rc=%d\n'
+     dc0: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_init_psy'
+     dc4: 61 d2 80 52  	mov	w1, #1683
+     dc8: e3 03 19 2a  	mov	w3, w25
+     dcc: 7f ee 00 f9  	str	xzr, [x19, #472]
+     dd0: 00 00 00 94  	bl	0xdd0 <battery_chg_probe+0x730> // _printk+0x0
+     dd4: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x734> // 'Failed to register wireless power supply, rc=%d\n'
+     dd8: 00 00 00 91  	add	x0, x0, #0 // 'Failed to register wireless power supply, rc=%d\n'
+     ddc: 14 00 00 14  	b	0xe2c <battery_chg_probe+0x78c>
+     de0: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x740> // ''
+     de4: 60 02 40 f9  	ldr	x0, [x19]
+     de8: 21 00 00 91  	add	x1, x1, #0 // ''
+     dec: e2 03 01 91  	add	x2, sp, #64
+     df0: 00 00 00 94  	bl	0xdf0 <battery_chg_probe+0x750> // devm_power_supply_register+0x0
+     df4: 1f 04 40 b1  	cmn	x0, #1, lsl #12         // =4096
+     df8: 60 be 00 f9  	str	x0, [x19, #376]
+     dfc: a9 04 00 54  	b.ls	0xe90 <battery_chg_probe+0x7f0>
+     e00: f9 03 00 aa  	mov	x25, x0
+     e04: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x764> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to register battery power supply, rc=%d\n'
+     e08: 02 00 00 90  	adrp	x2, 0x0 <battery_chg_probe+0x768> // 'battery_chg_init_psy'
+     e0c: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to register battery power supply, rc=%d\n'
+     e10: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_init_psy'
+     e14: a1 d3 80 52  	mov	w1, #1693
+     e18: e3 03 19 2a  	mov	w3, w25
+     e1c: 7f be 00 f9  	str	xzr, [x19, #376]
+     e20: 00 00 00 94  	bl	0xe20 <battery_chg_probe+0x780> // _printk+0x0
+     e24: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x784> // 'Failed to register battery power supply, rc=%d\n'
+     e28: 00 00 00 91  	add	x0, x0, #0 // 'Failed to register battery power supply, rc=%d\n'
+     e2c: e1 03 19 2a  	mov	w1, w25
+     e30: 00 00 00 94  	bl	0xe30 <battery_chg_probe+0x790> // mpower_print+0x0
+     e34: f9 02 f8 36  	tbz	w25, #31, 0xe90 <battery_chg_probe+0x7f0>
+     e38: e0 03 15 aa  	mov	x0, x21
+     e3c: 74 62 04 91  	add	x20, x19, #280
+     e40: 76 e2 08 91  	add	x22, x19, #568
+     e44: 77 62 0a 91  	add	x23, x19, #664
+     e48: 00 00 00 94  	bl	0xe48 <battery_chg_probe+0x7a8> // down_write+0x0
+     e4c: e0 03 15 aa  	mov	x0, x21
+     e50: 7f 36 02 b9  	str	wzr, [x19, #564]
+     e54: 7f 36 0c 39  	strb	wzr, [x19, #781]
+     e58: 00 00 00 94  	bl	0xe58 <battery_chg_probe+0x7b8> // up_write+0x0
+     e5c: 60 52 40 f9  	ldr	x0, [x19, #160]
+     e60: 00 00 00 94  	bl	0xe60 <battery_chg_probe+0x7c0> // pmic_glink_unregister_client+0x0
+     e64: e0 03 18 aa  	mov	x0, x24
+     e68: 00 00 00 94  	bl	0xe68 <battery_chg_probe+0x7c8> // cancel_work_sync+0x0
+     e6c: e0 03 16 aa  	mov	x0, x22
+     e70: 00 00 00 94  	bl	0xe70 <battery_chg_probe+0x7d0> // cancel_work_sync+0x0
+     e74: e0 03 17 aa  	mov	x0, x23
+     e78: 00 00 00 94  	bl	0xe78 <battery_chg_probe+0x7d8> // cancel_work_sync+0x0
+     e7c: e0 03 14 aa  	mov	x0, x20
+     e80: 00 00 00 94  	bl	0xe80 <battery_chg_probe+0x7e0> // complete+0x0
+     e84: e0 03 1c aa  	mov	x0, x28
+     e88: 00 00 00 94  	bl	0xe88 <battery_chg_probe+0x7e8> // unregister_reboot_notifier+0x0
+     e8c: d3 fe ff 17  	b	0x9d8 <battery_chg_probe+0x338>
+     e90: 08 00 00 90  	adrp	x8, 0x0 <battery_chg_probe+0x7f0> // 'qcom-battery'
+     e94: fa 03 13 aa  	mov	x26, x19
+     e98: 08 01 00 91  	add	x8, x8, #0 // 'qcom-battery'
+     e9c: 09 00 00 90  	adrp	x9, 0x0 <battery_chg_probe+0x7fc> // +0xf0
+     ea0: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x800> // +0x8
+     ea4: 29 01 00 91  	add	x9, x9, #0 // +0xf0
+     ea8: 21 00 00 91  	add	x1, x1, #0 // +0x8
+     eac: 48 8f 00 f8  	str	x8, [x26, #8]!
+     eb0: e0 03 1a aa  	mov	x0, x26
+     eb4: 49 0b 00 f9  	str	x9, [x26, #16]
+     eb8: 00 00 00 94  	bl	0xeb8 <battery_chg_probe+0x818> // __class_register+0x0
+     ebc: a0 00 f8 36  	tbz	w0, #31, 0xed0 <battery_chg_probe+0x830>
+     ec0: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x820> // 'Failed to create battery_class rc=%d\n'
+     ec4: f9 03 00 2a  	mov	w25, w0
+     ec8: 21 00 00 91  	add	x1, x1, #0 // 'Failed to create battery_class rc=%d\n'
+     ecc: 01 ff ff 17  	b	0xad0 <battery_chg_probe+0x430>
+     ed0: 68 be 40 f9  	ldr	x8, [x19, #376]
+     ed4: 04 00 00 90  	adrp	x4, 0x0 <battery_chg_probe+0x834> // ''
+     ed8: c1 82 41 f9  	ldr	x1, [x22, #768]
+     edc: 84 00 00 91  	add	x4, x4, #0 // ''
+     ee0: e0 03 14 aa  	mov	x0, x20
+     ee4: e3 03 13 aa  	mov	x3, x19
+     ee8: 08 01 40 f9  	ldr	x8, [x8]
+     eec: 02 01 40 f9  	ldr	x2, [x8]
+     ef0: 00 00 00 94  	bl	0xef0 <battery_chg_probe+0x850> // devm_thermal_of_cooling_device_register+0x0
+     ef4: c0 03 00 b4  	cbz	x0, 0xf6c <battery_chg_probe+0x8cc>
+     ef8: 1f fc 3f b1  	cmn	x0, #4095
+     efc: 82 03 00 54  	b.hs	0xf6c <battery_chg_probe+0x8cc>
+     f00: 08 7d 80 52  	mov	w8, #1000
+     f04: e0 03 13 aa  	mov	x0, x19
+     f08: 68 da 02 b9  	str	w8, [x19, #728]
+     f0c: 00 00 00 94  	bl	0xf0c <battery_chg_probe+0x86c> // +0x1f28
+     f10: e0 03 13 aa  	mov	x0, x19
+     f14: 7f 3a 0c 39  	strb	wzr, [x19, #782]
+     f18: 00 00 00 94  	bl	0xf18 <battery_chg_probe+0x878> // +0x1fbc
+     f1c: 60 02 40 f9  	ldr	x0, [x19]
+     f20: 21 00 80 52  	mov	w1, #1
+     f24: 00 00 00 94  	bl	0xf24 <battery_chg_probe+0x884> // device_init_wakeup+0x0
+     f28: 08 00 00 90  	adrp	x8, 0x0 <battery_chg_probe+0x888> // system_wq+0x0
+     f2c: 00 04 80 52  	mov	w0, #32
+     f30: e2 03 18 aa  	mov	x2, x24
+     f34: 01 01 40 f9  	ldr	x1, [x8] // system_wq+0x0
+     f38: 00 00 00 94  	bl	0xf38 <battery_chg_probe+0x898> // queue_work_on+0x0
+     f3c: 00 00 00 94  	bl	0xf3c <battery_chg_probe+0x89c> // xcharge_chg_interface_register_cd+0x0
+     f40: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x8a0> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: probe done\n'
+     f44: 02 00 00 90  	adrp	x2, 0x0 <battery_chg_probe+0x8a4> // 'battery_chg_probe'
+     f48: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: probe done\n'
+     f4c: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_probe'
+     f50: 61 53 81 52  	mov	w1, #2715
+     f54: 00 00 00 94  	bl	0xf54 <battery_chg_probe+0x8b4> // _printk+0x0
+     f58: 00 00 00 90  	adrp	x0, 0x0 <battery_chg_probe+0x8b8> // 'probe done\n'
+     f5c: 00 00 00 91  	add	x0, x0, #0 // 'probe done\n'
+     f60: 00 00 00 94  	bl	0xf60 <battery_chg_probe+0x8c0> // mpower_print+0x0
+     f64: f9 03 1f 2a  	mov	w25, wzr
+     f68: 6a fe ff 17  	b	0x910 <battery_chg_probe+0x270>
+     f6c: 1f 04 40 b1  	cmn	x0, #1, lsl #12         // =4096
+     f70: 01 00 00 90  	adrp	x1, 0x0 <battery_chg_probe+0x8d0> // 'Failed to register thermal cooling device rc=%d\n'
+     f74: 19 80 9f 1a  	csel	w25, w0, wzr, hi
+     f78: 21 00 00 91  	add	x1, x1, #0 // 'Failed to register thermal cooling device rc=%d\n'
+     f7c: e0 03 14 aa  	mov	x0, x20
+     f80: e2 03 19 2a  	mov	w2, w25
+     f84: 00 00 00 94  	bl	0xf84 <battery_chg_probe+0x8e4> // _dev_err+0x0
+     f88: e0 03 1a aa  	mov	x0, x26
+     f8c: 00 00 00 94  	bl	0xf8c <battery_chg_probe+0x8ec> // class_unregister+0x0
+     f90: aa ff ff 17  	b	0xe38 <battery_chg_probe+0x798>
+     f94: 00 00 00 94  	bl	0xf94 <battery_chg_probe+0x8f4> // __stack_chk_fail+0x0
+     f98: 79 01 80 12  	mov	w25, #-12
+     f9c: 7f 0e 01 f9  	str	xzr, [x19, #536]
+     fa0: 32 ff ff 17  	b	0xc68 <battery_chg_probe+0x5c8>
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000001f28 <battery_chg_add_debugfs>:
+    1f28: 3f 23 03 d5  	hint	#25
+    1f2c: 5e 86 00 f8  	str	x30, [x18], #8
+    1f30: fd 7b be a9  	stp	x29, x30, [sp, #-32]!
+    1f34: f4 4f 01 a9  	stp	x20, x19, [sp, #16]
+    1f38: fd 03 00 91  	mov	x29, sp
+    1f3c: f4 03 00 aa  	mov	x20, x0
+    1f40: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_add_debugfs+0x18> // 'battery_charger'
+    1f44: 00 00 00 91  	add	x0, x0, #0 // 'battery_charger'
+    1f48: e1 03 1f aa  	mov	x1, xzr
+    1f4c: 00 00 00 94  	bl	0x1f4c <battery_chg_add_debugfs+0x24> // debugfs_create_dir+0x0
+    1f50: f3 03 00 aa  	mov	x19, x0
+    1f54: 1f fc 3f b1  	cmn	x0, #4095
+    1f58: a2 01 00 54  	b.hs	0x1f8c <battery_chg_add_debugfs+0x64>
+    1f5c: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_add_debugfs+0x34> // 'block_tx'
+    1f60: 83 32 0b 91  	add	x3, x20, #716
+    1f64: 00 00 00 91  	add	x0, x0, #0 // 'block_tx'
+    1f68: 01 30 80 52  	mov	w1, #384
+    1f6c: e2 03 13 aa  	mov	x2, x19
+    1f70: 93 06 01 f9  	str	x19, [x20, #520]
+    1f74: 00 00 00 94  	bl	0x1f74 <battery_chg_add_debugfs+0x4c> // debugfs_create_bool+0x0
+    1f78: f4 4f 41 a9  	ldp	x20, x19, [sp, #16]
+    1f7c: fd 7b c2 a8  	ldp	x29, x30, [sp], #32
+    1f80: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    1f84: bf 23 03 d5  	hint	#29
+    1f88: c0 03 5f d6  	ret
+    1f8c: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_add_debugfs+0x64> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to create charger debugfs directory, rc=%d\n'
+    1f90: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_add_debugfs+0x68> // 'battery_chg_add_debugfs'
+    1f94: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to create charger debugfs directory, rc=%d\n'
+    1f98: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_add_debugfs'
+    1f9c: 01 25 81 52  	mov	w1, #2344
+    1fa0: e3 03 13 2a  	mov	w3, w19
+    1fa4: 00 00 00 94  	bl	0x1fa4 <battery_chg_add_debugfs+0x7c> // _printk+0x0
+    1fa8: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_add_debugfs+0x80> // 'Failed to create charger debugfs directory, rc=%d\n'
+    1fac: e1 03 13 2a  	mov	w1, w19
+    1fb0: 00 00 00 91  	add	x0, x0, #0 // 'Failed to create charger debugfs directory, rc=%d\n'
+    1fb4: 00 00 00 94  	bl	0x1fb4 <battery_chg_add_debugfs+0x8c> // mpower_print+0x0
+    1fb8: f0 ff ff 17  	b	0x1f78 <battery_chg_add_debugfs+0x50>
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000001fbc <battery_chg_notify_enable>:
+    1fbc: 3f 23 03 d5  	hint	#25
+    1fc0: ff 43 01 d1  	sub	sp, sp, #80
+    1fc4: 5e 86 00 f8  	str	x30, [x18], #8
+    1fc8: fd 7b 03 a9  	stp	x29, x30, [sp, #48]
+    1fcc: fd c3 00 91  	add	x29, sp, #48
+    1fd0: f4 4f 04 a9  	stp	x20, x19, [sp, #64]
+    1fd4: 08 41 38 d5  	mrs	x8, SP_EL0
+    1fd8: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    1fdc: a8 83 1f f8  	stur	x8, [x29, #-8]
+    1fe0: 08 38 4c 39  	ldrb	w8, [x0, #782]
+    1fe4: ff c3 01 f8  	stur	xzr, [sp, #28]
+    1fe8: ff 43 01 f8  	stur	xzr, [sp, #20]
+    1fec: a8 01 00 35  	cbnz	w8, 0x2020 <battery_chg_notify_enable+0x64>
+    1ff0: 48 01 90 d2  	mov	x8, #32778
+    1ff4: 89 00 80 52  	mov	w9, #4
+    1ff8: 48 00 c0 f2  	movk	x8, #2, lsl #32
+    1ffc: e1 23 00 91  	add	x1, sp, #8
+    2000: 82 03 80 52  	mov	w2, #28
+    2004: f3 03 00 aa  	mov	x19, x0
+    2008: e9 13 00 b9  	str	w9, [sp, #16]
+    200c: e8 07 00 f9  	str	x8, [sp, #8]
+    2010: 00 00 00 94  	bl	0x2010 <battery_chg_notify_enable+0x54> // +0x530
+    2014: c0 01 f8 37  	tbnz	w0, #31, 0x204c <battery_chg_notify_enable+0x90>
+    2018: 28 00 80 52  	mov	w8, #1
+    201c: 68 3a 0c 39  	strb	w8, [x19, #782]
+    2020: 08 41 38 d5  	mrs	x8, SP_EL0
+    2024: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    2028: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    202c: 1f 01 09 eb  	cmp	x8, x9
+    2030: 81 02 00 54  	b.ne	0x2080 <battery_chg_notify_enable+0xc4>
+    2034: f4 4f 44 a9  	ldp	x20, x19, [sp, #64]
+    2038: fd 7b 43 a9  	ldp	x29, x30, [sp, #48]
+    203c: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    2040: ff 43 01 91  	add	sp, sp, #80
+    2044: bf 23 03 d5  	hint	#29
+    2048: c0 03 5f d6  	ret
+    204c: f4 03 00 2a  	mov	w20, w0
+    2050: 00 00 00 90  	adrp	x0, 0x2000 <battery_chg_notify_enable+0x94> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to enable notification rc=%d\n'
+    2054: 02 00 00 90  	adrp	x2, 0x2000 <battery_chg_notify_enable+0x98> // 'battery_chg_notify_enable'
+    2058: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to enable notification rc=%d\n'
+    205c: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_notify_enable'
+    2060: a1 50 80 52  	mov	w1, #645
+    2064: e3 03 14 2a  	mov	w3, w20
+    2068: 00 00 00 94  	bl	0x2068 <battery_chg_notify_enable+0xac> // _printk+0x0
+    206c: 00 00 00 90  	adrp	x0, 0x2000 <battery_chg_notify_enable+0xb0> // 'Failed to enable notification rc=%d\n'
+    2070: e1 03 14 2a  	mov	w1, w20
+    2074: 00 00 00 91  	add	x0, x0, #0 // 'Failed to enable notification rc=%d\n'
+    2078: 00 00 00 94  	bl	0x2078 <battery_chg_notify_enable+0xbc> // mpower_print+0x0
+    207c: e9 ff ff 17  	b	0x2020 <battery_chg_notify_enable+0x64>
+    2080: 00 00 00 94  	bl	0x2080 <battery_chg_notify_enable+0xc4> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000001040 <battery_chg_subsys_up_work>:
+    1040: 3f 23 03 d5  	hint	#25
+    1044: ff 83 01 d1  	sub	sp, sp, #96
+    1048: 5e 86 00 f8  	str	x30, [x18], #8
+    104c: fd 7b 03 a9  	stp	x29, x30, [sp, #48]
+    1050: fd c3 00 91  	add	x29, sp, #48
+    1054: f5 23 00 f9  	str	x21, [sp, #64]
+    1058: f4 4f 05 a9  	stp	x20, x19, [sp, #80]
+    105c: 08 41 38 d5  	mrs	x8, SP_EL0
+    1060: 13 e0 08 d1  	sub	x19, x0, #568
+    1064: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    1068: a8 83 1f f8  	stur	x8, [x29, #-8]
+    106c: 08 58 43 39  	ldrb	w8, [x0, #214]
+    1070: ff c3 01 f8  	stur	xzr, [sp, #28]
+    1074: ff 43 01 f8  	stur	xzr, [sp, #20]
+    1078: a8 01 00 35  	cbnz	w8, 0x10ac <battery_chg_subsys_up_work+0x6c>
+    107c: 48 01 90 d2  	mov	x8, #32778
+    1080: 89 00 80 52  	mov	w9, #4
+    1084: 48 00 c0 f2  	movk	x8, #2, lsl #32
+    1088: e1 23 00 91  	add	x1, sp, #8
+    108c: e0 03 13 aa  	mov	x0, x19
+    1090: 82 03 80 52  	mov	w2, #28
+    1094: e9 13 00 b9  	str	w9, [sp, #16]
+    1098: e8 07 00 f9  	str	x8, [sp, #8]
+    109c: 00 00 00 94  	bl	0x109c <battery_chg_subsys_up_work+0x5c> // +0x530
+    10a0: 80 0b f8 37  	tbnz	w0, #31, 0x1210 <battery_chg_subsys_up_work+0x1d0>
+    10a4: 28 00 80 52  	mov	w8, #1
+    10a8: 68 3a 0c 39  	strb	w8, [x19, #782]
+    10ac: 00 19 80 52  	mov	w0, #200
+    10b0: 00 00 00 94  	bl	0x10b0 <battery_chg_subsys_up_work+0x70> // msleep+0x0
+    10b4: 74 02 43 b9  	ldr	w20, [x19, #768]
+    10b8: f4 02 00 34  	cbz	w20, 0x1114 <battery_chg_subsys_up_work+0xd4>
+    10bc: 68 32 4c 39  	ldrb	w8, [x19, #780]
+    10c0: e8 00 00 34  	cbz	w8, 0x10dc <battery_chg_subsys_up_work+0x9c>
+    10c4: 68 fe 42 b9  	ldr	w8, [x19, #764]
+    10c8: 69 fa 42 b9  	ldr	w9, [x19, #760]
+    10cc: 1f 01 14 6b  	cmp	w8, w20
+    10d0: 88 82 88 1a  	csel	w8, w20, w8, hi
+    10d4: 1f 01 09 6b  	cmp	w8, w9
+    10d8: 14 31 89 1a  	csel	w20, w8, w9, lo
+    10dc: 49 01 90 d2  	mov	x9, #32778
+    10e0: 48 01 c0 d2  	mov	x8, #42949672960
+    10e4: 29 00 c0 f2  	movk	x9, #1, lsl #32
+    10e8: 6a a2 41 b9  	ldr	w10, [x19, #416]
+    10ec: e1 23 00 91  	add	x1, sp, #8
+    10f0: e0 03 13 aa  	mov	x0, x19
+    10f4: 02 03 80 52  	mov	w2, #24
+    10f8: f4 1f 00 b9  	str	w20, [sp, #28]
+    10fc: e8 43 01 f8  	stur	x8, [sp, #20]
+    1100: e9 07 00 f9  	str	x9, [sp, #8]
+    1104: ea 13 00 b9  	str	w10, [sp, #16]
+    1108: 00 00 00 94  	bl	0x1108 <battery_chg_subsys_up_work+0xc8> // +0x530
+    110c: 80 02 f8 37  	tbnz	w0, #31, 0x115c <battery_chg_subsys_up_work+0x11c>
+    1110: 74 02 03 b9  	str	w20, [x19, #768]
+    1114: 62 06 43 b9  	ldr	w2, [x19, #772]
+    1118: a2 00 00 34  	cbz	w2, 0x112c <battery_chg_subsys_up_work+0xec>
+    111c: e0 03 13 aa  	mov	x0, x19
+    1120: a1 00 80 52  	mov	w1, #5
+    1124: 00 00 00 94  	bl	0x1124 <battery_chg_subsys_up_work+0xe4> // +0x3878
+    1128: 60 05 f8 37  	tbnz	w0, #31, 0x11d4 <battery_chg_subsys_up_work+0x194>
+    112c: 08 41 38 d5  	mrs	x8, SP_EL0
+    1130: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    1134: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    1138: 1f 01 09 eb  	cmp	x8, x9
+    113c: 41 08 00 54  	b.ne	0x1244 <battery_chg_subsys_up_work+0x204>
+    1140: f4 4f 45 a9  	ldp	x20, x19, [sp, #80]
+    1144: fd 7b 43 a9  	ldp	x29, x30, [sp, #48]
+    1148: f5 23 40 f9  	ldr	x21, [sp, #64]
+    114c: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    1150: ff 83 01 91  	add	sp, sp, #96
+    1154: bf 23 03 d5  	hint	#29
+    1158: c0 03 5f d6  	ret
+    115c: f5 03 00 2a  	mov	w21, w0
+    1160: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_subsys_up_work+0x120> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set FCC %u, rc=%d\n'
+    1164: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_subsys_up_work+0x124> // '__battery_psy_set_charge_current'
+    1168: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set FCC %u, rc=%d\n'
+    116c: 42 00 00 91  	add	x2, x2, #0 // '__battery_psy_set_charge_current'
+    1170: 61 b5 80 52  	mov	w1, #1451
+    1174: e3 03 14 2a  	mov	w3, w20
+    1178: e4 03 15 2a  	mov	w4, w21
+    117c: 00 00 00 94  	bl	0x117c <battery_chg_subsys_up_work+0x13c> // _printk+0x0
+    1180: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_subsys_up_work+0x140> // 'Failed to set FCC %u, rc=%d\n'
+    1184: e1 03 14 2a  	mov	w1, w20
+    1188: 00 00 00 91  	add	x0, x0, #0 // 'Failed to set FCC %u, rc=%d\n'
+    118c: e2 03 15 2a  	mov	w2, w21
+    1190: 00 00 00 94  	bl	0x1190 <battery_chg_subsys_up_work+0x150> // mpower_print+0x0
+    1194: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_subsys_up_work+0x154> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set FCC (%u uA), rc=%d\n'
+    1198: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_subsys_up_work+0x158> // 'battery_chg_subsys_up_work'
+    119c: 63 02 43 b9  	ldr	w3, [x19, #768]
+    11a0: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set FCC (%u uA), rc=%d\n'
+    11a4: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_subsys_up_work'
+    11a8: 01 d7 80 52  	mov	w1, #1720
+    11ac: e4 03 15 2a  	mov	w4, w21
+    11b0: 00 00 00 94  	bl	0x11b0 <battery_chg_subsys_up_work+0x170> // _printk+0x0
+    11b4: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_subsys_up_work+0x174> // 'Failed to set FCC (%u uA), rc=%d\n'
+    11b8: 61 02 43 b9  	ldr	w1, [x19, #768]
+    11bc: 00 00 00 91  	add	x0, x0, #0 // 'Failed to set FCC (%u uA), rc=%d\n'
+    11c0: e2 03 15 2a  	mov	w2, w21
+    11c4: 00 00 00 94  	bl	0x11c4 <battery_chg_subsys_up_work+0x184> // mpower_print+0x0
+    11c8: 62 06 43 b9  	ldr	w2, [x19, #772]
+    11cc: 82 fa ff 35  	cbnz	w2, 0x111c <battery_chg_subsys_up_work+0xdc>
+    11d0: d7 ff ff 17  	b	0x112c <battery_chg_subsys_up_work+0xec>
+    11d4: f4 03 00 2a  	mov	w20, w0
+    11d8: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_subsys_up_work+0x198> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set ICL(%u uA), rc=%d\n'
+    11dc: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_subsys_up_work+0x19c> // 'battery_chg_subsys_up_work'
+    11e0: 63 06 43 b9  	ldr	w3, [x19, #772]
+    11e4: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set ICL(%u uA), rc=%d\n'
+    11e8: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_subsys_up_work'
+    11ec: 01 d8 80 52  	mov	w1, #1728
+    11f0: e4 03 14 2a  	mov	w4, w20
+    11f4: 00 00 00 94  	bl	0x11f4 <battery_chg_subsys_up_work+0x1b4> // _printk+0x0
+    11f8: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_subsys_up_work+0x1b8> // 'Failed to set ICL(%u uA), rc=%d\n'
+    11fc: 61 06 43 b9  	ldr	w1, [x19, #772]
+    1200: 00 00 00 91  	add	x0, x0, #0 // 'Failed to set ICL(%u uA), rc=%d\n'
+    1204: e2 03 14 2a  	mov	w2, w20
+    1208: 00 00 00 94  	bl	0x1208 <battery_chg_subsys_up_work+0x1c8> // mpower_print+0x0
+    120c: c8 ff ff 17  	b	0x112c <battery_chg_subsys_up_work+0xec>
+    1210: f4 03 00 2a  	mov	w20, w0
+    1214: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_subsys_up_work+0x1d4> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to enable notification rc=%d\n'
+    1218: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_subsys_up_work+0x1d8> // 'battery_chg_notify_enable'
+    121c: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to enable notification rc=%d\n'
+    1220: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_notify_enable'
+    1224: a1 50 80 52  	mov	w1, #645
+    1228: e3 03 14 2a  	mov	w3, w20
+    122c: 00 00 00 94  	bl	0x122c <battery_chg_subsys_up_work+0x1ec> // _printk+0x0
+    1230: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_subsys_up_work+0x1f0> // 'Failed to enable notification rc=%d\n'
+    1234: e1 03 14 2a  	mov	w1, w20
+    1238: 00 00 00 91  	add	x0, x0, #0 // 'Failed to enable notification rc=%d\n'
+    123c: 00 00 00 94  	bl	0x123c <battery_chg_subsys_up_work+0x1fc> // mpower_print+0x0
+    1240: 9b ff ff 17  	b	0x10ac <battery_chg_subsys_up_work+0x6c>
+    1244: 00 00 00 94  	bl	0x1244 <battery_chg_subsys_up_work+0x204> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000003878 <usb_psy_set_icl>:
+    3878: 3f 23 03 d5  	hint	#25
+    387c: ff 43 01 d1  	sub	sp, sp, #80
+    3880: 5e 86 00 f8  	str	x30, [x18], #8
+    3884: fd 7b 02 a9  	stp	x29, x30, [sp, #32]
+    3888: fd 83 00 91  	add	x29, sp, #32
+    388c: f6 57 03 a9  	stp	x22, x21, [sp, #48]
+    3890: f4 4f 04 a9  	stp	x20, x19, [sp, #64]
+    3894: 08 41 38 d5  	mrs	x8, SP_EL0
+    3898: e9 00 c0 d2  	mov	x9, #30064771072
+    389c: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    38a0: f6 03 02 2a  	mov	w22, w2
+    38a4: f5 03 01 2a  	mov	w21, w1
+    38a8: e1 03 00 91  	mov	x1, sp
+    38ac: 02 03 80 52  	mov	w2, #24
+    38b0: f4 03 00 aa  	mov	x20, x0
+    38b4: a8 83 1f f8  	stur	x8, [x29, #-8]
+    38b8: 48 01 90 d2  	mov	x8, #32778
+    38bc: 28 00 c0 f2  	movk	x8, #1, lsl #32
+    38c0: e9 c3 00 f8  	stur	x9, [sp, #12]
+    38c4: 09 cc 41 b9  	ldr	w9, [x0, #460]
+    38c8: ff 17 00 b9  	str	wzr, [sp, #20]
+    38cc: e8 03 00 f9  	str	x8, [sp]
+    38d0: e9 0b 00 b9  	str	w9, [sp, #8]
+    38d4: 00 00 00 94  	bl	0x38d4 <usb_psy_set_icl+0x5c> // +0x530
+    38d8: e0 04 f8 37  	tbnz	w0, #31, 0x3974 <usb_psy_set_icl+0xfc>
+    38dc: 88 e2 40 f9  	ldr	x8, [x20, #448]
+    38e0: b3 02 80 12  	mov	w19, #-22
+    38e4: 08 1d 40 b9  	ldr	w8, [x8, #28]
+    38e8: 1f 19 00 71  	cmp	w8, #6
+    38ec: a8 02 00 54  	b.hi	0x3940 <usb_psy_set_icl+0xc8>
+    38f0: 29 00 80 52  	mov	w9, #1
+    38f4: 28 21 c8 1a  	lsl	w8, w9, w8
+    38f8: 49 09 80 52  	mov	w9, #74
+    38fc: 1f 01 09 6a  	tst	w8, w9
+    3900: 00 02 00 54  	b.eq	0x3940 <usb_psy_set_icl+0xc8>
+    3904: 48 01 90 d2  	mov	x8, #32778
+    3908: df 02 00 71  	cmp	w22, #0
+    390c: 28 00 c0 f2  	movk	x8, #1, lsl #32
+    3910: d6 a2 9f 5a  	csinv	w22, w22, wzr, ge
+    3914: e1 03 00 91  	mov	x1, sp
+    3918: e0 03 14 aa  	mov	x0, x20
+    391c: 02 03 80 52  	mov	w2, #24
+    3920: e8 03 00 f9  	str	x8, [sp]
+    3924: 88 d2 41 b9  	ldr	w8, [x20, #464]
+    3928: f5 5b 02 29  	stp	w21, w22, [sp, #16]
+    392c: e8 7f 01 29  	stp	w8, wzr, [sp, #8]
+    3930: 00 00 00 94  	bl	0x3930 <usb_psy_set_icl+0xb8> // +0x530
+    3934: f3 03 00 2a  	mov	w19, w0
+    3938: 80 03 f8 37  	tbnz	w0, #31, 0x39a8 <usb_psy_set_icl+0x130>
+    393c: 96 06 03 b9  	str	w22, [x20, #772]
+    3940: 08 41 38 d5  	mrs	x8, SP_EL0
+    3944: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    3948: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    394c: 1f 01 09 eb  	cmp	x8, x9
+    3950: 81 04 00 54  	b.ne	0x39e0 <usb_psy_set_icl+0x168>
+    3954: e0 03 13 2a  	mov	w0, w19
+    3958: f4 4f 44 a9  	ldp	x20, x19, [sp, #64]
+    395c: f6 57 43 a9  	ldp	x22, x21, [sp, #48]
+    3960: fd 7b 42 a9  	ldp	x29, x30, [sp, #32]
+    3964: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    3968: ff 43 01 91  	add	sp, sp, #80
+    396c: bf 23 03 d5  	hint	#29
+    3970: c0 03 5f d6  	ret
+    3974: f3 03 00 2a  	mov	w19, w0
+    3978: 00 00 00 90  	adrp	x0, 0x3000 <usb_psy_set_icl+0x100> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read prop USB_ADAP_TYPE, rc=%d\n'
+    397c: 02 00 00 90  	adrp	x2, 0x3000 <usb_psy_set_icl+0x104> // 'usb_psy_set_icl'
+    3980: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read prop USB_ADAP_TYPE, rc=%d\n'
+    3984: 42 00 00 91  	add	x2, x2, #0 // 'usb_psy_set_icl'
+    3988: a1 a1 80 52  	mov	w1, #1293
+    398c: e3 03 13 2a  	mov	w3, w19
+    3990: 00 00 00 94  	bl	0x3990 <usb_psy_set_icl+0x118> // _printk+0x0
+    3994: 00 00 00 90  	adrp	x0, 0x3000 <usb_psy_set_icl+0x11c> // 'Failed to read prop USB_ADAP_TYPE, rc=%d\n'
+    3998: e1 03 13 2a  	mov	w1, w19
+    399c: 00 00 00 91  	add	x0, x0, #0 // 'Failed to read prop USB_ADAP_TYPE, rc=%d\n'
+    39a0: 00 00 00 94  	bl	0x39a0 <usb_psy_set_icl+0x128> // mpower_print+0x0
+    39a4: e7 ff ff 17  	b	0x3940 <usb_psy_set_icl+0xc8>
+    39a8: 00 00 00 90  	adrp	x0, 0x3000 <usb_psy_set_icl+0x130> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set ICL (%u uA) rc=%d\n'
+    39ac: 02 00 00 90  	adrp	x2, 0x3000 <usb_psy_set_icl+0x134> // 'usb_psy_set_icl'
+    39b0: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set ICL (%u uA) rc=%d\n'
+    39b4: 42 00 00 91  	add	x2, x2, #0 // 'usb_psy_set_icl'
+    39b8: 01 a5 80 52  	mov	w1, #1320
+    39bc: e3 03 16 2a  	mov	w3, w22
+    39c0: e4 03 13 2a  	mov	w4, w19
+    39c4: 00 00 00 94  	bl	0x39c4 <usb_psy_set_icl+0x14c> // _printk+0x0
+    39c8: 00 00 00 90  	adrp	x0, 0x3000 <usb_psy_set_icl+0x150> // 'Failed to set ICL (%u uA) rc=%d\n'
+    39cc: e1 03 16 2a  	mov	w1, w22
+    39d0: 00 00 00 91  	add	x0, x0, #0 // 'Failed to set ICL (%u uA) rc=%d\n'
+    39d4: e2 03 13 2a  	mov	w2, w19
+    39d8: 00 00 00 94  	bl	0x39d8 <usb_psy_set_icl+0x160> // mpower_print+0x0
+    39dc: d9 ff ff 17  	b	0x3940 <usb_psy_set_icl+0xc8>
+    39e0: 00 00 00 94  	bl	0x39e0 <usb_psy_set_icl+0x168> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000001248 <battery_chg_update_usb_type_work>:
+    1248: 3f 23 03 d5  	hint	#25
+    124c: ff 43 01 d1  	sub	sp, sp, #80
+    1250: 5e 86 00 f8  	str	x30, [x18], #8
+    1254: fd 7b 02 a9  	stp	x29, x30, [sp, #32]
+    1258: fd 83 00 91  	add	x29, sp, #32
+    125c: f5 1b 00 f9  	str	x21, [sp, #48]
+    1260: f4 4f 04 a9  	stp	x20, x19, [sp, #64]
+    1264: 08 41 38 d5  	mrs	x8, SP_EL0
+    1268: 55 01 90 d2  	mov	x21, #32778
+    126c: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    1270: 13 a0 09 d1  	sub	x19, x0, #616
+    1274: e9 00 c0 d2  	mov	x9, #30064771072
+    1278: 35 00 c0 f2  	movk	x21, #1, lsl #32
+    127c: e1 03 00 91  	mov	x1, sp
+    1280: 02 03 80 52  	mov	w2, #24
+    1284: a8 83 1f f8  	stur	x8, [x29, #-8]
+    1288: 08 40 56 b8  	ldur	w8, [x0, #-156]
+    128c: e0 03 13 aa  	mov	x0, x19
+    1290: e9 c3 00 f8  	stur	x9, [sp, #12]
+    1294: ff 17 00 b9  	str	wzr, [sp, #20]
+    1298: f5 03 00 f9  	str	x21, [sp]
+    129c: e8 0b 00 b9  	str	w8, [sp, #8]
+    12a0: 00 00 00 94  	bl	0x12a0 <battery_chg_update_usb_type_work+0x58> // +0x530
+    12a4: 20 0a f8 37  	tbnz	w0, #31, 0x13e8 <battery_chg_update_usb_type_work+0x1a0>
+    12a8: 48 00 c0 d2  	mov	x8, #8589934592
+    12ac: 69 ce 41 b9  	ldr	w9, [x19, #460]
+    12b0: e1 03 00 91  	mov	x1, sp
+    12b4: e0 03 13 aa  	mov	x0, x19
+    12b8: 02 03 80 52  	mov	w2, #24
+    12bc: ff 17 00 b9  	str	wzr, [sp, #20]
+    12c0: f5 03 00 f9  	str	x21, [sp]
+    12c4: e8 c3 00 f8  	stur	x8, [sp, #12]
+    12c8: e9 0b 00 b9  	str	w9, [sp, #8]
+    12cc: 00 00 00 94  	bl	0x12cc <battery_chg_update_usb_type_work+0x84> // +0x530
+    12d0: 20 0a f8 37  	tbnz	w0, #31, 0x1414 <battery_chg_update_usb_type_work+0x1cc>
+    12d4: 49 01 90 d2  	mov	x9, #32778
+    12d8: 88 00 c0 d2  	mov	x8, #17179869184
+    12dc: 29 00 c0 f2  	movk	x9, #1, lsl #32
+    12e0: 6a ce 41 b9  	ldr	w10, [x19, #460]
+    12e4: e1 03 00 91  	mov	x1, sp
+    12e8: e0 03 13 aa  	mov	x0, x19
+    12ec: 02 03 80 52  	mov	w2, #24
+    12f0: ff 17 00 b9  	str	wzr, [sp, #20]
+    12f4: e8 c3 00 f8  	stur	x8, [sp, #12]
+    12f8: e9 03 00 f9  	str	x9, [sp]
+    12fc: ea 0b 00 b9  	str	w10, [sp, #8]
+    1300: 00 00 00 94  	bl	0x1300 <battery_chg_update_usb_type_work+0xb8> // +0x530
+    1304: e0 09 f8 37  	tbnz	w0, #31, 0x1440 <battery_chg_update_usb_type_work+0x1f8>
+    1308: 69 e2 40 f9  	ldr	x9, [x19, #448]
+    130c: 28 1d 40 b9  	ldr	w8, [x9, #28]
+    1310: 1f 05 00 71  	cmp	w8, #1
+    1314: a0 00 00 54  	b.eq	0x1328 <battery_chg_update_usb_type_work+0xe0>
+    1318: 1f 19 00 71  	cmp	w8, #6
+    131c: 60 00 00 54  	b.eq	0x1328 <battery_chg_update_usb_type_work+0xe0>
+    1320: 7f 06 03 b9  	str	wzr, [x19, #772]
+    1324: 28 1d 40 b9  	ldr	w8, [x9, #28]
+    1328: 09 05 00 51  	sub	w9, w8, #1
+    132c: 3f 21 00 71  	cmp	w9, #8
+    1330: 68 01 00 54  	b.hi	0x135c <battery_chg_update_usb_type_work+0x114>
+    1334: 08 00 00 90  	adrp	x8, 0x1000 <battery_chg_update_usb_type_work+0xec> // '\x0b\x07\x0f\x13\x17'
+    1338: 08 01 00 91  	add	x8, x8, #0 // '\x0b\x07\x0f\x13\x17'
+    133c: 8a 00 00 10  	adr	x10, #16
+    1340: 0b 69 69 38  	ldrb	w11, [x8, x9]
+    1344: 4a 09 0b 8b  	add	x10, x10, x11, lsl #2
+    1348: 40 01 1f d6  	br	x10
+    134c: 9f 24 03 d5  	hint	#36
+    1350: 08 00 00 90  	adrp	x8, 0x1000 <battery_chg_update_usb_type_work+0x108> // +0x108
+    1354: 29 01 80 52  	mov	w9, #9
+    1358: 17 00 00 14  	b	0x13b4 <battery_chg_update_usb_type_work+0x16c>
+    135c: 08 01 02 51  	sub	w8, w8, #128
+    1360: 1f 0d 00 71  	cmp	w8, #3
+    1364: a2 00 00 54  	b.hs	0x1378 <battery_chg_update_usb_type_work+0x130>
+    1368: 9f 24 03 d5  	hint	#36
+    136c: 08 00 00 90  	adrp	x8, 0x1000 <battery_chg_update_usb_type_work+0x124> // +0x108
+    1370: a9 00 80 52  	mov	w9, #5
+    1374: 10 00 00 14  	b	0x13b4 <battery_chg_update_usb_type_work+0x16c>
+    1378: 9f 24 03 d5  	hint	#36
+    137c: 08 00 00 90  	adrp	x8, 0x1000 <battery_chg_update_usb_type_work+0x134> // +0x108
+    1380: 89 00 80 52  	mov	w9, #4
+    1384: 0c 00 00 14  	b	0x13b4 <battery_chg_update_usb_type_work+0x16c>
+    1388: 9f 24 03 d5  	hint	#36
+    138c: 08 00 00 90  	adrp	x8, 0x1000 <battery_chg_update_usb_type_work+0x144> // +0x108
+    1390: c9 00 80 52  	mov	w9, #6
+    1394: 08 00 00 14  	b	0x13b4 <battery_chg_update_usb_type_work+0x16c>
+    1398: 9f 24 03 d5  	hint	#36
+    139c: 08 00 00 90  	adrp	x8, 0x1000 <battery_chg_update_usb_type_work+0x154> // +0x108
+    13a0: e9 00 80 52  	mov	w9, #7
+    13a4: 04 00 00 14  	b	0x13b4 <battery_chg_update_usb_type_work+0x16c>
+    13a8: 9f 24 03 d5  	hint	#36
+    13ac: 08 00 00 90  	adrp	x8, 0x1000 <battery_chg_update_usb_type_work+0x164> // +0x108
+    13b0: 09 01 80 52  	mov	w9, #8
+    13b4: 09 01 00 b9  	str	w9, [x8] // +0x108
+    13b8: 08 41 38 d5  	mrs	x8, SP_EL0
+    13bc: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    13c0: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    13c4: 1f 01 09 eb  	cmp	x8, x9
+    13c8: 61 05 00 54  	b.ne	0x1474 <battery_chg_update_usb_type_work+0x22c>
+    13cc: f4 4f 44 a9  	ldp	x20, x19, [sp, #64]
+    13d0: fd 7b 42 a9  	ldp	x29, x30, [sp, #32]
+    13d4: f5 1b 40 f9  	ldr	x21, [sp, #48]
+    13d8: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    13dc: ff 43 01 91  	add	sp, sp, #80
+    13e0: bf 23 03 d5  	hint	#29
+    13e4: c0 03 5f d6  	ret
+    13e8: f4 03 00 2a  	mov	w20, w0
+    13ec: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_update_usb_type_work+0x1a4> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read USB_ADAP_TYPE rc=%d\n'
+    13f0: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_update_usb_type_work+0x1a8> // 'battery_chg_update_usb_type_work'
+    13f4: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read USB_ADAP_TYPE rc=%d\n'
+    13f8: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_update_usb_type_work'
+    13fc: 01 76 80 52  	mov	w1, #944
+    1400: e3 03 14 2a  	mov	w3, w20
+    1404: 00 00 00 94  	bl	0x1404 <battery_chg_update_usb_type_work+0x1bc> // _printk+0x0
+    1408: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_update_usb_type_work+0x1c0> // 'Failed to read USB_ADAP_TYPE rc=%d\n'
+    140c: 00 00 00 91  	add	x0, x0, #0 // 'Failed to read USB_ADAP_TYPE rc=%d\n'
+    1410: 16 00 00 14  	b	0x1468 <battery_chg_update_usb_type_work+0x220>
+    1414: f4 03 00 2a  	mov	w20, w0
+    1418: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_update_usb_type_work+0x1d0> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read USB_VOLT_MAX rc=%d\n'
+    141c: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_update_usb_type_work+0x1d4> // 'battery_chg_update_usb_type_work'
+    1420: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read USB_VOLT_MAX rc=%d\n'
+    1424: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_update_usb_type_work'
+    1428: e1 76 80 52  	mov	w1, #951
+    142c: e3 03 14 2a  	mov	w3, w20
+    1430: 00 00 00 94  	bl	0x1430 <battery_chg_update_usb_type_work+0x1e8> // _printk+0x0
+    1434: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_update_usb_type_work+0x1ec> // 'Failed to read USB_VOLT_MAX rc=%d\n'
+    1438: 00 00 00 91  	add	x0, x0, #0 // 'Failed to read USB_VOLT_MAX rc=%d\n'
+    143c: 0b 00 00 14  	b	0x1468 <battery_chg_update_usb_type_work+0x220>
+    1440: f4 03 00 2a  	mov	w20, w0
+    1444: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_update_usb_type_work+0x1fc> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read USB_CURR_MAX rc=%d\n'
+    1448: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_update_usb_type_work+0x200> // 'battery_chg_update_usb_type_work'
+    144c: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read USB_CURR_MAX rc=%d\n'
+    1450: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_update_usb_type_work'
+    1454: 81 77 80 52  	mov	w1, #956
+    1458: e3 03 14 2a  	mov	w3, w20
+    145c: 00 00 00 94  	bl	0x145c <battery_chg_update_usb_type_work+0x214> // _printk+0x0
+    1460: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_update_usb_type_work+0x218> // 'Failed to read USB_CURR_MAX rc=%d\n'
+    1464: 00 00 00 91  	add	x0, x0, #0 // 'Failed to read USB_CURR_MAX rc=%d\n'
+    1468: e1 03 14 2a  	mov	w1, w20
+    146c: 00 00 00 94  	bl	0x146c <battery_chg_update_usb_type_work+0x224> // mpower_print+0x0
+    1470: d2 ff ff 17  	b	0x13b8 <battery_chg_update_usb_type_work+0x170>
+    1474: 00 00 00 94  	bl	0x1474 <battery_chg_update_usb_type_work+0x22c> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000001478 <battery_chg_check_status_work>:
+    1478: 3f 23 03 d5  	hint	#25
+    147c: ff 43 01 d1  	sub	sp, sp, #80
+    1480: 5e 86 00 f8  	str	x30, [x18], #8
+    1484: fd 7b 02 a9  	stp	x29, x30, [sp, #32]
+    1488: fd 83 00 91  	add	x29, sp, #32
+    148c: f5 1b 00 f9  	str	x21, [sp, #48]
+    1490: f4 4f 04 a9  	stp	x20, x19, [sp, #64]
+    1494: 08 41 38 d5  	mrs	x8, SP_EL0
+    1498: 55 01 90 d2  	mov	x21, #32778
+    149c: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    14a0: 13 60 0a d1  	sub	x19, x0, #664
+    14a4: 35 00 c0 f2  	movk	x21, #1, lsl #32
+    14a8: e1 03 00 91  	mov	x1, sp
+    14ac: 02 03 80 52  	mov	w2, #24
+    14b0: a8 83 1f f8  	stur	x8, [x29, #-8]
+    14b4: 08 40 50 b8  	ldur	w8, [x0, #-252]
+    14b8: e0 03 13 aa  	mov	x0, x19
+    14bc: ff c3 00 f8  	stur	xzr, [sp, #12]
+    14c0: ff 17 00 b9  	str	wzr, [sp, #20]
+    14c4: f5 03 00 f9  	str	x21, [sp]
+    14c8: e8 0b 00 b9  	str	w8, [sp, #8]
+    14cc: 00 00 00 94  	bl	0x14cc <battery_chg_check_status_work+0x54> // +0x530
+    14d0: a0 04 f8 37  	tbnz	w0, #31, 0x1564 <battery_chg_check_status_work+0xec>
+    14d4: 88 00 c0 d2  	mov	x8, #17179869184
+    14d8: 69 9e 41 b9  	ldr	w9, [x19, #412]
+    14dc: e1 03 00 91  	mov	x1, sp
+    14e0: e0 03 13 aa  	mov	x0, x19
+    14e4: 02 03 80 52  	mov	w2, #24
+    14e8: ff 17 00 b9  	str	wzr, [sp, #20]
+    14ec: f5 03 00 f9  	str	x21, [sp]
+    14f0: e8 c3 00 f8  	stur	x8, [sp, #12]
+    14f4: e9 0b 00 b9  	str	w9, [sp, #8]
+    14f8: 00 00 00 94  	bl	0x14f8 <battery_chg_check_status_work+0x80> // +0x530
+    14fc: c0 04 f8 37  	tbnz	w0, #31, 0x1594 <battery_chg_check_status_work+0x11c>
+    1500: 49 01 90 d2  	mov	x9, #32778
+    1504: e8 00 c0 d2  	mov	x8, #30064771072
+    1508: 29 00 c0 f2  	movk	x9, #1, lsl #32
+    150c: 6a 9e 41 b9  	ldr	w10, [x19, #412]
+    1510: e1 03 00 91  	mov	x1, sp
+    1514: e0 03 13 aa  	mov	x0, x19
+    1518: 02 03 80 52  	mov	w2, #24
+    151c: ff 17 00 b9  	str	wzr, [sp, #20]
+    1520: e8 c3 00 f8  	stur	x8, [sp, #12]
+    1524: e9 03 00 f9  	str	x9, [sp]
+    1528: ea 0b 00 b9  	str	w10, [sp, #8]
+    152c: 00 00 00 94  	bl	0x152c <battery_chg_check_status_work+0xb4> // +0x530
+    1530: a0 04 f8 37  	tbnz	w0, #31, 0x15c4 <battery_chg_check_status_work+0x14c>
+    1534: 08 41 38 d5  	mrs	x8, SP_EL0
+    1538: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    153c: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    1540: 1f 01 09 eb  	cmp	x8, x9
+    1544: a1 05 00 54  	b.ne	0x15f8 <battery_chg_check_status_work+0x180>
+    1548: f4 4f 44 a9  	ldp	x20, x19, [sp, #64]
+    154c: fd 7b 42 a9  	ldp	x29, x30, [sp, #32]
+    1550: f5 1b 40 f9  	ldr	x21, [sp, #48]
+    1554: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    1558: ff 43 01 91  	add	sp, sp, #80
+    155c: bf 23 03 d5  	hint	#29
+    1560: c0 03 5f d6  	ret
+    1564: f4 03 00 2a  	mov	w20, w0
+    1568: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_check_status_work+0xf0> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read BATT_STATUS, rc=%d\n'
+    156c: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_check_status_work+0xf4> // 'battery_chg_check_status_work'
+    1570: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read BATT_STATUS, rc=%d\n'
+    1574: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_check_status_work'
+    1578: 41 7e 80 52  	mov	w1, #1010
+    157c: e3 03 14 2a  	mov	w3, w20
+    1580: 00 00 00 94  	bl	0x1580 <battery_chg_check_status_work+0x108> // _printk+0x0
+    1584: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_check_status_work+0x10c> // 'Failed to read BATT_STATUS, rc=%d\n'
+    1588: e1 03 14 2a  	mov	w1, w20
+    158c: 00 00 00 91  	add	x0, x0, #0 // 'Failed to read BATT_STATUS, rc=%d\n'
+    1590: 18 00 00 14  	b	0x15f0 <battery_chg_check_status_work+0x178>
+    1594: f4 03 00 2a  	mov	w20, w0
+    1598: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_check_status_work+0x120> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read BATT_CAPACITY, rc=%d\n'
+    159c: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_check_status_work+0x124> // 'battery_chg_check_status_work'
+    15a0: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read BATT_CAPACITY, rc=%d\n'
+    15a4: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_check_status_work'
+    15a8: 01 7f 80 52  	mov	w1, #1016
+    15ac: e3 03 14 2a  	mov	w3, w20
+    15b0: 00 00 00 94  	bl	0x15b0 <battery_chg_check_status_work+0x138> // _printk+0x0
+    15b4: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_check_status_work+0x13c> // 'Failed to read BATT_CAPACITY, rc=%d\n'
+    15b8: e1 03 14 2a  	mov	w1, w20
+    15bc: 00 00 00 91  	add	x0, x0, #0 // 'Failed to read BATT_CAPACITY, rc=%d\n'
+    15c0: 0c 00 00 14  	b	0x15f0 <battery_chg_check_status_work+0x178>
+    15c4: f3 03 00 2a  	mov	w19, w0
+    15c8: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_check_status_work+0x150> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read BATT_VOLT_NOW, rc=%d\n'
+    15cc: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_check_status_work+0x154> // 'battery_chg_check_status_work'
+    15d0: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to read BATT_VOLT_NOW, rc=%d\n'
+    15d4: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_check_status_work'
+    15d8: c1 7f 80 52  	mov	w1, #1022
+    15dc: e3 03 13 2a  	mov	w3, w19
+    15e0: 00 00 00 94  	bl	0x15e0 <battery_chg_check_status_work+0x168> // _printk+0x0
+    15e4: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_check_status_work+0x16c> // 'Failed to read BATT_VOLT_NOW, rc=%d\n'
+    15e8: e1 03 13 2a  	mov	w1, w19
+    15ec: 00 00 00 91  	add	x0, x0, #0 // 'Failed to read BATT_VOLT_NOW, rc=%d\n'
+    15f0: 00 00 00 94  	bl	0x15f0 <battery_chg_check_status_work+0x178> // mpower_print+0x0
+    15f4: d0 ff ff 17  	b	0x1534 <battery_chg_check_status_work+0xbc>
+    15f8: 00 00 00 94  	bl	0x15f8 <battery_chg_check_status_work+0x180> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+00000000000015fc <panel_event_notifier_callback>:
+    15fc: 3f 23 03 d5  	hint	#25
+    1600: ff 43 01 d1  	sub	sp, sp, #80
+    1604: 5e 86 00 f8  	str	x30, [x18], #8
+    1608: fd 7b 03 a9  	stp	x29, x30, [sp, #48]
+    160c: fd c3 00 91  	add	x29, sp, #48
+    1610: f4 4f 04 a9  	stp	x20, x19, [sp, #64]
+    1614: 08 41 38 d5  	mrs	x8, SP_EL0
+    1618: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    161c: a8 83 1f f8  	stur	x8, [x29, #-8]
+    1620: e1 04 00 b4  	cbz	x1, 0x16bc <panel_event_notifier_callback+0xc0>
+    1624: 28 00 40 b9  	ldr	w8, [x1]
+    1628: f3 03 02 aa  	mov	x19, x2
+    162c: 1f 09 00 71  	cmp	w8, #2
+    1630: 60 02 00 54  	b.eq	0x167c <panel_event_notifier_callback+0x80>
+    1634: 1f 05 00 71  	cmp	w8, #1
+    1638: 21 04 00 54  	b.ne	0x16bc <panel_event_notifier_callback+0xc0>
+    163c: 68 3a 4c 39  	ldrb	w8, [x19, #782]
+    1640: ff c3 01 f8  	stur	xzr, [sp, #28]
+    1644: ff 43 01 f8  	stur	xzr, [sp, #20]
+    1648: a8 03 00 34  	cbz	w8, 0x16bc <panel_event_notifier_callback+0xc0>
+    164c: 48 01 90 d2  	mov	x8, #32778
+    1650: a9 00 80 52  	mov	w9, #5
+    1654: 48 00 c0 f2  	movk	x8, #2, lsl #32
+    1658: e1 23 00 91  	add	x1, sp, #8
+    165c: e0 03 13 aa  	mov	x0, x19
+    1660: 82 03 80 52  	mov	w2, #28
+    1664: e9 13 00 b9  	str	w9, [sp, #16]
+    1668: e8 07 00 f9  	str	x8, [sp, #8]
+    166c: 00 00 00 94  	bl	0x166c <panel_event_notifier_callback+0x70> // +0x530
+    1670: c0 03 f8 37  	tbnz	w0, #31, 0x16e8 <panel_event_notifier_callback+0xec>
+    1674: 7f 3a 0c 39  	strb	wzr, [x19, #782]
+    1678: 11 00 00 14  	b	0x16bc <panel_event_notifier_callback+0xc0>
+    167c: 68 3a 4c 39  	ldrb	w8, [x19, #782]
+    1680: ff c3 01 f8  	stur	xzr, [sp, #28]
+    1684: ff 43 01 f8  	stur	xzr, [sp, #20]
+    1688: a8 01 00 35  	cbnz	w8, 0x16bc <panel_event_notifier_callback+0xc0>
+    168c: 48 01 90 d2  	mov	x8, #32778
+    1690: 89 00 80 52  	mov	w9, #4
+    1694: 48 00 c0 f2  	movk	x8, #2, lsl #32
+    1698: e1 23 00 91  	add	x1, sp, #8
+    169c: e0 03 13 aa  	mov	x0, x19
+    16a0: 82 03 80 52  	mov	w2, #28
+    16a4: e9 13 00 b9  	str	w9, [sp, #16]
+    16a8: e8 07 00 f9  	str	x8, [sp, #8]
+    16ac: 00 00 00 94  	bl	0x16ac <panel_event_notifier_callback+0xb0> // +0x530
+    16b0: 20 03 f8 37  	tbnz	w0, #31, 0x1714 <panel_event_notifier_callback+0x118>
+    16b4: 28 00 80 52  	mov	w8, #1
+    16b8: 68 3a 0c 39  	strb	w8, [x19, #782]
+    16bc: 08 41 38 d5  	mrs	x8, SP_EL0
+    16c0: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    16c4: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    16c8: 1f 01 09 eb  	cmp	x8, x9
+    16cc: e1 03 00 54  	b.ne	0x1748 <panel_event_notifier_callback+0x14c>
+    16d0: f4 4f 44 a9  	ldp	x20, x19, [sp, #64]
+    16d4: fd 7b 43 a9  	ldp	x29, x30, [sp, #48]
+    16d8: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    16dc: ff 43 01 91  	add	sp, sp, #80
+    16e0: bf 23 03 d5  	hint	#29
+    16e4: c0 03 5f d6  	ret
+    16e8: f4 03 00 2a  	mov	w20, w0
+    16ec: 00 00 00 90  	adrp	x0, 0x1000 <panel_event_notifier_callback+0xf0> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to disable notification rc=%d\n'
+    16f0: 02 00 00 90  	adrp	x2, 0x1000 <panel_event_notifier_callback+0xf4> // 'battery_chg_notify_disable'
+    16f4: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to disable notification rc=%d\n'
+    16f8: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_notify_disable'
+    16fc: 41 4e 80 52  	mov	w1, #626
+    1700: e3 03 14 2a  	mov	w3, w20
+    1704: 00 00 00 94  	bl	0x1704 <panel_event_notifier_callback+0x108> // _printk+0x0
+    1708: 00 00 00 90  	adrp	x0, 0x1000 <panel_event_notifier_callback+0x10c> // 'Failed to disable notification rc=%d\n'
+    170c: 00 00 00 91  	add	x0, x0, #0 // 'Failed to disable notification rc=%d\n'
+    1710: 0b 00 00 14  	b	0x173c <panel_event_notifier_callback+0x140>
+    1714: f4 03 00 2a  	mov	w20, w0
+    1718: 00 00 00 90  	adrp	x0, 0x1000 <panel_event_notifier_callback+0x11c> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to enable notification rc=%d\n'
+    171c: 02 00 00 90  	adrp	x2, 0x1000 <panel_event_notifier_callback+0x120> // 'battery_chg_notify_enable'
+    1720: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to enable notification rc=%d\n'
+    1724: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_notify_enable'
+    1728: a1 50 80 52  	mov	w1, #645
+    172c: e3 03 14 2a  	mov	w3, w20
+    1730: 00 00 00 94  	bl	0x1730 <panel_event_notifier_callback+0x134> // _printk+0x0
+    1734: 00 00 00 90  	adrp	x0, 0x1000 <panel_event_notifier_callback+0x138> // 'Failed to enable notification rc=%d\n'
+    1738: 00 00 00 91  	add	x0, x0, #0 // 'Failed to enable notification rc=%d\n'
+    173c: e1 03 14 2a  	mov	w1, w20
+    1740: 00 00 00 94  	bl	0x1740 <panel_event_notifier_callback+0x144> // mpower_print+0x0
+    1744: de ff ff 17  	b	0x16bc <panel_event_notifier_callback+0xc0>
+    1748: 00 00 00 94  	bl	0x1748 <panel_event_notifier_callback+0x14c> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+000000000000174c <battery_chg_callback>:
+    174c: 3f 23 03 d5  	hint	#25
+    1750: ff 43 01 d1  	sub	sp, sp, #80
+    1754: 5e 86 00 f8  	str	x30, [x18], #8
+    1758: fd 7b 01 a9  	stp	x29, x30, [sp, #16]
+    175c: fd 43 00 91  	add	x29, sp, #16
+    1760: f7 13 00 f9  	str	x23, [sp, #32]
+    1764: f6 57 03 a9  	stp	x22, x21, [sp, #48]
+    1768: f4 4f 04 a9  	stp	x20, x19, [sp, #64]
+    176c: 08 41 38 d5  	mrs	x8, SP_EL0
+    1770: 13 60 03 91  	add	x19, x0, #216
+    1774: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    1778: f4 03 00 aa  	mov	x20, x0
+    177c: e0 03 13 aa  	mov	x0, x19
+    1780: f6 03 02 aa  	mov	x22, x2
+    1784: f5 03 01 aa  	mov	x21, x1
+    1788: e8 07 00 f9  	str	x8, [sp, #8]
+    178c: 00 00 00 94  	bl	0x178c <battery_chg_callback+0x40> // down_read+0x0
+    1790: 88 36 4c 39  	ldrb	w8, [x20, #781]
+    1794: a8 23 00 34  	cbz	w8, 0x1c08 <battery_chg_callback+0x4bc>
+    1798: a4 0a 40 b9  	ldr	w4, [x21, #8]
+    179c: f7 03 1f 2a  	mov	w23, wzr
+    17a0: 9f c4 00 71  	cmp	w4, #49
+    17a4: ac 03 00 54  	b.gt	0x1818 <battery_chg_callback+0xcc>
+    17a8: 9f 1c 00 71  	cmp	w4, #7
+    17ac: 20 06 00 54  	b.eq	0x1870 <battery_chg_callback+0x124>
+    17b0: 9f c0 00 71  	cmp	w4, #48
+    17b4: 61 16 00 54  	b.ne	0x1a80 <battery_chg_callback+0x334>
+    17b8: df 42 02 f1  	cmp	x22, #144
+    17bc: 61 00 00 54  	b.ne	0x17c8 <battery_chg_callback+0x7c>
+    17c0: 88 c2 40 f9  	ldr	x8, [x20, #384]
+    17c4: a8 15 00 b5  	cbnz	x8, 0x1a78 <battery_chg_callback+0x32c>
+    17c8: df 62 00 f1  	cmp	x22, #24
+    17cc: c1 13 00 54  	b.ne	0x1a44 <battery_chg_callback+0x2f8>
+    17d0: a8 16 40 b9  	ldr	w8, [x21, #20]
+    17d4: 28 07 00 35  	cbnz	w8, 0x18b8 <battery_chg_callback+0x16c>
+    17d8: a8 0e 40 b9  	ldr	w8, [x21, #12]
+    17dc: 89 9a 41 b9  	ldr	w9, [x20, #408]
+    17e0: 1f 01 09 6b  	cmp	w8, w9
+    17e4: a2 14 00 54  	b.hs	0x1a78 <battery_chg_callback+0x32c>
+    17e8: 1f 31 00 71  	cmp	w8, #12
+    17ec: e0 25 00 54  	b.eq	0x1ca8 <battery_chg_callback+0x55c>
+    17f0: 1f 11 00 71  	cmp	w8, #4
+    17f4: 21 14 00 54  	b.ne	0x1a78 <battery_chg_callback+0x32c>
+    17f8: 88 ca 40 f9  	ldr	x8, [x20, #400]
+    17fc: a9 12 40 b9  	ldr	w9, [x21, #16]
+    1800: 0a 11 40 b9  	ldr	w10, [x8, #16]
+    1804: 5f 01 09 6b  	cmp	w10, w9
+    1808: 80 13 00 54  	b.eq	0x1a78 <battery_chg_callback+0x32c>
+    180c: 37 00 80 52  	mov	w23, #1
+    1810: 09 11 00 b9  	str	w9, [x8, #16]
+    1814: 9a 00 00 14  	b	0x1a7c <battery_chg_callback+0x330>
+    1818: 9f c8 00 71  	cmp	w4, #50
+    181c: 60 04 00 54  	b.eq	0x18a8 <battery_chg_callback+0x15c>
+    1820: 9f d0 00 71  	cmp	w4, #52
+    1824: e1 12 00 54  	b.ne	0x1a80 <battery_chg_callback+0x334>
+    1828: df 62 00 f1  	cmp	x22, #24
+    182c: e1 0c 00 54  	b.ne	0x19c8 <battery_chg_callback+0x27c>
+    1830: a8 16 40 b9  	ldr	w8, [x21, #20]
+    1834: 28 04 00 35  	cbnz	w8, 0x18b8 <battery_chg_callback+0x16c>
+    1838: a8 0e 40 b9  	ldr	w8, [x21, #12]
+    183c: f7 03 1f 2a  	mov	w23, wzr
+    1840: e8 11 00 35  	cbnz	w8, 0x1a7c <battery_chg_callback+0x330>
+    1844: 88 fa 41 b9  	ldr	w8, [x20, #504]
+    1848: a8 11 00 34  	cbz	w8, 0x1a7c <battery_chg_callback+0x330>
+    184c: a1 12 40 b9  	ldr	w1, [x21, #16]
+    1850: 20 00 80 52  	mov	w0, #1
+    1854: 00 00 00 94  	bl	0x1854 <battery_chg_callback+0x108> // xcharge_mbattery_logger_update_plug_in_status+0x0
+    1858: a8 12 40 b9  	ldr	w8, [x21, #16]
+    185c: 20 00 80 52  	mov	w0, #1
+    1860: 1f 01 00 71  	cmp	w8, #0
+    1864: e1 07 9f 1a  	cset	w1, ne
+    1868: 00 00 00 94  	bl	0x1868 <battery_chg_callback+0x11c> // xcharge_notify_subsys_set_plug_status+0x0
+    186c: 83 00 00 14  	b	0x1a78 <battery_chg_callback+0x32c>
+    1870: df 42 00 f1  	cmp	x22, #16
+    1874: a1 0b 00 54  	b.ne	0x19e8 <battery_chg_callback+0x29c>
+    1878: a8 0e 40 b9  	ldr	w8, [x21, #12]
+    187c: 09 3d 00 12  	and	w9, w8, #0xffff
+    1880: 3f e5 01 71  	cmp	w9, #121
+    1884: e1 02 00 54  	b.ne	0x18e0 <battery_chg_callback+0x194>
+    1888: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x13c> // +0x0
+    188c: 08 7d 10 53  	lsr	w8, w8, #16
+    1890: 00 00 00 91  	add	x0, x0, #0 // +0x0
+    1894: e2 13 00 91  	add	x2, sp, #4
+    1898: e1 03 1f aa  	mov	x1, xzr
+    189c: e8 07 00 b9  	str	w8, [sp, #4]
+    18a0: 00 00 00 94  	bl	0x18a0 <battery_chg_callback+0x154> // raw_notifier_call_chain+0x0
+    18a4: d9 00 00 14  	b	0x1c08 <battery_chg_callback+0x4bc>
+    18a8: df 62 00 f1  	cmp	x22, #24
+    18ac: 61 0b 00 54  	b.ne	0x1a18 <battery_chg_callback+0x2cc>
+    18b0: a8 16 40 b9  	ldr	w8, [x21, #20]
+    18b4: a8 02 00 34  	cbz	w8, 0x1908 <battery_chg_callback+0x1bc>
+    18b8: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x16c> // +0x1b0
+    18bc: 01 00 00 90  	adrp	x1, 0x1000 <battery_chg_callback+0x170> // 'validate_message'
+    18c0: 00 00 00 91  	add	x0, x0, #0 // +0x1b0
+    18c4: 21 00 00 91  	add	x1, x1, #0 // 'validate_message'
+    18c8: 00 00 00 94  	bl	0x18c8 <battery_chg_callback+0x17c> // ___ratelimit+0x0
+    18cc: c0 06 00 35  	cbnz	w0, 0x19a4 <battery_chg_callback+0x258>
+    18d0: 28 00 80 52  	mov	w8, #1
+    18d4: f7 03 1f 2a  	mov	w23, wzr
+    18d8: 88 3e 0c 39  	strb	w8, [x20, #783]
+    18dc: 68 00 00 14  	b	0x1a7c <battery_chg_callback+0x330>
+    18e0: 1f cd 00 71  	cmp	w8, #51
+    18e4: cc 03 00 54  	b.gt	0x195c <battery_chg_callback+0x210>
+    18e8: 1f c1 00 71  	cmp	w8, #48
+    18ec: 00 04 00 54  	b.eq	0x196c <battery_chg_callback+0x220>
+    18f0: 1f c9 00 71  	cmp	w8, #50
+    18f4: a1 18 00 54  	b.ne	0x1c08 <battery_chg_callback+0x4bc>
+    18f8: 08 00 00 90  	adrp	x8, 0x1000 <battery_chg_callback+0x1ac> // system_wq+0x0
+    18fc: 95 a2 06 91  	add	x21, x20, #424
+    1900: 82 a2 09 91  	add	x2, x20, #616
+    1904: 1d 00 00 14  	b	0x1978 <battery_chg_callback+0x22c>
+    1908: a8 0e 40 b9  	ldr	w8, [x21, #12]
+    190c: 89 ca 41 b9  	ldr	w9, [x20, #456]
+    1910: 1f 01 09 6b  	cmp	w8, w9
+    1914: 22 0b 00 54  	b.hs	0x1a78 <battery_chg_callback+0x32c>
+    1918: 1f 29 00 71  	cmp	w8, #10
+    191c: e0 08 00 54  	b.eq	0x1a38 <battery_chg_callback+0x2ec>
+    1920: c8 0a 00 35  	cbnz	w8, 0x1a78 <battery_chg_callback+0x32c>
+    1924: a1 12 40 b9  	ldr	w1, [x21, #16]
+    1928: e0 03 1f 2a  	mov	w0, wzr
+    192c: 00 00 00 94  	bl	0x192c <battery_chg_callback+0x1e0> // xcharge_mbattery_logger_update_plug_in_status+0x0
+    1930: a8 12 40 b9  	ldr	w8, [x21, #16]
+    1934: e0 03 1f 2a  	mov	w0, wzr
+    1938: 1f 01 00 71  	cmp	w8, #0
+    193c: e1 07 9f 1a  	cset	w1, ne
+    1940: 00 00 00 94  	bl	0x1940 <battery_chg_callback+0x1f4> // xcharge_notify_subsys_set_plug_status+0x0
+    1944: a8 aa 41 29  	ldp	w8, w10, [x21, #12]
+    1948: 89 e2 40 f9  	ldr	x9, [x20, #448]
+    194c: 28 79 68 b8  	ldr	w8, [x9, x8, lsl #2]
+    1950: 1f 01 0a 6b  	cmp	w8, w10
+    1954: f7 07 9f 1a  	cset	w23, ne
+    1958: 49 00 00 14  	b	0x1a7c <battery_chg_callback+0x330>
+    195c: 1f d1 00 71  	cmp	w8, #52
+    1960: 60 01 00 54  	b.eq	0x198c <battery_chg_callback+0x240>
+    1964: 1f 01 02 71  	cmp	w8, #128
+    1968: 01 15 00 54  	b.ne	0x1c08 <battery_chg_callback+0x4bc>
+    196c: 08 00 00 90  	adrp	x8, 0x1000 <battery_chg_callback+0x220> // system_wq+0x0
+    1970: 95 e2 05 91  	add	x21, x20, #376
+    1974: 82 62 0a 91  	add	x2, x20, #664
+    1978: 01 01 40 f9  	ldr	x1, [x8] // system_wq+0x0
+    197c: 00 04 80 52  	mov	w0, #32
+    1980: 00 00 00 94  	bl	0x1980 <battery_chg_callback+0x234> // queue_work_on+0x0
+    1984: b5 00 00 b5  	cbnz	x21, 0x1998 <battery_chg_callback+0x24c>
+    1988: a0 00 00 14  	b	0x1c08 <battery_chg_callback+0x4bc>
+    198c: 95 62 07 91  	add	x21, x20, #472
+    1990: 00 00 00 94  	bl	0x1990 <battery_chg_callback+0x244> // xcharge_wls_status_get_handle+0x0
+    1994: b5 13 00 b4  	cbz	x21, 0x1c08 <battery_chg_callback+0x4bc>
+    1998: a0 02 40 f9  	ldr	x0, [x21]
+    199c: c0 12 00 b5  	cbnz	x0, 0x1bf4 <battery_chg_callback+0x4a8>
+    19a0: 9a 00 00 14  	b	0x1c08 <battery_chg_callback+0x4bc>
+    19a4: a3 12 41 29  	ldp	w3, w4, [x21, #8]
+    19a8: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x25c> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Error in response for opcode %#x prop_id %u, rc=%d\n'
+    19ac: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_callback+0x260> // 'validate_message'
+    19b0: a5 16 40 b9  	ldr	w5, [x21, #20]
+    19b4: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Error in response for opcode %#x prop_id %u, rc=%d\n'
+    19b8: 42 00 00 91  	add	x2, x2, #0 // 'validate_message'
+    19bc: a1 5b 80 52  	mov	w1, #733
+    19c0: 00 00 00 94  	bl	0x19c0 <battery_chg_callback+0x274> // _printk+0x0
+    19c4: c3 ff ff 17  	b	0x18d0 <battery_chg_callback+0x184>
+    19c8: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x27c> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    19cc: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_callback+0x280> // 'validate_message'
+    19d0: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    19d4: 42 00 00 91  	add	x2, x2, #0 // 'validate_message'
+    19d8: c1 5a 80 52  	mov	w1, #726
+    19dc: e3 03 16 aa  	mov	x3, x22
+    19e0: 84 06 80 52  	mov	w4, #52
+    19e4: 1f 00 00 14  	b	0x1a60 <battery_chg_callback+0x314>
+    19e8: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x29c> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu\n'
+    19ec: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_callback+0x2a0> // 'handle_notification'
+    19f0: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu\n'
+    19f4: 42 00 00 91  	add	x2, x2, #0 // 'handle_notification'
+    19f8: 41 88 80 52  	mov	w1, #1090
+    19fc: e3 03 16 aa  	mov	x3, x22
+    1a00: 00 00 00 94  	bl	0x1a00 <battery_chg_callback+0x2b4> // _printk+0x0
+    1a04: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x2b8> // 'Incorrect response length %zu\n'
+    1a08: e1 03 16 aa  	mov	x1, x22
+    1a0c: 00 00 00 91  	add	x0, x0, #0 // 'Incorrect response length %zu\n'
+    1a10: 00 00 00 94  	bl	0x1a10 <battery_chg_callback+0x2c4> // mpower_print+0x0
+    1a14: 7d 00 00 14  	b	0x1c08 <battery_chg_callback+0x4bc>
+    1a18: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x2cc> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    1a1c: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_callback+0x2d0> // 'validate_message'
+    1a20: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    1a24: 42 00 00 91  	add	x2, x2, #0 // 'validate_message'
+    1a28: c1 5a 80 52  	mov	w1, #726
+    1a2c: e3 03 16 aa  	mov	x3, x22
+    1a30: 44 06 80 52  	mov	w4, #50
+    1a34: 0b 00 00 14  	b	0x1a60 <battery_chg_callback+0x314>
+    1a38: a0 12 40 b9  	ldr	w0, [x21, #16]
+    1a3c: 00 00 00 94  	bl	0x1a3c <battery_chg_callback+0x2f0> // xcharge_thermal_update_tusb+0x0
+    1a40: 0e 00 00 14  	b	0x1a78 <battery_chg_callback+0x32c>
+    1a44: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x2f8> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    1a48: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_callback+0x2fc> // 'validate_message'
+    1a4c: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    1a50: 42 00 00 91  	add	x2, x2, #0 // 'validate_message'
+    1a54: c1 5a 80 52  	mov	w1, #726
+    1a58: e3 03 16 aa  	mov	x3, x22
+    1a5c: 04 06 80 52  	mov	w4, #48
+    1a60: 00 00 00 94  	bl	0x1a60 <battery_chg_callback+0x314> // _printk+0x0
+    1a64: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x318> // 'Incorrect response length %zu for opcode %#x\n'
+    1a68: a2 0a 40 b9  	ldr	w2, [x21, #8]
+    1a6c: 00 00 00 91  	add	x0, x0, #0 // 'Incorrect response length %zu for opcode %#x\n'
+    1a70: e1 03 16 aa  	mov	x1, x22
+    1a74: 00 00 00 94  	bl	0x1a74 <battery_chg_callback+0x328> // mpower_print+0x0
+    1a78: f7 03 1f 2a  	mov	w23, wzr
+    1a7c: a4 0a 40 b9  	ldr	w4, [x21, #8]
+    1a80: 88 10 00 51  	sub	w8, w4, #4
+    1a84: 1f 0d 01 71  	cmp	w8, #67
+    1a88: 68 11 00 54  	b.hi	0x1cb4 <battery_chg_callback+0x568>
+    1a8c: 09 00 00 90  	adrp	x9, 0x1000 <battery_chg_callback+0x340> // 'KK������������������������������������������\x06'
+    1a90: 29 01 00 91  	add	x9, x9, #0 // 'KK������������������������������������������\x06'
+    1a94: 8a 00 00 10  	adr	x10, #16
+    1a98: 2b 69 68 38  	ldrb	w11, [x9, x8]
+    1a9c: 4a 09 0b 8b  	add	x10, x10, x11, lsl #2
+    1aa0: 40 01 1f d6  	br	x10
+    1aa4: 9f 24 03 d5  	hint	#36
+    1aa8: df 62 00 f1  	cmp	x22, #24
+    1aac: 01 0f 00 54  	b.ne	0x1c8c <battery_chg_callback+0x540>
+    1ab0: a8 16 40 b9  	ldr	w8, [x21, #20]
+    1ab4: a8 07 00 35  	cbnz	w8, 0x1ba8 <battery_chg_callback+0x45c>
+    1ab8: 46 00 00 14  	b	0x1bd0 <battery_chg_callback+0x484>
+    1abc: 9f 24 03 d5  	hint	#36
+    1ac0: df 42 02 f1  	cmp	x22, #144
+    1ac4: a1 06 00 54  	b.ne	0x1b98 <battery_chg_callback+0x44c>
+    1ac8: 88 c2 40 f9  	ldr	x8, [x20, #384]
+    1acc: 68 06 00 b4  	cbz	x8, 0x1b98 <battery_chg_callback+0x44c>
+    1ad0: aa 26 42 a9  	ldp	x10, x9, [x21, #32]
+    1ad4: 01 00 00 90  	adrp	x1, 0x1000 <battery_chg_callback+0x388> // 'Debug_Board'
+    1ad8: ac 2e 41 a9  	ldp	x12, x11, [x21, #16]
+    1adc: 21 00 00 91  	add	x1, x1, #0 // 'Debug_Board'
+    1ae0: 0a 25 01 a9  	stp	x10, x9, [x8, #16]
+    1ae4: 0c 2d 00 a9  	stp	x12, x11, [x8]
+    1ae8: aa 26 44 a9  	ldp	x10, x9, [x21, #64]
+    1aec: ac 2e 43 a9  	ldp	x12, x11, [x21, #48]
+    1af0: 0a 25 03 a9  	stp	x10, x9, [x8, #48]
+    1af4: 0c 2d 02 a9  	stp	x12, x11, [x8, #32]
+    1af8: aa 26 46 a9  	ldp	x10, x9, [x21, #96]
+    1afc: ac 2e 45 a9  	ldp	x12, x11, [x21, #80]
+    1b00: 0a 25 05 a9  	stp	x10, x9, [x8, #80]
+    1b04: 0c 2d 04 a9  	stp	x12, x11, [x8, #64]
+    1b08: aa 26 48 a9  	ldp	x10, x9, [x21, #128]
+    1b0c: ac 2e 47 a9  	ldp	x12, x11, [x21, #112]
+    1b10: 0a 25 07 a9  	stp	x10, x9, [x8, #112]
+    1b14: 0c 2d 06 a9  	stp	x12, x11, [x8, #96]
+    1b18: 80 c2 40 f9  	ldr	x0, [x20, #384]
+    1b1c: 00 00 00 94  	bl	0x1b1c <battery_chg_callback+0x3d0> // strcmp+0x0
+    1b20: 1f 00 00 71  	cmp	w0, #0
+    1b24: e8 17 9f 1a  	cset	w8, eq
+    1b28: 88 3a 0b 39  	strb	w8, [x20, #718]
+    1b2c: 29 00 00 14  	b	0x1bd0 <battery_chg_callback+0x484>
+    1b30: 9f 24 03 d5  	hint	#36
+    1b34: df 62 00 f1  	cmp	x22, #24
+    1b38: 81 0d 00 54  	b.ne	0x1ce8 <battery_chg_callback+0x59c>
+    1b3c: a8 16 40 b9  	ldr	w8, [x21, #20]
+    1b40: 48 03 00 35  	cbnz	w8, 0x1ba8 <battery_chg_callback+0x45c>
+    1b44: a8 0e 40 b9  	ldr	w8, [x21, #12]
+    1b48: 89 ca 41 b9  	ldr	w9, [x20, #456]
+    1b4c: 1f 01 09 6b  	cmp	w8, w9
+    1b50: c2 03 00 54  	b.hs	0x1bc8 <battery_chg_callback+0x47c>
+    1b54: a9 12 40 b9  	ldr	w9, [x21, #16]
+    1b58: 8a e2 40 f9  	ldr	x10, [x20, #448]
+    1b5c: 49 79 28 b8  	str	w9, [x10, x8, lsl #2]
+    1b60: 1c 00 00 14  	b	0x1bd0 <battery_chg_callback+0x484>
+    1b64: 9f 24 03 d5  	hint	#36
+    1b68: df 62 00 f1  	cmp	x22, #24
+    1b6c: e1 0c 00 54  	b.ne	0x1d08 <battery_chg_callback+0x5bc>
+    1b70: a8 16 40 b9  	ldr	w8, [x21, #20]
+    1b74: a8 01 00 35  	cbnz	w8, 0x1ba8 <battery_chg_callback+0x45c>
+    1b78: a8 0e 40 b9  	ldr	w8, [x21, #12]
+    1b7c: 89 fa 41 b9  	ldr	w9, [x20, #504]
+    1b80: 1f 01 09 6b  	cmp	w8, w9
+    1b84: 22 02 00 54  	b.hs	0x1bc8 <battery_chg_callback+0x47c>
+    1b88: a9 12 40 b9  	ldr	w9, [x21, #16]
+    1b8c: 8a fa 40 f9  	ldr	x10, [x20, #496]
+    1b90: 49 79 28 b8  	str	w9, [x10, x8, lsl #2]
+    1b94: 0f 00 00 14  	b	0x1bd0 <battery_chg_callback+0x484>
+    1b98: df 62 00 f1  	cmp	x22, #24
+    1b9c: 61 0c 00 54  	b.ne	0x1d28 <battery_chg_callback+0x5dc>
+    1ba0: a8 16 40 b9  	ldr	w8, [x21, #20]
+    1ba4: 48 06 00 34  	cbz	w8, 0x1c6c <battery_chg_callback+0x520>
+    1ba8: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x45c> // +0x1b0
+    1bac: 01 00 00 90  	adrp	x1, 0x1000 <battery_chg_callback+0x460> // 'validate_message'
+    1bb0: 00 00 00 91  	add	x0, x0, #0 // +0x1b0
+    1bb4: 21 00 00 91  	add	x1, x1, #0 // 'validate_message'
+    1bb8: 00 00 00 94  	bl	0x1bb8 <battery_chg_callback+0x46c> // ___ratelimit+0x0
+    1bbc: 60 04 00 35  	cbnz	w0, 0x1c48 <battery_chg_callback+0x4fc>
+    1bc0: 28 00 80 52  	mov	w8, #1
+    1bc4: 88 3e 0c 39  	strb	w8, [x20, #783]
+    1bc8: 88 3e 4c 39  	ldrb	w8, [x20, #783]
+    1bcc: 88 00 00 34  	cbz	w8, 0x1bdc <battery_chg_callback+0x490>
+    1bd0: 9f 24 03 d5  	hint	#36
+    1bd4: 80 62 04 91  	add	x0, x20, #280
+    1bd8: 00 00 00 94  	bl	0x1bd8 <battery_chg_callback+0x48c> // complete+0x0
+    1bdc: 88 e2 05 b1  	adds	x8, x20, #376
+    1be0: 40 01 00 54  	b.eq	0x1c08 <battery_chg_callback+0x4bc>
+    1be4: 00 01 40 f9  	ldr	x0, [x8]
+    1be8: 00 01 00 b4  	cbz	x0, 0x1c08 <battery_chg_callback+0x4bc>
+    1bec: e8 02 00 52  	eor	w8, w23, #0x1
+    1bf0: c8 00 00 37  	tbnz	w8, #0, 0x1c08 <battery_chg_callback+0x4bc>
+    1bf4: 00 00 00 94  	bl	0x1bf4 <battery_chg_callback+0x4a8> // power_supply_changed+0x0
+    1bf8: 80 02 40 f9  	ldr	x0, [x20]
+    1bfc: 41 06 80 52  	mov	w1, #50
+    1c00: 22 00 80 52  	mov	w2, #1
+    1c04: 00 00 00 94  	bl	0x1c04 <battery_chg_callback+0x4b8> // pm_wakeup_dev_event+0x0
+    1c08: e0 03 13 aa  	mov	x0, x19
+    1c0c: 00 00 00 94  	bl	0x1c0c <battery_chg_callback+0x4c0> // up_read+0x0
+    1c10: 08 41 38 d5  	mrs	x8, SP_EL0
+    1c14: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    1c18: e9 07 40 f9  	ldr	x9, [sp, #8]
+    1c1c: 1f 01 09 eb  	cmp	x8, x9
+    1c20: 01 0a 00 54  	b.ne	0x1d60 <battery_chg_callback+0x614>
+    1c24: f4 4f 44 a9  	ldp	x20, x19, [sp, #64]
+    1c28: e0 03 1f 2a  	mov	w0, wzr
+    1c2c: f6 57 43 a9  	ldp	x22, x21, [sp, #48]
+    1c30: fd 7b 41 a9  	ldp	x29, x30, [sp, #16]
+    1c34: f7 13 40 f9  	ldr	x23, [sp, #32]
+    1c38: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    1c3c: ff 43 01 91  	add	sp, sp, #80
+    1c40: bf 23 03 d5  	hint	#29
+    1c44: c0 03 5f d6  	ret
+    1c48: a3 12 41 29  	ldp	w3, w4, [x21, #8]
+    1c4c: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x500> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Error in response for opcode %#x prop_id %u, rc=%d\n'
+    1c50: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_callback+0x504> // 'validate_message'
+    1c54: a5 16 40 b9  	ldr	w5, [x21, #20]
+    1c58: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Error in response for opcode %#x prop_id %u, rc=%d\n'
+    1c5c: 42 00 00 91  	add	x2, x2, #0 // 'validate_message'
+    1c60: a1 5b 80 52  	mov	w1, #733
+    1c64: 00 00 00 94  	bl	0x1c64 <battery_chg_callback+0x518> // _printk+0x0
+    1c68: d6 ff ff 17  	b	0x1bc0 <battery_chg_callback+0x474>
+    1c6c: a8 0e 40 b9  	ldr	w8, [x21, #12]
+    1c70: 89 9a 41 b9  	ldr	w9, [x20, #408]
+    1c74: 1f 01 09 6b  	cmp	w8, w9
+    1c78: 82 fa ff 54  	b.hs	0x1bc8 <battery_chg_callback+0x47c>
+    1c7c: a9 12 40 b9  	ldr	w9, [x21, #16]
+    1c80: 8a ca 40 f9  	ldr	x10, [x20, #400]
+    1c84: 49 79 28 b8  	str	w9, [x10, x8, lsl #2]
+    1c88: d2 ff ff 17  	b	0x1bd0 <battery_chg_callback+0x484>
+    1c8c: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x540> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    1c90: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_callback+0x544> // 'validate_message'
+    1c94: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    1c98: 42 00 00 91  	add	x2, x2, #0 // 'validate_message'
+    1c9c: c1 5a 80 52  	mov	w1, #726
+    1ca0: e3 03 16 aa  	mov	x3, x22
+    1ca4: 28 00 00 14  	b	0x1d44 <battery_chg_callback+0x5f8>
+    1ca8: a0 12 40 b9  	ldr	w0, [x21, #16]
+    1cac: 00 00 00 94  	bl	0x1cac <battery_chg_callback+0x560> // xcharge_thermal_update_tbat+0x0
+    1cb0: 72 ff ff 17  	b	0x1a78 <battery_chg_callback+0x32c>
+    1cb4: 9f 24 03 d5  	hint	#36
+    1cb8: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x56c> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Unknown opcode: %u\n'
+    1cbc: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_callback+0x570> // 'handle_message'
+    1cc0: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Unknown opcode: %u\n'
+    1cc4: 42 00 00 91  	add	x2, x2, #0 // 'handle_message'
+    1cc8: a1 73 80 52  	mov	w1, #925
+    1ccc: e3 03 04 2a  	mov	w3, w4
+    1cd0: 00 00 00 94  	bl	0x1cd0 <battery_chg_callback+0x584> // _printk+0x0
+    1cd4: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x588> // 'Unknown opcode: %u\n'
+    1cd8: a1 0a 40 b9  	ldr	w1, [x21, #8]
+    1cdc: 00 00 00 91  	add	x0, x0, #0 // 'Unknown opcode: %u\n'
+    1ce0: 00 00 00 94  	bl	0x1ce0 <battery_chg_callback+0x594> // mpower_print+0x0
+    1ce4: b9 ff ff 17  	b	0x1bc8 <battery_chg_callback+0x47c>
+    1ce8: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x59c> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    1cec: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_callback+0x5a0> // 'validate_message'
+    1cf0: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    1cf4: 42 00 00 91  	add	x2, x2, #0 // 'validate_message'
+    1cf8: c1 5a 80 52  	mov	w1, #726
+    1cfc: e3 03 16 aa  	mov	x3, x22
+    1d00: 44 06 80 52  	mov	w4, #50
+    1d04: 10 00 00 14  	b	0x1d44 <battery_chg_callback+0x5f8>
+    1d08: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x5bc> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    1d0c: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_callback+0x5c0> // 'validate_message'
+    1d10: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    1d14: 42 00 00 91  	add	x2, x2, #0 // 'validate_message'
+    1d18: c1 5a 80 52  	mov	w1, #726
+    1d1c: e3 03 16 aa  	mov	x3, x22
+    1d20: 84 06 80 52  	mov	w4, #52
+    1d24: 08 00 00 14  	b	0x1d44 <battery_chg_callback+0x5f8>
+    1d28: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x5dc> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    1d2c: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_callback+0x5e0> // 'validate_message'
+    1d30: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect response length %zu for opcode %#x\n'
+    1d34: 42 00 00 91  	add	x2, x2, #0 // 'validate_message'
+    1d38: c1 5a 80 52  	mov	w1, #726
+    1d3c: e3 03 16 aa  	mov	x3, x22
+    1d40: 04 06 80 52  	mov	w4, #48
+    1d44: 00 00 00 94  	bl	0x1d44 <battery_chg_callback+0x5f8> // _printk+0x0
+    1d48: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_callback+0x5fc> // 'Incorrect response length %zu for opcode %#x\n'
+    1d4c: a2 0a 40 b9  	ldr	w2, [x21, #8]
+    1d50: 00 00 00 91  	add	x0, x0, #0 // 'Incorrect response length %zu for opcode %#x\n'
+    1d54: e1 03 16 aa  	mov	x1, x22
+    1d58: 00 00 00 94  	bl	0x1d58 <battery_chg_callback+0x60c> // mpower_print+0x0
+    1d5c: 9b ff ff 17  	b	0x1bc8 <battery_chg_callback+0x47c>
+    1d60: 00 00 00 94  	bl	0x1d60 <battery_chg_callback+0x614> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000001d64 <battery_chg_state_cb>:
+    1d64: 3f 23 03 d5  	hint	#25
+    1d68: 5e 86 00 f8  	str	x30, [x18], #8
+    1d6c: fd 7b bd a9  	stp	x29, x30, [sp, #-48]!
+    1d70: f5 0b 00 f9  	str	x21, [sp, #16]
+    1d74: fd 03 00 91  	mov	x29, sp
+    1d78: f4 4f 02 a9  	stp	x20, x19, [sp, #32]
+    1d7c: 15 60 03 91  	add	x21, x0, #216
+    1d80: f4 03 00 aa  	mov	x20, x0
+    1d84: e0 03 15 aa  	mov	x0, x21
+    1d88: f3 03 01 2a  	mov	w19, w1
+    1d8c: 00 00 00 94  	bl	0x1d8c <battery_chg_state_cb+0x28> // down_write+0x0
+    1d90: 88 36 4c 39  	ldrb	w8, [x20, #781]
+    1d94: 88 02 00 34  	cbz	w8, 0x1de4 <battery_chg_state_cb+0x80>
+    1d98: e0 03 15 aa  	mov	x0, x21
+    1d9c: 93 36 02 b9  	str	w19, [x20, #564]
+    1da0: 00 00 00 94  	bl	0x1da0 <battery_chg_state_cb+0x3c> // up_write+0x0
+    1da4: 33 01 00 34  	cbz	w19, 0x1dc8 <battery_chg_state_cb+0x64>
+    1da8: 7f 06 00 71  	cmp	w19, #1
+    1dac: 01 01 00 54  	b.ne	0x1dcc <battery_chg_state_cb+0x68>
+    1db0: 08 00 00 90  	adrp	x8, 0x1000 <battery_chg_state_cb+0x4c> // system_wq+0x0
+    1db4: 82 e2 08 91  	add	x2, x20, #568
+    1db8: 00 04 80 52  	mov	w0, #32
+    1dbc: 01 01 40 f9  	ldr	x1, [x8] // system_wq+0x0
+    1dc0: 00 00 00 94  	bl	0x1dc0 <battery_chg_state_cb+0x5c> // queue_work_on+0x0
+    1dc4: 02 00 00 14  	b	0x1dcc <battery_chg_state_cb+0x68>
+    1dc8: 9f 3a 0c 39  	strb	wzr, [x20, #782]
+    1dcc: f4 4f 42 a9  	ldp	x20, x19, [sp, #32]
+    1dd0: f5 0b 40 f9  	ldr	x21, [sp, #16]
+    1dd4: fd 7b c3 a8  	ldp	x29, x30, [sp], #48
+    1dd8: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    1ddc: bf 23 03 d5  	hint	#29
+    1de0: c0 03 5f d6  	ret
+    1de4: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_state_cb+0x80> // '\x014BATTERY_CHG [qti_battery_charger.c %5d] %s: Driver not initialized, pmic_glink state %d\n'
+    1de8: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_state_cb+0x84> // 'battery_chg_state_cb'
+    1dec: 00 00 00 91  	add	x0, x0, #0 // '\x014BATTERY_CHG [qti_battery_charger.c %5d] %s: Driver not initialized, pmic_glink state %d\n'
+    1df0: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_state_cb'
+    1df4: 61 52 80 52  	mov	w1, #659
+    1df8: e3 03 13 2a  	mov	w3, w19
+    1dfc: 00 00 00 94  	bl	0x1dfc <battery_chg_state_cb+0x98> // _printk+0x0
+    1e00: e0 03 15 aa  	mov	x0, x21
+    1e04: 00 00 00 94  	bl	0x1e04 <battery_chg_state_cb+0xa0> // up_write+0x0
+    1e08: f1 ff ff 17  	b	0x1dcc <battery_chg_state_cb+0x68>
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000001e0c <battery_chg_ship_mode>:
+    1e0c: 3f 23 03 d5  	hint	#25
+    1e10: ff 83 01 d1  	sub	sp, sp, #96
+    1e14: 5e 86 00 f8  	str	x30, [x18], #8
+    1e18: fd 7b 03 a9  	stp	x29, x30, [sp, #48]
+    1e1c: fd c3 00 91  	add	x29, sp, #48
+    1e20: f5 23 00 f9  	str	x21, [sp, #64]
+    1e24: f4 4f 05 a9  	stp	x20, x19, [sp, #80]
+    1e28: 08 41 38 d5  	mrs	x8, SP_EL0
+    1e2c: 4a 01 90 d2  	mov	x10, #32778
+    1e30: 14 80 0b d1  	sub	x20, x0, #736
+    1e34: f3 03 01 aa  	mov	x19, x1
+    1e38: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    1e3c: e9 08 80 52  	mov	w9, #71
+    1e40: 4a 00 c0 f2  	movk	x10, #2, lsl #32
+    1e44: e1 63 00 91  	add	x1, sp, #24
+    1e48: e0 03 14 aa  	mov	x0, x20
+    1e4c: 02 02 80 52  	mov	w2, #16
+    1e50: a8 83 1f f8  	stur	x8, [x29, #-8]
+    1e54: ea a7 01 a9  	stp	x10, x9, [sp, #24]
+    1e58: 00 00 00 94  	bl	0x1e58 <battery_chg_ship_mode+0x4c> // +0x530
+    1e5c: 60 03 f8 37  	tbnz	w0, #31, 0x1ec8 <battery_chg_ship_mode+0xbc>
+    1e60: 88 36 4b 39  	ldrb	w8, [x20, #717]
+    1e64: 88 01 00 34  	cbz	w8, 0x1e94 <battery_chg_ship_mode+0x88>
+    1e68: 48 01 90 d2  	mov	x8, #32778
+    1e6c: c9 06 80 52  	mov	w9, #54
+    1e70: 28 00 c0 f2  	movk	x8, #1, lsl #32
+    1e74: 7f 0e 00 f1  	cmp	x19, #3
+    1e78: e8 a7 00 a9  	stp	x8, x9, [sp, #8]
+    1e7c: c1 00 00 54  	b.ne	0x1e94 <battery_chg_ship_mode+0x88>
+    1e80: e1 23 00 91  	add	x1, sp, #8
+    1e84: e0 03 14 aa  	mov	x0, x20
+    1e88: 02 02 80 52  	mov	w2, #16
+    1e8c: 00 00 00 94  	bl	0x1e8c <battery_chg_ship_mode+0x80> // +0x530
+    1e90: a0 03 f8 37  	tbnz	w0, #31, 0x1f04 <battery_chg_ship_mode+0xf8>
+    1e94: 08 41 38 d5  	mrs	x8, SP_EL0
+    1e98: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    1e9c: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    1ea0: 1f 01 09 eb  	cmp	x8, x9
+    1ea4: 01 04 00 54  	b.ne	0x1f24 <battery_chg_ship_mode+0x118>
+    1ea8: f4 4f 45 a9  	ldp	x20, x19, [sp, #80]
+    1eac: e0 03 1f 2a  	mov	w0, wzr
+    1eb0: fd 7b 43 a9  	ldp	x29, x30, [sp, #48]
+    1eb4: f5 23 40 f9  	ldr	x21, [sp, #64]
+    1eb8: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    1ebc: ff 83 01 91  	add	sp, sp, #96
+    1ec0: bf 23 03 d5  	hint	#29
+    1ec4: c0 03 5f d6  	ret
+    1ec8: f5 03 00 2a  	mov	w21, w0
+    1ecc: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_ship_mode+0xc0> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to send shutdown notification rc=%d\n'
+    1ed0: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_ship_mode+0xc4> // 'battery_chg_ship_mode'
+    1ed4: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to send shutdown notification rc=%d\n'
+    1ed8: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_ship_mode'
+    1edc: e1 33 81 52  	mov	w1, #2463
+    1ee0: e3 03 15 2a  	mov	w3, w21
+    1ee4: 00 00 00 94  	bl	0x1ee4 <battery_chg_ship_mode+0xd8> // _printk+0x0
+    1ee8: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_ship_mode+0xdc> // 'Failed to send shutdown notification rc=%d\n'
+    1eec: e1 03 15 2a  	mov	w1, w21
+    1ef0: 00 00 00 91  	add	x0, x0, #0 // 'Failed to send shutdown notification rc=%d\n'
+    1ef4: 00 00 00 94  	bl	0x1ef4 <battery_chg_ship_mode+0xe8> // mpower_print+0x0
+    1ef8: 88 36 4b 39  	ldrb	w8, [x20, #717]
+    1efc: 68 fb ff 35  	cbnz	w8, 0x1e68 <battery_chg_ship_mode+0x5c>
+    1f00: e5 ff ff 17  	b	0x1e94 <battery_chg_ship_mode+0x88>
+    1f04: e3 03 00 2a  	mov	w3, w0
+    1f08: 00 00 00 90  	adrp	x0, 0x1000 <battery_chg_ship_mode+0xfc> // '\x010BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to write ship mode: %d\n'
+    1f0c: 02 00 00 90  	adrp	x2, 0x1000 <battery_chg_ship_mode+0x100> // 'battery_chg_ship_mode'
+    1f10: 00 00 00 91  	add	x0, x0, #0 // '\x010BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to write ship mode: %d\n'
+    1f14: 42 00 00 91  	add	x2, x2, #0 // 'battery_chg_ship_mode'
+    1f18: 81 35 81 52  	mov	w1, #2476
+    1f1c: 00 00 00 94  	bl	0x1f1c <battery_chg_ship_mode+0x110> // _printk+0x0
+    1f20: dd ff ff 17  	b	0x1e94 <battery_chg_ship_mode+0x88>
+    1f24: 00 00 00 94  	bl	0x1f24 <battery_chg_ship_mode+0x118> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+00000000000020e4 <battery_psy_set_charge_current>:
+    20e4: 3f 23 03 d5  	hint	#25
+    20e8: ff 83 01 d1  	sub	sp, sp, #96
+    20ec: 5e 86 00 f8  	str	x30, [x18], #8
+    20f0: fd 7b 02 a9  	stp	x29, x30, [sp, #32]
+    20f4: fd 83 00 91  	add	x29, sp, #32
+    20f8: f7 1b 00 f9  	str	x23, [sp, #48]
+    20fc: f6 57 04 a9  	stp	x22, x21, [sp, #64]
+    2100: f4 4f 05 a9  	stp	x20, x19, [sp, #80]
+    2104: 08 41 38 d5  	mrs	x8, SP_EL0
+    2108: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    210c: a8 83 1f f8  	stur	x8, [x29, #-8]
+    2110: 08 2c 42 b9  	ldr	w8, [x0, #556]
+    2114: c8 01 00 34  	cbz	w8, 0x214c <battery_psy_set_charge_current+0x68>
+    2118: 88 05 f8 37  	tbnz	w8, #31, 0x21c8 <battery_psy_set_charge_current+0xe4>
+    211c: f4 03 01 2a  	mov	w20, w1
+    2120: b6 02 80 12  	mov	w22, #-22
+    2124: 61 06 f8 37  	tbnz	w1, #31, 0x21f0 <battery_psy_set_charge_current+0x10c>
+    2128: 1f 01 14 6b  	cmp	w8, w20
+    212c: 2b 06 00 54  	b.lt	0x21f0 <battery_psy_set_charge_current+0x10c>
+    2130: f3 03 00 aa  	mov	x19, x0
+    2134: 08 08 43 b9  	ldr	w8, [x0, #776]
+    2138: e8 00 00 34  	cbz	w8, 0x2154 <battery_psy_set_charge_current+0x70>
+    213c: 69 ca 40 f9  	ldr	x9, [x19, #400]
+    2140: 29 2d 40 b9  	ldr	w9, [x9, #44]
+    2144: 15 a5 14 1b  	msub	w21, w8, w20, w9
+    2148: 05 00 00 14  	b	0x215c <battery_psy_set_charge_current+0x78>
+    214c: f6 03 1f 2a  	mov	w22, wzr
+    2150: 28 00 00 14  	b	0x21f0 <battery_psy_set_charge_current+0x10c>
+    2154: 68 0e 41 f9  	ldr	x8, [x19, #536]
+    2158: 15 59 74 b8  	ldr	w21, [x8, w20, uxtw #2]
+    215c: 68 32 4c 39  	ldrb	w8, [x19, #780]
+    2160: 77 fa 42 b9  	ldr	w23, [x19, #760]
+    2164: 75 fa 02 b9  	str	w21, [x19, #760]
+    2168: 88 00 00 34  	cbz	w8, 0x2178 <battery_psy_set_charge_current+0x94>
+    216c: 68 fe 42 b9  	ldr	w8, [x19, #764]
+    2170: 1f 01 15 6b  	cmp	w8, w21
+    2174: b5 82 88 1a  	csel	w21, w21, w8, hi
+    2178: 49 01 90 d2  	mov	x9, #32778
+    217c: 48 01 c0 d2  	mov	x8, #42949672960
+    2180: 29 00 c0 f2  	movk	x9, #1, lsl #32
+    2184: 6a a2 41 b9  	ldr	w10, [x19, #416]
+    2188: e1 03 00 91  	mov	x1, sp
+    218c: e0 03 13 aa  	mov	x0, x19
+    2190: 02 03 80 52  	mov	w2, #24
+    2194: f5 17 00 b9  	str	w21, [sp, #20]
+    2198: e8 c3 00 f8  	stur	x8, [sp, #12]
+    219c: e9 03 00 f9  	str	x9, [sp]
+    21a0: ea 0b 00 b9  	str	w10, [sp, #8]
+    21a4: 00 00 00 94  	bl	0x21a4 <battery_psy_set_charge_current+0xc0> // +0x530
+    21a8: f6 03 00 2a  	mov	w22, w0
+    21ac: e0 03 f8 37  	tbnz	w0, #31, 0x2228 <battery_psy_set_charge_current+0x144>
+    21b0: 75 02 03 b9  	str	w21, [x19, #768]
+    21b4: 76 00 00 34  	cbz	w22, 0x21c0 <battery_psy_set_charge_current+0xdc>
+    21b8: 77 fa 02 b9  	str	w23, [x19, #760]
+    21bc: 0d 00 00 14  	b	0x21f0 <battery_psy_set_charge_current+0x10c>
+    21c0: 74 2a 02 b9  	str	w20, [x19, #552]
+    21c4: 0b 00 00 14  	b	0x21f0 <battery_psy_set_charge_current+0x10c>
+    21c8: 00 00 00 90  	adrp	x0, 0x2000 <battery_psy_set_charge_current+0xe4> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect num_thermal_levels\n'
+    21cc: 02 00 00 90  	adrp	x2, 0x2000 <battery_psy_set_charge_current+0xe8> // 'battery_psy_set_charge_current'
+    21d0: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Incorrect num_thermal_levels\n'
+    21d4: 42 00 00 91  	add	x2, x2, #0 // 'battery_psy_set_charge_current'
+    21d8: c1 b7 80 52  	mov	w1, #1470
+    21dc: 00 00 00 94  	bl	0x21dc <battery_psy_set_charge_current+0xf8> // _printk+0x0
+    21e0: 00 00 00 90  	adrp	x0, 0x2000 <battery_psy_set_charge_current+0xfc> // 'Incorrect num_thermal_levels\n'
+    21e4: 00 00 00 91  	add	x0, x0, #0 // 'Incorrect num_thermal_levels\n'
+    21e8: 00 00 00 94  	bl	0x21e8 <battery_psy_set_charge_current+0x104> // mpower_print+0x0
+    21ec: b6 02 80 12  	mov	w22, #-22
+    21f0: 08 41 38 d5  	mrs	x8, SP_EL0
+    21f4: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    21f8: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    21fc: 1f 01 09 eb  	cmp	x8, x9
+    2200: 01 03 00 54  	b.ne	0x2260 <battery_psy_set_charge_current+0x17c>
+    2204: e0 03 16 2a  	mov	w0, w22
+    2208: f7 1b 40 f9  	ldr	x23, [sp, #48]
+    220c: f4 4f 45 a9  	ldp	x20, x19, [sp, #80]
+    2210: f6 57 44 a9  	ldp	x22, x21, [sp, #64]
+    2214: fd 7b 42 a9  	ldp	x29, x30, [sp, #32]
+    2218: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    221c: ff 83 01 91  	add	sp, sp, #96
+    2220: bf 23 03 d5  	hint	#29
+    2224: c0 03 5f d6  	ret
+    2228: 00 00 00 90  	adrp	x0, 0x2000 <battery_psy_set_charge_current+0x144> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set FCC %u, rc=%d\n'
+    222c: 02 00 00 90  	adrp	x2, 0x2000 <battery_psy_set_charge_current+0x148> // '__battery_psy_set_charge_current'
+    2230: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set FCC %u, rc=%d\n'
+    2234: 42 00 00 91  	add	x2, x2, #0 // '__battery_psy_set_charge_current'
+    2238: 61 b5 80 52  	mov	w1, #1451
+    223c: e3 03 15 2a  	mov	w3, w21
+    2240: e4 03 16 2a  	mov	w4, w22
+    2244: 00 00 00 94  	bl	0x2244 <battery_psy_set_charge_current+0x160> // _printk+0x0
+    2248: 00 00 00 90  	adrp	x0, 0x2000 <battery_psy_set_charge_current+0x164> // 'Failed to set FCC %u, rc=%d\n'
+    224c: e1 03 15 2a  	mov	w1, w21
+    2250: 00 00 00 91  	add	x0, x0, #0 // 'Failed to set FCC %u, rc=%d\n'
+    2254: e2 03 16 2a  	mov	w2, w22
+    2258: 00 00 00 94  	bl	0x2258 <battery_psy_set_charge_current+0x174> // mpower_print+0x0
+    225c: d7 ff ff 17  	b	0x21b8 <battery_psy_set_charge_current+0xd4>
+    2260: 00 00 00 94  	bl	0x2260 <battery_psy_set_charge_current+0x17c> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000002460 <restrict_cur_store>:
+    2460: 3f 23 03 d5  	hint	#25
+    2464: ff c3 01 d1  	sub	sp, sp, #112
+    2468: 5e 86 00 f8  	str	x30, [x18], #8
+    246c: fd 7b 03 a9  	stp	x29, x30, [sp, #48]
+    2470: fd c3 00 91  	add	x29, sp, #48
+    2474: f7 23 00 f9  	str	x23, [sp, #64]
+    2478: f6 57 05 a9  	stp	x22, x21, [sp, #80]
+    247c: f4 4f 06 a9  	stp	x20, x19, [sp, #96]
+    2480: e8 03 02 aa  	mov	x8, x2
+    2484: 09 41 38 d5  	mrs	x9, SP_EL0
+    2488: 29 f1 42 f9  	ldr	x9, [x9, #1504]
+    248c: f4 03 00 aa  	mov	x20, x0
+    2490: e2 33 00 91  	add	x2, sp, #12
+    2494: e0 03 08 aa  	mov	x0, x8
+    2498: e1 03 1f 2a  	mov	w1, wzr
+    249c: f3 03 03 aa  	mov	x19, x3
+    24a0: a9 83 1f f8  	stur	x9, [x29, #-8]
+    24a4: ff 0f 00 b9  	str	wzr, [sp, #12]
+    24a8: 00 00 00 94  	bl	0x24a8 <restrict_cur_store+0x48> // kstrtouint+0x0
+    24ac: c0 00 00 35  	cbnz	w0, 0x24c4 <restrict_cur_store+0x64>
+    24b0: 94 22 00 d1  	sub	x20, x20, #8
+    24b4: e8 0f 40 b9  	ldr	w8, [sp, #12]
+    24b8: 89 fa 42 b9  	ldr	w9, [x20, #760]
+    24bc: 1f 01 09 6b  	cmp	w8, w9
+    24c0: 09 02 00 54  	b.ls	0x2500 <restrict_cur_store+0xa0>
+    24c4: b3 02 80 92  	mov	x19, #-22
+    24c8: 08 41 38 d5  	mrs	x8, SP_EL0
+    24cc: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    24d0: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    24d4: 1f 01 09 eb  	cmp	x8, x9
+    24d8: 01 06 00 54  	b.ne	0x2598 <restrict_cur_store+0x138>
+    24dc: e0 03 13 aa  	mov	x0, x19
+    24e0: f7 23 40 f9  	ldr	x23, [sp, #64]
+    24e4: f4 4f 46 a9  	ldp	x20, x19, [sp, #96]
+    24e8: f6 57 45 a9  	ldp	x22, x21, [sp, #80]
+    24ec: fd 7b 43 a9  	ldp	x29, x30, [sp, #48]
+    24f0: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    24f4: ff c3 01 91  	add	sp, sp, #112
+    24f8: bf 23 03 d5  	hint	#29
+    24fc: c0 03 5f d6  	ret
+    2500: 8a 32 4c 39  	ldrb	w10, [x20, #780]
+    2504: 97 fe 42 b9  	ldr	w23, [x20, #764]
+    2508: 88 fe 02 b9  	str	w8, [x20, #764]
+    250c: ea fd ff 34  	cbz	w10, 0x24c8 <restrict_cur_store+0x68>
+    2510: 1f 01 09 6b  	cmp	w8, w9
+    2514: 4b 01 90 d2  	mov	x11, #32778
+    2518: 4a 01 c0 d2  	mov	x10, #42949672960
+    251c: 2b 00 c0 f2  	movk	x11, #1, lsl #32
+    2520: 15 31 89 1a  	csel	w21, w8, w9, lo
+    2524: 88 a2 41 b9  	ldr	w8, [x20, #416]
+    2528: e1 43 00 91  	add	x1, sp, #16
+    252c: e0 03 14 aa  	mov	x0, x20
+    2530: 02 03 80 52  	mov	w2, #24
+    2534: ea c3 01 f8  	stur	x10, [sp, #28]
+    2538: eb 0b 00 f9  	str	x11, [sp, #16]
+    253c: f5 27 00 b9  	str	w21, [sp, #36]
+    2540: e8 1b 00 b9  	str	w8, [sp, #24]
+    2544: 00 00 00 94  	bl	0x2544 <restrict_cur_store+0xe4> // +0x530
+    2548: 60 00 f8 37  	tbnz	w0, #31, 0x2554 <restrict_cur_store+0xf4>
+    254c: 95 02 03 b9  	str	w21, [x20, #768]
+    2550: de ff ff 17  	b	0x24c8 <restrict_cur_store+0x68>
+    2554: f6 03 00 2a  	mov	w22, w0
+    2558: 00 00 00 90  	adrp	x0, 0x2000 <restrict_cur_store+0xf8> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set FCC %u, rc=%d\n'
+    255c: 02 00 00 90  	adrp	x2, 0x2000 <restrict_cur_store+0xfc> // '__battery_psy_set_charge_current'
+    2560: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set FCC %u, rc=%d\n'
+    2564: 42 00 00 91  	add	x2, x2, #0 // '__battery_psy_set_charge_current'
+    2568: 61 b5 80 52  	mov	w1, #1451
+    256c: e3 03 15 2a  	mov	w3, w21
+    2570: e4 03 16 2a  	mov	w4, w22
+    2574: 00 00 00 94  	bl	0x2574 <restrict_cur_store+0x114> // _printk+0x0
+    2578: 00 00 00 90  	adrp	x0, 0x2000 <restrict_cur_store+0x118> // 'Failed to set FCC %u, rc=%d\n'
+    257c: e1 03 15 2a  	mov	w1, w21
+    2580: 00 00 00 91  	add	x0, x0, #0 // 'Failed to set FCC %u, rc=%d\n'
+    2584: e2 03 16 2a  	mov	w2, w22
+    2588: 00 00 00 94  	bl	0x2588 <restrict_cur_store+0x128> // mpower_print+0x0
+    258c: d3 7e 40 93  	sxtw	x19, w22
+    2590: 97 fe 02 b9  	str	w23, [x20, #764]
+    2594: cd ff ff 17  	b	0x24c8 <restrict_cur_store+0x68>
+    2598: 00 00 00 94  	bl	0x2598 <restrict_cur_store+0x138> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+00000000000025dc <restrict_chg_store>:
+    25dc: 3f 23 03 d5  	hint	#25
+    25e0: ff 83 01 d1  	sub	sp, sp, #96
+    25e4: 5e 86 00 f8  	str	x30, [x18], #8
+    25e8: fd 7b 03 a9  	stp	x29, x30, [sp, #48]
+    25ec: fd c3 00 91  	add	x29, sp, #48
+    25f0: f6 57 04 a9  	stp	x22, x21, [sp, #64]
+    25f4: f4 4f 05 a9  	stp	x20, x19, [sp, #80]
+    25f8: 08 41 38 d5  	mrs	x8, SP_EL0
+    25fc: f4 03 00 aa  	mov	x20, x0
+    2600: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    2604: e1 33 00 91  	add	x1, sp, #12
+    2608: e0 03 02 aa  	mov	x0, x2
+    260c: f3 03 03 aa  	mov	x19, x3
+    2610: a8 83 1f f8  	stur	x8, [x29, #-8]
+    2614: ff 33 00 39  	strb	wzr, [sp, #12]
+    2618: 00 00 00 94  	bl	0x2618 <restrict_chg_store+0x3c> // kstrtobool+0x0
+    261c: 60 00 00 34  	cbz	w0, 0x2628 <restrict_chg_store+0x4c>
+    2620: a0 02 80 92  	mov	x0, #-22
+    2624: 22 00 00 14  	b	0x26ac <restrict_chg_store+0xd0>
+    2628: e8 33 40 39  	ldrb	w8, [sp, #12]
+    262c: 89 5f 80 52  	mov	w9, #764
+    2630: 0a 5f 80 52  	mov	w10, #760
+    2634: 95 22 00 d1  	sub	x21, x20, #8
+    2638: 1f 01 00 71  	cmp	w8, #0
+    263c: 49 01 89 9a  	csel	x9, x10, x9, eq
+    2640: a8 32 0c 39  	strb	w8, [x21, #780]
+    2644: b4 6a 69 b8  	ldr	w20, [x21, x9]
+    2648: e8 00 00 34  	cbz	w8, 0x2664 <restrict_chg_store+0x88>
+    264c: a8 fe 42 b9  	ldr	w8, [x21, #764]
+    2650: a9 fa 42 b9  	ldr	w9, [x21, #760]
+    2654: 1f 01 14 6b  	cmp	w8, w20
+    2658: 88 82 88 1a  	csel	w8, w20, w8, hi
+    265c: 1f 01 09 6b  	cmp	w8, w9
+    2660: 14 31 89 1a  	csel	w20, w8, w9, lo
+    2664: 49 01 90 d2  	mov	x9, #32778
+    2668: 48 01 c0 d2  	mov	x8, #42949672960
+    266c: 29 00 c0 f2  	movk	x9, #1, lsl #32
+    2670: aa a2 41 b9  	ldr	w10, [x21, #416]
+    2674: e1 43 00 91  	add	x1, sp, #16
+    2678: e0 03 15 aa  	mov	x0, x21
+    267c: 02 03 80 52  	mov	w2, #24
+    2680: f4 27 00 b9  	str	w20, [sp, #36]
+    2684: e8 c3 01 f8  	stur	x8, [sp, #28]
+    2688: e9 0b 00 f9  	str	x9, [sp, #16]
+    268c: ea 1b 00 b9  	str	w10, [sp, #24]
+    2690: 00 00 00 94  	bl	0x2690 <restrict_chg_store+0xb4> // +0x530
+    2694: f6 03 00 2a  	mov	w22, w0
+    2698: 20 02 f8 37  	tbnz	w0, #31, 0x26dc <restrict_chg_store+0x100>
+    269c: b4 02 03 b9  	str	w20, [x21, #768]
+    26a0: c8 7e 40 93  	sxtw	x8, w22
+    26a4: df 02 00 71  	cmp	w22, #0
+    26a8: 00 b1 93 9a  	csel	x0, x8, x19, lt
+    26ac: 08 41 38 d5  	mrs	x8, SP_EL0
+    26b0: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    26b4: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    26b8: 1f 01 09 eb  	cmp	x8, x9
+    26bc: c1 02 00 54  	b.ne	0x2714 <restrict_chg_store+0x138>
+    26c0: f4 4f 45 a9  	ldp	x20, x19, [sp, #80]
+    26c4: f6 57 44 a9  	ldp	x22, x21, [sp, #64]
+    26c8: fd 7b 43 a9  	ldp	x29, x30, [sp, #48]
+    26cc: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    26d0: ff 83 01 91  	add	sp, sp, #96
+    26d4: bf 23 03 d5  	hint	#29
+    26d8: c0 03 5f d6  	ret
+    26dc: 00 00 00 90  	adrp	x0, 0x2000 <restrict_chg_store+0x100> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set FCC %u, rc=%d\n'
+    26e0: 02 00 00 90  	adrp	x2, 0x2000 <restrict_chg_store+0x104> // '__battery_psy_set_charge_current'
+    26e4: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: Failed to set FCC %u, rc=%d\n'
+    26e8: 42 00 00 91  	add	x2, x2, #0 // '__battery_psy_set_charge_current'
+    26ec: 61 b5 80 52  	mov	w1, #1451
+    26f0: e3 03 14 2a  	mov	w3, w20
+    26f4: e4 03 16 2a  	mov	w4, w22
+    26f8: 00 00 00 94  	bl	0x26f8 <restrict_chg_store+0x11c> // _printk+0x0
+    26fc: 00 00 00 90  	adrp	x0, 0x2000 <restrict_chg_store+0x120> // 'Failed to set FCC %u, rc=%d\n'
+    2700: e1 03 14 2a  	mov	w1, w20
+    2704: 00 00 00 91  	add	x0, x0, #0 // 'Failed to set FCC %u, rc=%d\n'
+    2708: e2 03 16 2a  	mov	w2, w22
+    270c: 00 00 00 94  	bl	0x270c <restrict_chg_store+0x130> // mpower_print+0x0
+    2710: e4 ff ff 17  	b	0x26a0 <restrict_chg_store+0xc4>
+    2714: 00 00 00 94  	bl	0x2714 <restrict_chg_store+0x138> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000002cb0 <battery_psy_get_prop>:
+    2cb0: 3f 23 03 d5  	hint	#25
+    2cb4: ff 43 01 d1  	sub	sp, sp, #80
+    2cb8: 5e 86 00 f8  	str	x30, [x18], #8
+    2cbc: fd 7b 02 a9  	stp	x29, x30, [sp, #32]
+    2cc0: fd 83 00 91  	add	x29, sp, #32
+    2cc4: f6 57 03 a9  	stp	x22, x21, [sp, #48]
+    2cc8: f4 4f 04 a9  	stp	x20, x19, [sp, #64]
+    2ccc: 08 41 38 d5  	mrs	x8, SP_EL0
+    2cd0: f3 03 02 aa  	mov	x19, x2
+    2cd4: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    2cd8: f5 03 01 2a  	mov	w21, w1
+    2cdc: f6 03 00 aa  	mov	x22, x0
+    2ce0: a8 83 1f f8  	stur	x8, [x29, #-8]
+    2ce4: 00 00 00 94  	bl	0x2ce4 <battery_psy_get_prop+0x34> // power_supply_get_drvdata+0x0
+    2ce8: bf f6 00 71  	cmp	w21, #61
+    2cec: c8 07 80 52  	mov	w8, #62
+    2cf0: 08 01 95 1a  	csel	w8, w8, w21, eq
+    2cf4: 0a 09 80 52  	mov	w10, #72
+    2cf8: 1f 25 01 71  	cmp	w8, #73
+    2cfc: f4 03 00 aa  	mov	x20, x0
+    2d00: 55 01 88 1a  	csel	w21, w10, w8, eq
+    2d04: 89 07 80 12  	mov	w9, #-61
+    2d08: e0 03 16 aa  	mov	x0, x22
+    2d0c: e1 03 15 2a  	mov	w1, w21
+    2d10: e2 03 13 aa  	mov	x2, x19
+    2d14: 69 02 00 b9  	str	w9, [x19]
+    2d18: 00 00 00 94  	bl	0x2d18 <battery_psy_get_prop+0x68> // +0x326c
+    2d1c: 60 00 00 36  	tbz	w0, #0, 0x2d28 <battery_psy_get_prop+0x78>
+    2d20: e0 03 1f 2a  	mov	w0, wzr
+    2d24: 0e 00 00 14  	b	0x2d5c <battery_psy_get_prop+0xac>
+    2d28: 88 9a 41 b9  	ldr	w8, [x20, #408]
+    2d2c: 28 01 00 34  	cbz	w8, 0x2d50 <battery_psy_get_prop+0xa0>
+    2d30: f6 03 1f aa  	mov	x22, xzr
+    2d34: 89 c6 40 f9  	ldr	x9, [x20, #392]
+    2d38: 2a 79 76 b8  	ldr	w10, [x9, x22, lsl #2]
+    2d3c: 5f 01 15 6b  	cmp	w10, w21
+    2d40: 60 02 00 54  	b.eq	0x2d8c <battery_psy_get_prop+0xdc>
+    2d44: d6 06 00 91  	add	x22, x22, #1
+    2d48: 1f 01 16 eb  	cmp	x8, x22
+    2d4c: 61 ff ff 54  	b.ne	0x2d38 <battery_psy_get_prop+0x88>
+    2d50: 88 be 40 f9  	ldr	x8, [x20, #376]
+    2d54: 08 05 00 b5  	cbnz	x8, 0x2df4 <battery_psy_get_prop+0x144>
+    2d58: 20 00 80 12  	mov	w0, #-2
+    2d5c: 08 41 38 d5  	mrs	x8, SP_EL0
+    2d60: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    2d64: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    2d68: 1f 01 09 eb  	cmp	x8, x9
+    2d6c: e1 0a 00 54  	b.ne	0x2ec8 <battery_psy_get_prop+0x218>
+    2d70: f4 4f 44 a9  	ldp	x20, x19, [sp, #64]
+    2d74: f6 57 43 a9  	ldp	x22, x21, [sp, #48]
+    2d78: fd 7b 42 a9  	ldp	x29, x30, [sp, #32]
+    2d7c: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    2d80: ff 43 01 91  	add	sp, sp, #80
+    2d84: bf 23 03 d5  	hint	#29
+    2d88: c0 03 5f d6  	ret
+    2d8c: 16 03 f8 37  	tbnz	w22, #31, 0x2dec <battery_psy_get_prop+0x13c>
+    2d90: 48 01 90 d2  	mov	x8, #32778
+    2d94: 89 9e 41 b9  	ldr	w9, [x20, #412]
+    2d98: 28 00 c0 f2  	movk	x8, #1, lsl #32
+    2d9c: e1 03 00 91  	mov	x1, sp
+    2da0: e0 03 14 aa  	mov	x0, x20
+    2da4: 02 03 80 52  	mov	w2, #24
+    2da8: f6 7f 02 29  	stp	w22, wzr, [sp, #16]
+    2dac: e8 03 00 f9  	str	x8, [sp]
+    2db0: e9 7f 01 29  	stp	w9, wzr, [sp, #8]
+    2db4: 00 00 00 94  	bl	0x2db4 <battery_psy_get_prop+0x104> // +0x530
+    2db8: 20 fd ff 37  	tbnz	w0, #31, 0x2d5c <battery_psy_get_prop+0xac>
+    2dbc: a8 86 00 51  	sub	w8, w21, #33
+    2dc0: 1f 9d 00 71  	cmp	w8, #39
+    2dc4: 08 04 00 54  	b.hi	0x2e44 <battery_psy_get_prop+0x194>
+    2dc8: 09 00 00 90  	adrp	x9, 0x2000 <battery_psy_get_prop+0x118> // ''
+    2dcc: 29 01 00 91  	add	x9, x9, #0 // ''
+    2dd0: 8a 00 00 10  	adr	x10, #16
+    2dd4: 2b 69 68 38  	ldrb	w11, [x9, x8]
+    2dd8: 4a 09 0b 8b  	add	x10, x10, x11, lsl #2
+    2ddc: 40 01 1f d6  	br	x10
+    2de0: 9f 24 03 d5  	hint	#36
+    2de4: 88 2a 42 b9  	ldr	w8, [x20, #552]
+    2de8: 32 00 00 14  	b	0x2eb0 <battery_psy_get_prop+0x200>
+    2dec: e0 03 16 2a  	mov	w0, w22
+    2df0: db ff ff 17  	b	0x2d5c <battery_psy_get_prop+0xac>
+    2df4: 08 01 40 f9  	ldr	x8, [x8]
+    2df8: 00 00 00 90  	adrp	x0, 0x2000 <battery_psy_get_prop+0x148> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: No property id for property %d in psy %s\n'
+    2dfc: 02 00 00 90  	adrp	x2, 0x2000 <battery_psy_get_prop+0x14c> // 'get_property_id'
+    2e00: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: No property id for property %d in psy %s\n'
+    2e04: 42 00 00 91  	add	x2, x2, #0 // 'get_property_id'
+    2e08: 01 4c 80 52  	mov	w1, #608
+    2e0c: 04 01 40 f9  	ldr	x4, [x8]
+    2e10: e3 03 15 2a  	mov	w3, w21
+    2e14: 00 00 00 94  	bl	0x2e14 <battery_psy_get_prop+0x164> // _printk+0x0
+    2e18: 88 be 40 f9  	ldr	x8, [x20, #376]
+    2e1c: 00 00 00 90  	adrp	x0, 0x2000 <battery_psy_get_prop+0x16c> // 'No property id for property %d in psy %s\n'
+    2e20: 00 00 00 91  	add	x0, x0, #0 // 'No property id for property %d in psy %s\n'
+    2e24: e1 03 15 2a  	mov	w1, w21
+    2e28: 08 01 40 f9  	ldr	x8, [x8]
+    2e2c: 02 01 40 f9  	ldr	x2, [x8]
+    2e30: 00 00 00 94  	bl	0x2e30 <battery_psy_get_prop+0x180> // mpower_print+0x0
+    2e34: c9 ff ff 17  	b	0x2d58 <battery_psy_get_prop+0xa8>
+    2e38: 9f 24 03 d5  	hint	#36
+    2e3c: 88 2e 42 b9  	ldr	w8, [x20, #556]
+    2e40: 1c 00 00 14  	b	0x2eb0 <battery_psy_get_prop+0x200>
+    2e44: 9f 24 03 d5  	hint	#36
+    2e48: 88 ca 40 f9  	ldr	x8, [x20, #400]
+    2e4c: 08 79 76 b8  	ldr	w8, [x8, x22, lsl #2]
+    2e50: 18 00 00 14  	b	0x2eb0 <battery_psy_get_prop+0x200>
+    2e54: 9f 24 03 d5  	hint	#36
+    2e58: 88 ca 40 f9  	ldr	x8, [x20, #400]
+    2e5c: e9 a3 90 52  	mov	w9, #34079
+    2e60: 69 3d aa 72  	movk	w9, #20971, lsl #16
+    2e64: 08 79 76 b8  	ldr	w8, [x8, x22, lsl #2]
+    2e68: 08 c9 00 11  	add	w8, w8, #50
+    2e6c: 08 7d a9 9b  	umull	x8, w8, w9
+    2e70: 08 fd 65 d3  	lsr	x8, x8, #37
+    2e74: 68 02 00 b9  	str	w8, [x19]
+    2e78: b9 ff ff 17  	b	0x2d5c <battery_psy_get_prop+0xac>
+    2e7c: 9f 24 03 d5  	hint	#36
+    2e80: 88 ca 40 f9  	ldr	x8, [x20, #400]
+    2e84: a9 00 80 52  	mov	w9, #5
+    2e88: 08 79 76 b8  	ldr	w8, [x8, x22, lsl #2]
+    2e8c: 1f 01 00 71  	cmp	w8, #0
+    2e90: 29 c5 89 5a  	cneg	w9, w9, le
+    2e94: 28 01 08 0b  	add	w8, w9, w8
+    2e98: e9 cc 8c 52  	mov	w9, #26215
+    2e9c: c9 cc ac 72  	movk	w9, #26214, lsl #16
+    2ea0: 08 7d 29 9b  	smull	x8, w8, w9
+    2ea4: 09 fd 7f d3  	lsr	x9, x8, #63
+    2ea8: 08 fd 62 93  	asr	x8, x8, #34
+    2eac: 08 01 09 0b  	add	w8, w8, w9
+    2eb0: 68 02 00 b9  	str	w8, [x19]
+    2eb4: aa ff ff 17  	b	0x2d5c <battery_psy_get_prop+0xac>
+    2eb8: 9f 24 03 d5  	hint	#36
+    2ebc: 88 c2 40 f9  	ldr	x8, [x20, #384]
+    2ec0: 68 02 00 f9  	str	x8, [x19]
+    2ec4: a6 ff ff 17  	b	0x2d5c <battery_psy_get_prop+0xac>
+    2ec8: 00 00 00 94  	bl	0x2ec8 <battery_psy_get_prop+0x218> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+000000000000326c <xcharge_chg_interface_get_prop>:
+    326c: 3f 23 03 d5  	hint	#25
+    3270: ff 83 01 d1  	sub	sp, sp, #96
+    3274: 5e 86 00 f8  	str	x30, [x18], #8
+    3278: fd 7b 02 a9  	stp	x29, x30, [sp, #32]
+    327c: fd 83 00 91  	add	x29, sp, #32
+    3280: f7 1b 00 f9  	str	x23, [sp, #48]
+    3284: f6 57 04 a9  	stp	x22, x21, [sp, #64]
+    3288: f4 4f 05 a9  	stp	x20, x19, [sp, #80]
+    328c: 08 41 38 d5  	mrs	x8, SP_EL0
+    3290: f6 03 00 aa  	mov	x22, x0
+    3294: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    3298: e0 03 1f 2a  	mov	w0, wzr
+    329c: a8 83 1f f8  	stur	x8, [x29, #-8]
+    32a0: b6 03 00 b4  	cbz	x22, 0x3314 <xcharge_chg_interface_get_prop+0xa8>
+    32a4: f5 03 01 2a  	mov	w21, w1
+    32a8: 37 fc 03 71  	subs	w23, w1, #255
+    32ac: 43 03 00 54  	b.lo	0x3314 <xcharge_chg_interface_get_prop+0xa8>
+    32b0: e0 03 16 aa  	mov	x0, x22
+    32b4: f3 03 02 aa  	mov	x19, x2
+    32b8: 00 00 00 94  	bl	0x32b8 <xcharge_chg_interface_get_prop+0x4c> // power_supply_get_drvdata+0x0
+    32bc: a0 02 00 b4  	cbz	x0, 0x3310 <xcharge_chg_interface_get_prop+0xa4>
+    32c0: f4 03 00 aa  	mov	x20, x0
+    32c4: 08 34 4c 39  	ldrb	w8, [x0, #781]
+    32c8: 48 02 00 34  	cbz	w8, 0x3310 <xcharge_chg_interface_get_prop+0xa4>
+    32cc: c8 02 40 f9  	ldr	x8, [x22]
+    32d0: 01 00 00 90  	adrp	x1, 0x3000 <xcharge_chg_interface_get_prop+0x64> // 'battery'
+    32d4: 21 00 00 91  	add	x1, x1, #0 // 'battery'
+    32d8: 16 01 40 f9  	ldr	x22, [x8]
+    32dc: e0 03 16 aa  	mov	x0, x22
+    32e0: 00 00 00 94  	bl	0x32e0 <xcharge_chg_interface_get_prop+0x74> // strcmp+0x0
+    32e4: 20 03 00 34  	cbz	w0, 0x3348 <xcharge_chg_interface_get_prop+0xdc>
+    32e8: 01 00 00 90  	adrp	x1, 0x3000 <xcharge_chg_interface_get_prop+0x7c> // 'usb'
+    32ec: e0 03 16 aa  	mov	x0, x22
+    32f0: 21 00 00 91  	add	x1, x1, #0 // 'usb'
+    32f4: 00 00 00 94  	bl	0x32f4 <xcharge_chg_interface_get_prop+0x88> // strcmp+0x0
+    32f8: c0 04 00 34  	cbz	w0, 0x3390 <xcharge_chg_interface_get_prop+0x124>
+    32fc: 01 00 00 90  	adrp	x1, 0x3000 <xcharge_chg_interface_get_prop+0x90> // 'wireless'
+    3300: e0 03 16 aa  	mov	x0, x22
+    3304: 21 00 00 91  	add	x1, x1, #0 // 'wireless'
+    3308: 00 00 00 94  	bl	0x3308 <xcharge_chg_interface_get_prop+0x9c> // strcmp+0x0
+    330c: 80 06 00 34  	cbz	w0, 0x33dc <xcharge_chg_interface_get_prop+0x170>
+    3310: 20 00 80 52  	mov	w0, #1
+    3314: 08 41 38 d5  	mrs	x8, SP_EL0
+    3318: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    331c: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    3320: 1f 01 09 eb  	cmp	x8, x9
+    3324: a1 08 00 54  	b.ne	0x3438 <xcharge_chg_interface_get_prop+0x1cc>
+    3328: f4 4f 45 a9  	ldp	x20, x19, [sp, #80]
+    332c: f6 57 44 a9  	ldp	x22, x21, [sp, #64]
+    3330: fd 7b 42 a9  	ldp	x29, x30, [sp, #32]
+    3334: f7 1b 40 f9  	ldr	x23, [sp, #48]
+    3338: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    333c: ff 83 01 91  	add	sp, sp, #96
+    3340: bf 23 03 d5  	hint	#29
+    3344: c0 03 5f d6  	ret
+    3348: 20 00 80 52  	mov	w0, #1
+    334c: a8 c6 04 51  	sub	w8, w21, #305
+    3350: 1f 11 00 71  	cmp	w8, #4
+    3354: 08 fe ff 54  	b.hi	0x3314 <xcharge_chg_interface_get_prop+0xa8>
+    3358: 88 e2 05 91  	add	x8, x20, #376
+    335c: c8 fd ff b4  	cbz	x8, 0x3314 <xcharge_chg_interface_get_prop+0xa8>
+    3360: 48 01 90 d2  	mov	x8, #32778
+    3364: 89 9e 41 b9  	ldr	w9, [x20, #412]
+    3368: 28 00 c0 f2  	movk	x8, #1, lsl #32
+    336c: e1 03 00 91  	mov	x1, sp
+    3370: e0 03 14 aa  	mov	x0, x20
+    3374: 02 03 80 52  	mov	w2, #24
+    3378: f7 7f 02 29  	stp	w23, wzr, [sp, #16]
+    337c: e8 03 00 f9  	str	x8, [sp]
+    3380: e9 7f 01 29  	stp	w9, wzr, [sp, #8]
+    3384: 00 00 00 94  	bl	0x3384 <xcharge_chg_interface_get_prop+0x118> // +0x530
+    3388: 08 32 80 52  	mov	w8, #400
+    338c: 26 00 00 14  	b	0x3424 <xcharge_chg_interface_get_prop+0x1b8>
+    3390: 20 00 80 52  	mov	w0, #1
+    3394: a8 76 04 51  	sub	w8, w21, #285
+    3398: 1f 0d 00 71  	cmp	w8, #3
+    339c: c8 fb ff 54  	b.hi	0x3314 <xcharge_chg_interface_get_prop+0xa8>
+    33a0: 88 a2 06 91  	add	x8, x20, #424
+    33a4: 88 fb ff b4  	cbz	x8, 0x3314 <xcharge_chg_interface_get_prop+0xa8>
+    33a8: 48 01 90 d2  	mov	x8, #32778
+    33ac: ff df 01 29  	stp	wzr, w23, [sp, #12]
+    33b0: 28 00 c0 f2  	movk	x8, #1, lsl #32
+    33b4: ff 17 00 b9  	str	wzr, [sp, #20]
+    33b8: e1 03 00 91  	mov	x1, sp
+    33bc: e0 03 14 aa  	mov	x0, x20
+    33c0: 02 03 80 52  	mov	w2, #24
+    33c4: e8 03 00 f9  	str	x8, [sp]
+    33c8: 88 ce 41 b9  	ldr	w8, [x20, #460]
+    33cc: e8 0b 00 b9  	str	w8, [sp, #8]
+    33d0: 00 00 00 94  	bl	0x33d0 <xcharge_chg_interface_get_prop+0x164> // +0x530
+    33d4: 08 38 80 52  	mov	w8, #448
+    33d8: 13 00 00 14  	b	0x3424 <xcharge_chg_interface_get_prop+0x1b8>
+    33dc: 20 00 80 52  	mov	w0, #1
+    33e0: a8 76 04 51  	sub	w8, w21, #285
+    33e4: 1f 41 00 71  	cmp	w8, #16
+    33e8: 68 f9 ff 54  	b.hi	0x3314 <xcharge_chg_interface_get_prop+0xa8>
+    33ec: 88 62 07 91  	add	x8, x20, #472
+    33f0: 28 f9 ff b4  	cbz	x8, 0x3314 <xcharge_chg_interface_get_prop+0xa8>
+    33f4: 48 01 90 d2  	mov	x8, #32778
+    33f8: ff df 01 29  	stp	wzr, w23, [sp, #12]
+    33fc: 28 00 c0 f2  	movk	x8, #1, lsl #32
+    3400: ff 17 00 b9  	str	wzr, [sp, #20]
+    3404: e1 03 00 91  	mov	x1, sp
+    3408: e0 03 14 aa  	mov	x0, x20
+    340c: 02 03 80 52  	mov	w2, #24
+    3410: e8 03 00 f9  	str	x8, [sp]
+    3414: 88 fe 41 b9  	ldr	w8, [x20, #508]
+    3418: e8 0b 00 b9  	str	w8, [sp, #8]
+    341c: 00 00 00 94  	bl	0x341c <xcharge_chg_interface_get_prop+0x1b0> // +0x530
+    3420: 08 3e 80 52  	mov	w8, #496
+    3424: 88 6a 68 f8  	ldr	x8, [x20, x8]
+    3428: 20 00 80 52  	mov	w0, #1
+    342c: 08 59 77 b8  	ldr	w8, [x8, w23, uxtw #2]
+    3430: 68 02 00 b9  	str	w8, [x19]
+    3434: b8 ff ff 17  	b	0x3314 <xcharge_chg_interface_get_prop+0xa8>
+    3438: 00 00 00 94  	bl	0x3438 <xcharge_chg_interface_get_prop+0x1cc> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000002ecc <battery_psy_set_prop>:
+    2ecc: 3f 23 03 d5  	hint	#25
+    2ed0: ff 43 01 d1  	sub	sp, sp, #80
+    2ed4: 5e 86 00 f8  	str	x30, [x18], #8
+    2ed8: fd 7b 02 a9  	stp	x29, x30, [sp, #32]
+    2edc: fd 83 00 91  	add	x29, sp, #32
+    2ee0: f6 57 03 a9  	stp	x22, x21, [sp, #48]
+    2ee4: f4 4f 04 a9  	stp	x20, x19, [sp, #64]
+    2ee8: 08 41 38 d5  	mrs	x8, SP_EL0
+    2eec: f4 03 02 aa  	mov	x20, x2
+    2ef0: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    2ef4: f5 03 01 2a  	mov	w21, w1
+    2ef8: f6 03 00 aa  	mov	x22, x0
+    2efc: a8 83 1f f8  	stur	x8, [x29, #-8]
+    2f00: 00 00 00 94  	bl	0x2f00 <battery_psy_set_prop+0x34> // power_supply_get_drvdata+0x0
+    2f04: f3 03 00 aa  	mov	x19, x0
+    2f08: e0 03 16 aa  	mov	x0, x22
+    2f0c: e1 03 15 2a  	mov	w1, w21
+    2f10: e2 03 14 aa  	mov	x2, x20
+    2f14: 00 00 00 94  	bl	0x2f14 <battery_psy_set_prop+0x48> // +0x30d0
+    2f18: 60 00 00 36  	tbz	w0, #0, 0x2f24 <battery_psy_set_prop+0x58>
+    2f1c: e0 03 1f 2a  	mov	w0, wzr
+    2f20: 0a 00 00 14  	b	0x2f48 <battery_psy_set_prop+0x7c>
+    2f24: bf 86 00 71  	cmp	w21, #33
+    2f28: a0 00 00 54  	b.eq	0x2f3c <battery_psy_set_prop+0x70>
+    2f2c: bf ce 00 71  	cmp	w21, #51
+    2f30: 40 02 00 54  	b.eq	0x2f78 <battery_psy_set_prop+0xac>
+    2f34: a0 02 80 12  	mov	w0, #-22
+    2f38: 04 00 00 14  	b	0x2f48 <battery_psy_set_prop+0x7c>
+    2f3c: 81 02 40 b9  	ldr	w1, [x20]
+    2f40: e0 03 13 aa  	mov	x0, x19
+    2f44: 00 00 00 94  	bl	0x2f44 <battery_psy_set_prop+0x78> // +0x20e4
+    2f48: 08 41 38 d5  	mrs	x8, SP_EL0
+    2f4c: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    2f50: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    2f54: 1f 01 09 eb  	cmp	x8, x9
+    2f58: a1 0a 00 54  	b.ne	0x30ac <battery_psy_set_prop+0x1e0>
+    2f5c: f4 4f 44 a9  	ldp	x20, x19, [sp, #64]
+    2f60: f6 57 43 a9  	ldp	x22, x21, [sp, #48]
+    2f64: fd 7b 42 a9  	ldp	x29, x30, [sp, #32]
+    2f68: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    2f6c: ff 43 01 91  	add	sp, sp, #80
+    2f70: bf 23 03 d5  	hint	#29
+    2f74: c0 03 5f d6  	ret
+    2f78: 88 02 40 b9  	ldr	w8, [x20]
+    2f7c: 09 85 0c 51  	sub	w9, w8, #801
+    2f80: 3f 39 11 31  	cmn	w9, #1102
+    2f84: 48 03 00 54  	b.hi	0x2fec <battery_psy_set_prop+0x120>
+    2f88: 08 09 08 0b  	add	w8, w8, w8, lsl #2
+    2f8c: 4a 01 90 d2  	mov	x10, #32778
+    2f90: 89 01 c0 d2  	mov	x9, #51539607552
+    2f94: 2a 00 c0 f2  	movk	x10, #1, lsl #32
+    2f98: 08 79 1f 53  	lsl	w8, w8, #1
+    2f9c: 6b a2 41 b9  	ldr	w11, [x19, #416]
+    2fa0: e1 03 00 91  	mov	x1, sp
+    2fa4: e0 03 13 aa  	mov	x0, x19
+    2fa8: 02 03 80 52  	mov	w2, #24
+    2fac: e9 c3 00 f8  	stur	x9, [sp, #12]
+    2fb0: ea 03 00 f9  	str	x10, [sp]
+    2fb4: e8 17 00 b9  	str	w8, [sp, #20]
+    2fb8: eb 0b 00 b9  	str	w11, [sp, #8]
+    2fbc: 00 00 00 94  	bl	0x2fbc <battery_psy_set_prop+0xf0> // +0x530
+    2fc0: 80 05 f8 36  	tbz	w0, #31, 0x3070 <battery_psy_set_prop+0x1a4>
+    2fc4: 00 00 00 90  	adrp	x0, 0x2000 <battery_psy_set_prop+0xf8> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: failed to restore batt temp\n'
+    2fc8: 02 00 00 90  	adrp	x2, 0x2000 <battery_psy_set_prop+0xfc> // 'battery_psy_set_temperature'
+    2fcc: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: failed to restore batt temp\n'
+    2fd0: 42 00 00 91  	add	x2, x2, #0 // 'battery_psy_set_temperature'
+    2fd4: 01 bc 80 52  	mov	w1, #1504
+    2fd8: 00 00 00 94  	bl	0x2fd8 <battery_psy_set_prop+0x10c> // _printk+0x0
+    2fdc: 00 00 00 90  	adrp	x0, 0x2000 <battery_psy_set_prop+0x110> // 'failed to restore batt temp\n'
+    2fe0: 00 00 00 91  	add	x0, x0, #0 // 'failed to restore batt temp\n'
+    2fe4: 00 00 00 94  	bl	0x2fe4 <battery_psy_set_prop+0x118> // mpower_print+0x0
+    2fe8: cd ff ff 17  	b	0x2f1c <battery_psy_set_prop+0x50>
+    2fec: 49 01 80 52  	mov	w9, #10
+    2ff0: 1f 01 00 71  	cmp	w8, #0
+    2ff4: 6a 00 80 52  	mov	w10, #3
+    2ff8: 8b 01 c0 d2  	mov	x11, #51539607552
+    2ffc: 4a a5 8a 5a  	cneg	w10, w10, lt
+    3000: e1 03 00 91  	mov	x1, sp
+    3004: 14 29 09 1b  	madd	w20, w8, w9, w10
+    3008: 48 01 90 d2  	mov	x8, #32778
+    300c: 28 00 c0 f2  	movk	x8, #1, lsl #32
+    3010: 69 a2 41 b9  	ldr	w9, [x19, #416]
+    3014: e0 03 13 aa  	mov	x0, x19
+    3018: 02 03 80 52  	mov	w2, #24
+    301c: eb c3 00 f8  	stur	x11, [sp, #12]
+    3020: e8 03 00 f9  	str	x8, [sp]
+    3024: f4 17 00 b9  	str	w20, [sp, #20]
+    3028: e9 0b 00 b9  	str	w9, [sp, #8]
+    302c: 00 00 00 94  	bl	0x302c <battery_psy_set_prop+0x160> // +0x530
+    3030: e0 02 f8 36  	tbz	w0, #31, 0x308c <battery_psy_set_prop+0x1c0>
+    3034: f3 03 00 2a  	mov	w19, w0
+    3038: 00 00 00 90  	adrp	x0, 0x3000 <battery_psy_set_prop+0x16c> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: failed to set batt fake temp as %d/10 DegC, rc=%d\n'
+    303c: 02 00 00 90  	adrp	x2, 0x3000 <battery_psy_set_prop+0x170> // 'battery_psy_set_temperature'
+    3040: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: failed to set batt fake temp as %d/10 DegC, rc=%d\n'
+    3044: 42 00 00 91  	add	x2, x2, #0 // 'battery_psy_set_temperature'
+    3048: e1 bc 80 52  	mov	w1, #1511
+    304c: e3 03 14 2a  	mov	w3, w20
+    3050: e4 03 13 2a  	mov	w4, w19
+    3054: 00 00 00 94  	bl	0x3054 <battery_psy_set_prop+0x188> // _printk+0x0
+    3058: 00 00 00 90  	adrp	x0, 0x3000 <battery_psy_set_prop+0x18c> // 'failed to set batt fake temp as %d/10 DegC, rc=%d\n'
+    305c: e1 03 14 2a  	mov	w1, w20
+    3060: 00 00 00 91  	add	x0, x0, #0 // 'failed to set batt fake temp as %d/10 DegC, rc=%d\n'
+    3064: e2 03 13 2a  	mov	w2, w19
+    3068: 00 00 00 94  	bl	0x3068 <battery_psy_set_prop+0x19c> // mpower_print+0x0
+    306c: ac ff ff 17  	b	0x2f1c <battery_psy_set_prop+0x50>
+    3070: 00 00 00 90  	adrp	x0, 0x3000 <battery_psy_set_prop+0x1a4> // '\x014BATTERY_CHG [qti_battery_charger.c %5d] %s: success to restore batt temp\n'
+    3074: 02 00 00 90  	adrp	x2, 0x3000 <battery_psy_set_prop+0x1a8> // 'battery_psy_set_temperature'
+    3078: 00 00 00 91  	add	x0, x0, #0 // '\x014BATTERY_CHG [qti_battery_charger.c %5d] %s: success to restore batt temp\n'
+    307c: 42 00 00 91  	add	x2, x2, #0 // 'battery_psy_set_temperature'
+    3080: 41 bc 80 52  	mov	w1, #1506
+    3084: 00 00 00 94  	bl	0x3084 <battery_psy_set_prop+0x1b8> // _printk+0x0
+    3088: a5 ff ff 17  	b	0x2f1c <battery_psy_set_prop+0x50>
+    308c: 00 00 00 90  	adrp	x0, 0x3000 <battery_psy_set_prop+0x1c0> // '\x014BATTERY_CHG [qti_battery_charger.c %5d] %s: The batt fake temp is set to %d/10 DegC\n'
+    3090: 02 00 00 90  	adrp	x2, 0x3000 <battery_psy_set_prop+0x1c4> // 'battery_psy_set_temperature'
+    3094: 00 00 00 91  	add	x0, x0, #0 // '\x014BATTERY_CHG [qti_battery_charger.c %5d] %s: The batt fake temp is set to %d/10 DegC\n'
+    3098: 42 00 00 91  	add	x2, x2, #0 // 'battery_psy_set_temperature'
+    309c: 21 bd 80 52  	mov	w1, #1513
+    30a0: e3 03 14 2a  	mov	w3, w20
+    30a4: 00 00 00 94  	bl	0x30a4 <battery_psy_set_prop+0x1d8> // _printk+0x0
+    30a8: 9d ff ff 17  	b	0x2f1c <battery_psy_set_prop+0x50>
+    30ac: 00 00 00 94  	bl	0x30ac <battery_psy_set_prop+0x1e0> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+00000000000030d0 <xcharge_chg_interface_set_prop>:
+    30d0: 3f 23 03 d5  	hint	#25
+    30d4: ff 83 01 d1  	sub	sp, sp, #96
+    30d8: 5e 86 00 f8  	str	x30, [x18], #8
+    30dc: fd 7b 02 a9  	stp	x29, x30, [sp, #32]
+    30e0: fd 83 00 91  	add	x29, sp, #32
+    30e4: f7 1b 00 f9  	str	x23, [sp, #48]
+    30e8: f6 57 04 a9  	stp	x22, x21, [sp, #64]
+    30ec: f4 4f 05 a9  	stp	x20, x19, [sp, #80]
+    30f0: 08 41 38 d5  	mrs	x8, SP_EL0
+    30f4: f4 03 02 aa  	mov	x20, x2
+    30f8: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    30fc: f5 03 01 2a  	mov	w21, w1
+    3100: f6 03 00 aa  	mov	x22, x0
+    3104: a8 83 1f f8  	stur	x8, [x29, #-8]
+    3108: 00 00 00 94  	bl	0x3108 <xcharge_chg_interface_set_prop+0x38> // power_supply_get_drvdata+0x0
+    310c: e0 03 1f 2a  	mov	w0, wzr
+    3110: 36 09 00 b4  	cbz	x22, 0x3234 <xcharge_chg_interface_set_prop+0x164>
+    3114: b7 fe 03 71  	subs	w23, w21, #255
+    3118: e3 08 00 54  	b.lo	0x3234 <xcharge_chg_interface_set_prop+0x164>
+    311c: e0 03 16 aa  	mov	x0, x22
+    3120: 00 00 00 94  	bl	0x3120 <xcharge_chg_interface_set_prop+0x50> // power_supply_get_drvdata+0x0
+    3124: 60 08 00 b4  	cbz	x0, 0x3230 <xcharge_chg_interface_set_prop+0x160>
+    3128: f3 03 00 aa  	mov	x19, x0
+    312c: 08 34 4c 39  	ldrb	w8, [x0, #781]
+    3130: 08 08 00 34  	cbz	w8, 0x3230 <xcharge_chg_interface_set_prop+0x160>
+    3134: c8 02 40 f9  	ldr	x8, [x22]
+    3138: 01 00 00 90  	adrp	x1, 0x3000 <xcharge_chg_interface_set_prop+0x68> // 'battery'
+    313c: 21 00 00 91  	add	x1, x1, #0 // 'battery'
+    3140: 16 01 40 f9  	ldr	x22, [x8]
+    3144: e0 03 16 aa  	mov	x0, x22
+    3148: 00 00 00 94  	bl	0x3148 <xcharge_chg_interface_set_prop+0x78> // strcmp+0x0
+    314c: 20 03 00 34  	cbz	w0, 0x31b0 <xcharge_chg_interface_set_prop+0xe0>
+    3150: 01 00 00 90  	adrp	x1, 0x3000 <xcharge_chg_interface_set_prop+0x80> // 'usb'
+    3154: e0 03 16 aa  	mov	x0, x22
+    3158: 21 00 00 91  	add	x1, x1, #0 // 'usb'
+    315c: 00 00 00 94  	bl	0x315c <xcharge_chg_interface_set_prop+0x8c> // strcmp+0x0
+    3160: 40 04 00 34  	cbz	w0, 0x31e8 <xcharge_chg_interface_set_prop+0x118>
+    3164: 01 00 00 90  	adrp	x1, 0x3000 <xcharge_chg_interface_set_prop+0x94> // 'wireless'
+    3168: e0 03 16 aa  	mov	x0, x22
+    316c: 21 00 00 91  	add	x1, x1, #0 // 'wireless'
+    3170: 00 00 00 94  	bl	0x3170 <xcharge_chg_interface_set_prop+0xa0> // strcmp+0x0
+    3174: e0 05 00 35  	cbnz	w0, 0x3230 <xcharge_chg_interface_set_prop+0x160>
+    3178: 20 00 80 52  	mov	w0, #1
+    317c: a8 76 04 51  	sub	w8, w21, #285
+    3180: 1f 41 00 71  	cmp	w8, #16
+    3184: 88 05 00 54  	b.hi	0x3234 <xcharge_chg_interface_set_prop+0x164>
+    3188: 68 62 07 91  	add	x8, x19, #472
+    318c: 48 05 00 b4  	cbz	x8, 0x3234 <xcharge_chg_interface_set_prop+0x164>
+    3190: 49 01 90 d2  	mov	x9, #32778
+    3194: 88 02 40 b9  	ldr	w8, [x20]
+    3198: 29 00 c0 f2  	movk	x9, #1, lsl #32
+    319c: ff df 01 29  	stp	wzr, w23, [sp, #12]
+    31a0: e8 17 00 b9  	str	w8, [sp, #20]
+    31a4: e9 03 00 f9  	str	x9, [sp]
+    31a8: 68 02 42 b9  	ldr	w8, [x19, #512]
+    31ac: 1c 00 00 14  	b	0x321c <xcharge_chg_interface_set_prop+0x14c>
+    31b0: 20 00 80 52  	mov	w0, #1
+    31b4: a8 c6 04 51  	sub	w8, w21, #305
+    31b8: 1f 11 00 71  	cmp	w8, #4
+    31bc: c8 03 00 54  	b.hi	0x3234 <xcharge_chg_interface_set_prop+0x164>
+    31c0: 68 e2 05 91  	add	x8, x19, #376
+    31c4: 88 03 00 b4  	cbz	x8, 0x3234 <xcharge_chg_interface_set_prop+0x164>
+    31c8: 49 01 90 d2  	mov	x9, #32778
+    31cc: 88 02 40 b9  	ldr	w8, [x20]
+    31d0: 29 00 c0 f2  	movk	x9, #1, lsl #32
+    31d4: 6a a2 41 b9  	ldr	w10, [x19, #416]
+    31d8: f7 23 02 29  	stp	w23, w8, [sp, #16]
+    31dc: e9 03 00 f9  	str	x9, [sp]
+    31e0: ea 7f 01 29  	stp	w10, wzr, [sp, #8]
+    31e4: 0f 00 00 14  	b	0x3220 <xcharge_chg_interface_set_prop+0x150>
+    31e8: 20 00 80 52  	mov	w0, #1
+    31ec: a8 76 04 51  	sub	w8, w21, #285
+    31f0: 1f 0d 00 71  	cmp	w8, #3
+    31f4: 08 02 00 54  	b.hi	0x3234 <xcharge_chg_interface_set_prop+0x164>
+    31f8: 68 a2 06 91  	add	x8, x19, #424
+    31fc: c8 01 00 b4  	cbz	x8, 0x3234 <xcharge_chg_interface_set_prop+0x164>
+    3200: 49 01 90 d2  	mov	x9, #32778
+    3204: 88 02 40 b9  	ldr	w8, [x20]
+    3208: 29 00 c0 f2  	movk	x9, #1, lsl #32
+    320c: ff df 01 29  	stp	wzr, w23, [sp, #12]
+    3210: e8 17 00 b9  	str	w8, [sp, #20]
+    3214: e9 03 00 f9  	str	x9, [sp]
+    3218: 68 d2 41 b9  	ldr	w8, [x19, #464]
+    321c: e8 0b 00 b9  	str	w8, [sp, #8]
+    3220: e1 03 00 91  	mov	x1, sp
+    3224: e0 03 13 aa  	mov	x0, x19
+    3228: 02 03 80 52  	mov	w2, #24
+    322c: 00 00 00 94  	bl	0x322c <xcharge_chg_interface_set_prop+0x15c> // +0x530
+    3230: 20 00 80 52  	mov	w0, #1
+    3234: 08 41 38 d5  	mrs	x8, SP_EL0
+    3238: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    323c: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    3240: 1f 01 09 eb  	cmp	x8, x9
+    3244: 21 01 00 54  	b.ne	0x3268 <xcharge_chg_interface_set_prop+0x198>
+    3248: f4 4f 45 a9  	ldp	x20, x19, [sp, #80]
+    324c: f6 57 44 a9  	ldp	x22, x21, [sp, #64]
+    3250: fd 7b 42 a9  	ldp	x29, x30, [sp, #32]
+    3254: f7 1b 40 f9  	ldr	x23, [sp, #48]
+    3258: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    325c: ff 83 01 91  	add	sp, sp, #96
+    3260: bf 23 03 d5  	hint	#29
+    3264: c0 03 5f d6  	ret
+    3268: 00 00 00 94  	bl	0x3268 <xcharge_chg_interface_set_prop+0x198> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+00000000000030b0 <battery_psy_prop_is_writeable>:
+    30b0: 3f 23 03 d5  	hint	#25
+    30b4: 3f 84 00 71  	cmp	w1, #33
+    30b8: bf 23 03 d5  	hint	#29
+    30bc: e8 17 9f 1a  	cset	w8, eq
+    30c0: 3f cc 00 71  	cmp	w1, #51
+    30c4: e9 17 9f 1a  	cset	w9, eq
+    30c8: 00 01 09 2a  	orr	w0, w8, w9
+    30cc: c0 03 5f d6  	ret
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+000000000000343c <wls_psy_get_prop>:
+    343c: 3f 23 03 d5  	hint	#25
+    3440: ff 43 01 d1  	sub	sp, sp, #80
+    3444: 5e 86 00 f8  	str	x30, [x18], #8
+    3448: fd 7b 02 a9  	stp	x29, x30, [sp, #32]
+    344c: fd 83 00 91  	add	x29, sp, #32
+    3450: f6 57 03 a9  	stp	x22, x21, [sp, #48]
+    3454: f4 4f 04 a9  	stp	x20, x19, [sp, #64]
+    3458: 08 41 38 d5  	mrs	x8, SP_EL0
+    345c: f4 03 02 aa  	mov	x20, x2
+    3460: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    3464: f6 03 01 2a  	mov	w22, w1
+    3468: f5 03 00 aa  	mov	x21, x0
+    346c: a8 83 1f f8  	stur	x8, [x29, #-8]
+    3470: 00 00 00 94  	bl	0x3470 <wls_psy_get_prop+0x34> // power_supply_get_drvdata+0x0
+    3474: 88 07 80 12  	mov	w8, #-61
+    3478: f3 03 00 aa  	mov	x19, x0
+    347c: e0 03 15 aa  	mov	x0, x21
+    3480: e1 03 16 2a  	mov	w1, w22
+    3484: e2 03 14 aa  	mov	x2, x20
+    3488: 88 02 00 b9  	str	w8, [x20]
+    348c: 00 00 00 94  	bl	0x348c <wls_psy_get_prop+0x50> // +0x326c
+    3490: 60 00 00 36  	tbz	w0, #0, 0x349c <wls_psy_get_prop+0x60>
+    3494: f5 03 1f 2a  	mov	w21, wzr
+    3498: 0e 00 00 14  	b	0x34d0 <wls_psy_get_prop+0x94>
+    349c: 68 fa 41 b9  	ldr	w8, [x19, #504]
+    34a0: 28 01 00 34  	cbz	w8, 0x34c4 <wls_psy_get_prop+0x88>
+    34a4: f5 03 1f aa  	mov	x21, xzr
+    34a8: 69 f6 40 f9  	ldr	x9, [x19, #488]
+    34ac: 2a 79 75 b8  	ldr	w10, [x9, x21, lsl #2]
+    34b0: 5f 01 16 6b  	cmp	w10, w22
+    34b4: 80 02 00 54  	b.eq	0x3504 <wls_psy_get_prop+0xc8>
+    34b8: b5 06 00 91  	add	x21, x21, #1
+    34bc: 1f 01 15 eb  	cmp	x8, x21
+    34c0: 61 ff ff 54  	b.ne	0x34ac <wls_psy_get_prop+0x70>
+    34c4: 68 ee 40 f9  	ldr	x8, [x19, #472]
+    34c8: 68 04 00 b5  	cbnz	x8, 0x3554 <wls_psy_get_prop+0x118>
+    34cc: 35 00 80 12  	mov	w21, #-2
+    34d0: 08 41 38 d5  	mrs	x8, SP_EL0
+    34d4: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    34d8: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    34dc: 1f 01 09 eb  	cmp	x8, x9
+    34e0: c1 05 00 54  	b.ne	0x3598 <wls_psy_get_prop+0x15c>
+    34e4: e0 03 15 2a  	mov	w0, w21
+    34e8: f4 4f 44 a9  	ldp	x20, x19, [sp, #64]
+    34ec: f6 57 43 a9  	ldp	x22, x21, [sp, #48]
+    34f0: fd 7b 42 a9  	ldp	x29, x30, [sp, #32]
+    34f4: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    34f8: ff 43 01 91  	add	sp, sp, #80
+    34fc: bf 23 03 d5  	hint	#29
+    3500: c0 03 5f d6  	ret
+    3504: 75 fe ff 37  	tbnz	w21, #31, 0x34d0 <wls_psy_get_prop+0x94>
+    3508: 48 01 90 d2  	mov	x8, #32778
+    350c: ff d7 01 29  	stp	wzr, w21, [sp, #12]
+    3510: 28 00 c0 f2  	movk	x8, #1, lsl #32
+    3514: ff 17 00 b9  	str	wzr, [sp, #20]
+    3518: e1 03 00 91  	mov	x1, sp
+    351c: e0 03 13 aa  	mov	x0, x19
+    3520: 02 03 80 52  	mov	w2, #24
+    3524: e8 03 00 f9  	str	x8, [sp]
+    3528: 68 fe 41 b9  	ldr	w8, [x19, #508]
+    352c: e8 0b 00 b9  	str	w8, [sp, #8]
+    3530: 00 00 00 94  	bl	0x3530 <wls_psy_get_prop+0xf4> // +0x530
+    3534: c0 00 f8 37  	tbnz	w0, #31, 0x354c <wls_psy_get_prop+0x110>
+    3538: 68 fa 40 f9  	ldr	x8, [x19, #496]
+    353c: 08 79 75 b8  	ldr	w8, [x8, x21, lsl #2]
+    3540: f5 03 1f 2a  	mov	w21, wzr
+    3544: 88 02 00 b9  	str	w8, [x20]
+    3548: e2 ff ff 17  	b	0x34d0 <wls_psy_get_prop+0x94>
+    354c: f5 03 00 2a  	mov	w21, w0
+    3550: e0 ff ff 17  	b	0x34d0 <wls_psy_get_prop+0x94>
+    3554: 08 01 40 f9  	ldr	x8, [x8]
+    3558: 00 00 00 90  	adrp	x0, 0x3000 <wls_psy_get_prop+0x11c> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: No property id for property %d in psy %s\n'
+    355c: 02 00 00 90  	adrp	x2, 0x3000 <wls_psy_get_prop+0x120> // 'get_property_id'
+    3560: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: No property id for property %d in psy %s\n'
+    3564: 42 00 00 91  	add	x2, x2, #0 // 'get_property_id'
+    3568: 01 4c 80 52  	mov	w1, #608
+    356c: 04 01 40 f9  	ldr	x4, [x8]
+    3570: e3 03 16 2a  	mov	w3, w22
+    3574: 00 00 00 94  	bl	0x3574 <wls_psy_get_prop+0x138> // _printk+0x0
+    3578: 68 ee 40 f9  	ldr	x8, [x19, #472]
+    357c: 00 00 00 90  	adrp	x0, 0x3000 <wls_psy_get_prop+0x140> // 'No property id for property %d in psy %s\n'
+    3580: 00 00 00 91  	add	x0, x0, #0 // 'No property id for property %d in psy %s\n'
+    3584: e1 03 16 2a  	mov	w1, w22
+    3588: 08 01 40 f9  	ldr	x8, [x8]
+    358c: 02 01 40 f9  	ldr	x2, [x8]
+    3590: 00 00 00 94  	bl	0x3590 <wls_psy_get_prop+0x154> // mpower_print+0x0
+    3594: ce ff ff 17  	b	0x34cc <wls_psy_get_prop+0x90>
+    3598: 00 00 00 94  	bl	0x3598 <wls_psy_get_prop+0x15c> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+000000000000359c <wls_psy_set_prop>:
+    359c: 3f 23 03 d5  	hint	#25
+    35a0: 5e 86 00 f8  	str	x30, [x18], #8
+    35a4: fd 7b bf a9  	stp	x29, x30, [sp, #-16]!
+    35a8: fd 03 00 91  	mov	x29, sp
+    35ac: 00 00 00 94  	bl	0x35ac <wls_psy_set_prop+0x10> // +0x30d0
+    35b0: e0 03 1f 2a  	mov	w0, wzr
+    35b4: fd 7b c1 a8  	ldp	x29, x30, [sp], #16
+    35b8: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    35bc: bf 23 03 d5  	hint	#29
+    35c0: c0 03 5f d6  	ret
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+00000000000035d4 <usb_psy_get_prop>:
+    35d4: 3f 23 03 d5  	hint	#25
+    35d8: ff 43 01 d1  	sub	sp, sp, #80
+    35dc: 5e 86 00 f8  	str	x30, [x18], #8
+    35e0: fd 7b 02 a9  	stp	x29, x30, [sp, #32]
+    35e4: fd 83 00 91  	add	x29, sp, #32
+    35e8: f6 57 03 a9  	stp	x22, x21, [sp, #48]
+    35ec: f4 4f 04 a9  	stp	x20, x19, [sp, #64]
+    35f0: 08 41 38 d5  	mrs	x8, SP_EL0
+    35f4: f4 03 02 aa  	mov	x20, x2
+    35f8: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    35fc: f3 03 01 2a  	mov	w19, w1
+    3600: f6 03 00 aa  	mov	x22, x0
+    3604: a8 83 1f f8  	stur	x8, [x29, #-8]
+    3608: 00 00 00 94  	bl	0x3608 <usb_psy_get_prop+0x34> // power_supply_get_drvdata+0x0
+    360c: 88 07 80 12  	mov	w8, #-61
+    3610: f5 03 00 aa  	mov	x21, x0
+    3614: e0 03 16 aa  	mov	x0, x22
+    3618: e1 03 13 2a  	mov	w1, w19
+    361c: e2 03 14 aa  	mov	x2, x20
+    3620: 88 02 00 b9  	str	w8, [x20]
+    3624: 00 00 00 94  	bl	0x3624 <usb_psy_get_prop+0x50> // +0x326c
+    3628: 60 00 00 36  	tbz	w0, #0, 0x3634 <usb_psy_get_prop+0x60>
+    362c: f6 03 1f 2a  	mov	w22, wzr
+    3630: 0e 00 00 14  	b	0x3668 <usb_psy_get_prop+0x94>
+    3634: a8 ca 41 b9  	ldr	w8, [x21, #456]
+    3638: 28 01 00 34  	cbz	w8, 0x365c <usb_psy_get_prop+0x88>
+    363c: f6 03 1f aa  	mov	x22, xzr
+    3640: a9 de 40 f9  	ldr	x9, [x21, #440]
+    3644: 2a 79 76 b8  	ldr	w10, [x9, x22, lsl #2]
+    3648: 5f 01 13 6b  	cmp	w10, w19
+    364c: 80 02 00 54  	b.eq	0x369c <usb_psy_get_prop+0xc8>
+    3650: d6 06 00 91  	add	x22, x22, #1
+    3654: 1f 01 16 eb  	cmp	x8, x22
+    3658: 61 ff ff 54  	b.ne	0x3644 <usb_psy_get_prop+0x70>
+    365c: a8 d6 40 f9  	ldr	x8, [x21, #424]
+    3660: 08 06 00 b5  	cbnz	x8, 0x3720 <usb_psy_get_prop+0x14c>
+    3664: 36 00 80 12  	mov	w22, #-2
+    3668: 08 41 38 d5  	mrs	x8, SP_EL0
+    366c: 08 f1 42 f9  	ldr	x8, [x8, #1504]
+    3670: a9 83 5f f8  	ldur	x9, [x29, #-8]
+    3674: 1f 01 09 eb  	cmp	x8, x9
+    3678: 61 07 00 54  	b.ne	0x3764 <usb_psy_get_prop+0x190>
+    367c: e0 03 16 2a  	mov	w0, w22
+    3680: f4 4f 44 a9  	ldp	x20, x19, [sp, #64]
+    3684: f6 57 43 a9  	ldp	x22, x21, [sp, #48]
+    3688: fd 7b 42 a9  	ldp	x29, x30, [sp, #32]
+    368c: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    3690: ff 43 01 91  	add	sp, sp, #80
+    3694: bf 23 03 d5  	hint	#29
+    3698: c0 03 5f d6  	ret
+    369c: 76 fe ff 37  	tbnz	w22, #31, 0x3668 <usb_psy_get_prop+0x94>
+    36a0: 48 01 90 d2  	mov	x8, #32778
+    36a4: ff db 01 29  	stp	wzr, w22, [sp, #12]
+    36a8: 28 00 c0 f2  	movk	x8, #1, lsl #32
+    36ac: ff 17 00 b9  	str	wzr, [sp, #20]
+    36b0: e1 03 00 91  	mov	x1, sp
+    36b4: e0 03 15 aa  	mov	x0, x21
+    36b8: 02 03 80 52  	mov	w2, #24
+    36bc: e8 03 00 f9  	str	x8, [sp]
+    36c0: a8 ce 41 b9  	ldr	w8, [x21, #460]
+    36c4: e8 0b 00 b9  	str	w8, [sp, #8]
+    36c8: 00 00 00 94  	bl	0x36c8 <usb_psy_get_prop+0xf4> // +0x530
+    36cc: 60 02 f8 37  	tbnz	w0, #31, 0x3718 <usb_psy_get_prop+0x144>
+    36d0: a8 e2 40 f9  	ldr	x8, [x21, #448]
+    36d4: 7f ce 00 71  	cmp	w19, #51
+    36d8: 08 79 76 b8  	ldr	w8, [x8, x22, lsl #2]
+    36dc: 88 02 00 b9  	str	w8, [x20]
+    36e0: 61 fa ff 54  	b.ne	0x362c <usb_psy_get_prop+0x58>
+    36e4: 1f 01 00 71  	cmp	w8, #0
+    36e8: a9 00 80 52  	mov	w9, #5
+    36ec: 29 c5 89 5a  	cneg	w9, w9, le
+    36f0: f6 03 1f 2a  	mov	w22, wzr
+    36f4: 28 01 08 0b  	add	w8, w9, w8
+    36f8: e9 cc 8c 52  	mov	w9, #26215
+    36fc: c9 cc ac 72  	movk	w9, #26214, lsl #16
+    3700: 08 7d 29 9b  	smull	x8, w8, w9
+    3704: 09 fd 7f d3  	lsr	x9, x8, #63
+    3708: 08 fd 62 93  	asr	x8, x8, #34
+    370c: 08 01 09 0b  	add	w8, w8, w9
+    3710: 88 02 00 b9  	str	w8, [x20]
+    3714: d5 ff ff 17  	b	0x3668 <usb_psy_get_prop+0x94>
+    3718: f6 03 00 2a  	mov	w22, w0
+    371c: d3 ff ff 17  	b	0x3668 <usb_psy_get_prop+0x94>
+    3720: 08 01 40 f9  	ldr	x8, [x8]
+    3724: 00 00 00 90  	adrp	x0, 0x3000 <usb_psy_get_prop+0x150> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: No property id for property %d in psy %s\n'
+    3728: 02 00 00 90  	adrp	x2, 0x3000 <usb_psy_get_prop+0x154> // 'get_property_id'
+    372c: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: No property id for property %d in psy %s\n'
+    3730: 42 00 00 91  	add	x2, x2, #0 // 'get_property_id'
+    3734: 01 4c 80 52  	mov	w1, #608
+    3738: 04 01 40 f9  	ldr	x4, [x8]
+    373c: e3 03 13 2a  	mov	w3, w19
+    3740: 00 00 00 94  	bl	0x3740 <usb_psy_get_prop+0x16c> // _printk+0x0
+    3744: a8 d6 40 f9  	ldr	x8, [x21, #424]
+    3748: 00 00 00 90  	adrp	x0, 0x3000 <usb_psy_get_prop+0x174> // 'No property id for property %d in psy %s\n'
+    374c: 00 00 00 91  	add	x0, x0, #0 // 'No property id for property %d in psy %s\n'
+    3750: e1 03 13 2a  	mov	w1, w19
+    3754: 08 01 40 f9  	ldr	x8, [x8]
+    3758: 02 01 40 f9  	ldr	x2, [x8]
+    375c: 00 00 00 94  	bl	0x375c <usb_psy_get_prop+0x188> // mpower_print+0x0
+    3760: c1 ff ff 17  	b	0x3664 <usb_psy_get_prop+0x90>
+    3764: 00 00 00 94  	bl	0x3764 <usb_psy_get_prop+0x190> // __stack_chk_fail+0x0
+
+vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/qti_battery_charger.ko:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000003768 <usb_psy_set_prop>:
+    3768: 3f 23 03 d5  	hint	#25
+    376c: 5e 86 00 f8  	str	x30, [x18], #8
+    3770: fd 7b bd a9  	stp	x29, x30, [sp, #-48]!
+    3774: f6 57 01 a9  	stp	x22, x21, [sp, #16]
+    3778: fd 03 00 91  	mov	x29, sp
+    377c: f4 4f 02 a9  	stp	x20, x19, [sp, #32]
+    3780: f5 03 02 aa  	mov	x21, x2
+    3784: f3 03 01 2a  	mov	w19, w1
+    3788: f6 03 00 aa  	mov	x22, x0
+    378c: 00 00 00 94  	bl	0x378c <usb_psy_set_prop+0x24> // power_supply_get_drvdata+0x0
+    3790: f4 03 00 aa  	mov	x20, x0
+    3794: e0 03 16 aa  	mov	x0, x22
+    3798: e1 03 13 2a  	mov	w1, w19
+    379c: e2 03 15 aa  	mov	x2, x21
+    37a0: 00 00 00 94  	bl	0x37a0 <usb_psy_set_prop+0x38> // +0x30d0
+    37a4: 60 00 00 36  	tbz	w0, #0, 0x37b0 <usb_psy_set_prop+0x48>
+    37a8: e1 03 1f 2a  	mov	w1, wzr
+    37ac: 0e 00 00 14  	b	0x37e4 <usb_psy_set_prop+0x7c>
+    37b0: 88 ca 41 b9  	ldr	w8, [x20, #456]
+    37b4: 28 01 00 34  	cbz	w8, 0x37d8 <usb_psy_set_prop+0x70>
+    37b8: e1 03 1f aa  	mov	x1, xzr
+    37bc: 89 de 40 f9  	ldr	x9, [x20, #440]
+    37c0: 2a 79 61 b8  	ldr	w10, [x9, x1, lsl #2]
+    37c4: 5f 01 13 6b  	cmp	w10, w19
+    37c8: c0 01 00 54  	b.eq	0x3800 <usb_psy_set_prop+0x98>
+    37cc: 21 04 00 91  	add	x1, x1, #1
+    37d0: 1f 01 01 eb  	cmp	x8, x1
+    37d4: 61 ff ff 54  	b.ne	0x37c0 <usb_psy_set_prop+0x58>
+    37d8: 88 d6 40 f9  	ldr	x8, [x20, #424]
+    37dc: 28 02 00 b5  	cbnz	x8, 0x3820 <usb_psy_set_prop+0xb8>
+    37e0: 21 00 80 12  	mov	w1, #-2
+    37e4: f4 4f 42 a9  	ldp	x20, x19, [sp, #32]
+    37e8: e0 03 01 2a  	mov	w0, w1
+    37ec: f6 57 41 a9  	ldp	x22, x21, [sp, #16]
+    37f0: fd 7b c3 a8  	ldp	x29, x30, [sp], #48
+    37f4: 5e 8e 5f f8  	ldr	x30, [x18, #-8]!
+    37f8: bf 23 03 d5  	hint	#29
+    37fc: c0 03 5f d6  	ret
+    3800: 21 ff ff 37  	tbnz	w1, #31, 0x37e4 <usb_psy_set_prop+0x7c>
+    3804: 7f 96 00 71  	cmp	w19, #37
+    3808: 01 fd ff 54  	b.ne	0x37a8 <usb_psy_set_prop+0x40>
+    380c: a2 02 40 b9  	ldr	w2, [x21]
+    3810: e0 03 14 aa  	mov	x0, x20
+    3814: 00 00 00 94  	bl	0x3814 <usb_psy_set_prop+0xac> // +0x3878
+    3818: e1 03 00 2a  	mov	w1, w0
+    381c: f2 ff ff 17  	b	0x37e4 <usb_psy_set_prop+0x7c>
+    3820: 08 01 40 f9  	ldr	x8, [x8]
+    3824: 00 00 00 90  	adrp	x0, 0x3000 <usb_psy_set_prop+0xbc> // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: No property id for property %d in psy %s\n'
+    3828: 02 00 00 90  	adrp	x2, 0x3000 <usb_psy_set_prop+0xc0> // 'get_property_id'
+    382c: 00 00 00 91  	add	x0, x0, #0 // '\x013BATTERY_CHG [qti_battery_charger.c %5d] %s: No property id for property %d in psy %s\n'
+    3830: 42 00 00 91  	add	x2, x2, #0 // 'get_property_id'
+    3834: 01 4c 80 52  	mov	w1, #608
+    3838: 04 01 40 f9  	ldr	x4, [x8]
+    383c: e3 03 13 2a  	mov	w3, w19
+    3840: 00 00 00 94  	bl	0x3840 <usb_psy_set_prop+0xd8> // _printk+0x0
+    3844: 88 d6 40 f9  	ldr	x8, [x20, #424]
+    3848: 00 00 00 90  	adrp	x0, 0x3000 <usb_psy_set_prop+0xe0> // 'No property id for property %d in psy %s\n'
+    384c: 00 00 00 91  	add	x0, x0, #0 // 'No property id for property %d in psy %s\n'
+    3850: e1 03 13 2a  	mov	w1, w19
+    3854: 08 01 40 f9  	ldr	x8, [x8]
+    3858: 02 01 40 f9  	ldr	x2, [x8]
+    385c: 00 00 00 94  	bl	0x385c <usb_psy_set_prop+0xf4> // mpower_print+0x0
+    3860: e0 ff ff 17  	b	0x37e0 <usb_psy_set_prop+0x78>

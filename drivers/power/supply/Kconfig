@@ -442,6 +442,14 @@ config QTI_BATTERY_CHARGER
 	  To compile the driver as a module, choose M here: the module will be
 	  called qti_battery_charger.
 
+config M2391_CHARGER_RECOVERY
+	bool "M2391 OEM charger firmware protocol"
+	depends on QTI_BATTERY_CHARGER=m
+	help
+	  Restore the M2391 charger firmware properties and notifications.
+	  Requires the matching Meizu source providers and their build-time
+	  symbol bootstrap. Leave disabled until the complete group is selected.
+
 config CHARGER_88PM860X
 	tristate "Marvell 88PM860x Charger driver"
 	depends on MFD_88PM860X && BATTERY_88PM860X

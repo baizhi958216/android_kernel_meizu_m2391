@@ -1,0 +1,38 @@
+M2391 charger source recovery
+=============================
+All initial 26 differing functions/data and four missing standalone functions
+were reviewed against the original qti_battery_charger.ko. Full annotated
+stock disassembly and property maps accompany difference-review.tsv.
+
+The opt-in CONFIG_M2391_CHARGER_RECOVERY restores exact 55/34/47-entry battery,
+USB and wireless firmware property arrays; private properties use firmware
+ID = public OEM property - 255, with supply-specific original ranges. Existing
+wireless manager properties 289/290/291 use the same serialized GLINK transport.
+No new proprietary firmware update protocol is invented.
+
+Recovered response paths update thermal caches, plug logging, plug notifiers,
+and wireless status work; capacity and USB-online changes notify the battery
+supply. OEM work refreshes status/capacity/voltage without the upstream local
+shutdown policy. USB type work also refreshes voltage/current limits. Factory
+TEMP encoding, manufacturer/model alias, cooling registration and the original
+11 exposed class attributes are restored. Shutdown TX retains its 500ms delay.
+Errors retain persistent mpower_print diagnostics alongside kernel printk.
+Existing notify enable and DEBUG_FS block_tx implementations were present;
+missing standalone compiled symbols were compiler/config artifacts.
+
+Public prototypes reuse original enum spelling/order and typedefs through
+include/linux/meizu_power.h. Cross-module calls remain default-off until the
+normal source-export bootstrap and complete provider selection are enabled.
+The bootstrap obtains metadata from real provider objects, not stock CRCs.
+
+Validation: complete native Kalama Kbuild target qti_battery_charger.o passes;
+all three public exports naturally retain original CRCs. Actual linked ELF
+comparison matches all bytes/relocations of three property maps, battery_props,
+battery_class_attrs and batt_psy_desc. Both default-off and opt-in codegen pass.
+Independent callback/property/lock review passed. The shared PMIC provider
+SRCU and parent teardown fixes passed a second independent lifetime review.
+Recovery=y and the complete seven-member source provider group are selected.
+Both original charger blobs are SHA-verified rollback copies under out before
+removal, and the three-export ABI snapshot gates normal packaging. No ROM rebuild
+or hardware operation was performed. Malformed short headers are rejected,
+and the copied model string is explicitly terminated before string use.

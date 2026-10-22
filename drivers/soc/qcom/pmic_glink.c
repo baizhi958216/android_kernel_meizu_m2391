@@ -18,6 +18,7 @@
 #include <linux/rpmsg.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/srcu.h>
 #include <linux/workqueue.h>
 #include <linux/remoteproc/qcom_rproc.h>
 #include <linux/soc/qcom/pdr.h>
@@ -128,6 +129,11 @@ struct pmic_glink_buf {
 
 static LIST_HEAD(pmic_glink_dev_list);
 static DEFINE_MUTEX(pmic_glink_dev_lock);
+/* Sleepable client callbacks and RPMSG lookup users must finish before either
+ * the client or its parent transport storage can be released.
+ */
+static DEFINE_SRCU(pmic_glink_callbacks);
+
 
 static void pmic_glink_notify_clients(struct pmic_glink_dev *pgdev,
 					enum pmic_glink_state state)
@@ -298,7 +304,7 @@ EXPORT_SYMBOL(pmic_glink_write);
  * callback function so that the pmic_glink driver can route the messages
  * to the client.
  */
-struct pmic_glink_client *pmic_glink_register_client(struct device *dev,
+static struct pmic_glink_client *__pmic_glink_register_client(struct device *dev,
 			const struct pmic_glink_client_data *client_data)
 {
 	int rc;
@@ -364,6 +370,16 @@ struct pmic_glink_client *pmic_glink_register_client(struct device *dev,
 	pmic_glink_dbg(pgdev, "Registered client %s\n", client->name);
 	return client;
 }
+struct pmic_glink_client *pmic_glink_register_client(struct device *dev,
+		const struct pmic_glink_client_data *client_data)
+{
+	struct pmic_glink_client *client;
+	int idx = srcu_read_lock(&pmic_glink_callbacks);
+
+	client = __pmic_glink_register_client(dev, client_data);
+	srcu_read_unlock(&pmic_glink_callbacks, idx);
+	return client;
+}
 EXPORT_SYMBOL(pmic_glink_register_client);
 
 /**
@@ -392,6 +408,11 @@ int pmic_glink_unregister_client(struct pmic_glink_client *client)
 	idr_remove(&client->pgdev->client_idr, client->id);
 	mutex_unlock(&client->pgdev->client_lock);
 
+	/* Never call unregister from a message callback: it waits for callbacks.
+	 * The lookup lock is released before waiting, allowing callbacks to use
+	 * other client/transport APIs while they drain.
+	 */
+	synchronize_srcu(&pmic_glink_callbacks);
 	pmic_glink_dbg(client->pgdev, "Unregistered client %s\n", client->name);
 	kfree(client->name);
 	kfree(client);
@@ -404,16 +425,18 @@ static void pmic_glink_rx_callback(struct pmic_glink_dev *pgdev,
 {
 	struct pmic_glink_client *client;
 	struct pmic_glink_hdr *hdr;
+	int idx;
 
 	hdr = (struct pmic_glink_hdr *)pbuf->buf;
 
+	idx = srcu_read_lock(&pmic_glink_callbacks);
 	mutex_lock(&pgdev->client_lock);
 	client = idr_find(&pgdev->client_idr, hdr->owner);
 	mutex_unlock(&pgdev->client_lock);
 
 	if (!client || !client->msg_cb) {
 		pr_err("No client present for %u\n", hdr->owner);
-		return;
+		goto out;
 	}
 
 	if (pgdev->log_enable) {
@@ -425,6 +448,8 @@ static void pmic_glink_rx_callback(struct pmic_glink_dev *pgdev,
 	}
 
 	client->msg_cb(client->priv, pbuf->buf, pbuf->len);
+out:
+	srcu_read_unlock(&pmic_glink_callbacks, idx);
 }
 
 static void pmic_glink_rx_work(struct work_struct *work)
@@ -447,14 +472,17 @@ static void pmic_glink_rx_work(struct work_struct *work)
 	spin_unlock_irqrestore(&pdev->rx_lock, flags);
 }
 
-static int pmic_glink_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
+static int __pmic_glink_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
 				int len, void *priv, u32 addr)
 {
-	struct pmic_glink_dev *pdev = dev_get_drvdata(&rpdev->dev);
+	struct pmic_glink_dev *pdev = smp_load_acquire(&rpdev->dev.driver_data);
 	struct pmic_glink_buf *pbuf;
 	unsigned long flags;
 
-	if (len < sizeof(struct pmic_glink_hdr)) {
+	if (!pdev)
+		return -ENOTCONN;
+
+	if (len < 0 || (size_t)len < sizeof(struct pmic_glink_hdr)) {
 		pr_err("Received length %d less than header size: %zu\n", len,
 			sizeof(struct pmic_glink_hdr));
 		return -EINVAL;
@@ -475,24 +503,43 @@ static int pmic_glink_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
 	return 0;
 }
 
-static void pmic_glink_rpmsg_remove(struct rpmsg_device *rpdev)
+static int pmic_glink_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
+				int len, void *priv, u32 addr)
+{
+	int idx = srcu_read_lock(&pmic_glink_callbacks);
+	int rc = __pmic_glink_rpmsg_callback(rpdev, data, len, priv, addr);
+
+	srcu_read_unlock(&pmic_glink_callbacks, idx);
+	return rc;
+}
+
+static void __pmic_glink_rpmsg_remove(struct rpmsg_device *rpdev)
 {
 	struct pmic_glink_dev *pgdev = NULL;
 
-	pgdev = get_pmic_glink_from_rpdev(rpdev);
+	pgdev = smp_load_acquire(&rpdev->dev.driver_data);
 	if (!pgdev) {
 		pr_err("Failed to get pmic_glink_dev for %s\n", rpdev->id.name);
 		return;
 	}
 
 	down_write(&pgdev->rpdev_sem);
+	smp_store_release(&rpdev->dev.driver_data, NULL);
 	atomic_set(&pgdev->state, 0);
 	pgdev->rpdev = NULL;
 	up_write(&pgdev->rpdev_sem);
 	pmic_glink_dbg(pgdev, "%s removed\n", rpdev->id.name);
 }
 
-static int pmic_glink_rpmsg_probe(struct rpmsg_device *rpdev)
+static void pmic_glink_rpmsg_remove(struct rpmsg_device *rpdev)
+{
+	int idx = srcu_read_lock(&pmic_glink_callbacks);
+	__pmic_glink_rpmsg_remove(rpdev);
+
+	srcu_read_unlock(&pmic_glink_callbacks, idx);
+}
+
+static int __pmic_glink_rpmsg_probe(struct rpmsg_device *rpdev)
 {
 	struct pmic_glink_dev *pgdev = NULL;
 
@@ -503,7 +550,7 @@ static int pmic_glink_rpmsg_probe(struct rpmsg_device *rpdev)
 	}
 
 	down_write(&pgdev->rpdev_sem);
-	dev_set_drvdata(&rpdev->dev, pgdev);
+	smp_store_release(&rpdev->dev.driver_data, pgdev);
 	pgdev->rpdev = rpdev;
 	atomic_set(&pgdev->state, 1);
 	up_write(&pgdev->rpdev_sem);
@@ -511,6 +558,15 @@ static int pmic_glink_rpmsg_probe(struct rpmsg_device *rpdev)
 	pmic_glink_dbg(pgdev, "%s probed\n", rpdev->id.name);
 
 	return 0;
+}
+
+static int pmic_glink_rpmsg_probe(struct rpmsg_device *rpdev)
+{
+	int idx = srcu_read_lock(&pmic_glink_callbacks);
+	int rc = __pmic_glink_rpmsg_probe(rpdev);
+
+	srcu_read_unlock(&pmic_glink_callbacks, idx);
+	return rc;
 }
 
 static const struct rpmsg_device_id pmic_glink_rpmsg_match[] = {
@@ -603,6 +659,7 @@ static int pmic_glink_probe(struct platform_device *pdev)
 	pgdev = devm_kzalloc(dev, sizeof(*pgdev), GFP_KERNEL);
 	if (!pgdev)
 		return -ENOMEM;
+	pgdev->dev = dev;
 
 	rc = of_property_read_string(dev->of_node, "qcom,pmic-glink-channel",
 					&pgdev->channel_name);
@@ -708,7 +765,6 @@ static int pmic_glink_probe(struct platform_device *pdev)
 	}
 
 	dev_set_drvdata(dev, pgdev);
-	pgdev->dev = dev;
 
 	pmic_glink_dev_add(pgdev);
 	pmic_glink_add_debugfs(pgdev);
@@ -732,18 +788,31 @@ static int pmic_glink_remove(struct platform_device *pdev)
 {
 	struct pmic_glink_dev *pgdev = dev_get_drvdata(&pdev->dev);
 
-	ipc_log_context_destroy(pgdev->ipc_log);
+	/* Stop new registry lookups and wait for in-flight probe/remove users
+	 * before disconnecting the RPMSG driver_data publication.
+	 */
+	pmic_glink_dev_remove(pgdev);
+	synchronize_srcu(&pmic_glink_callbacks);
+	down_write(&pgdev->rpdev_sem);
+	if (pgdev->rpdev)
+		smp_store_release(&pgdev->rpdev->dev.driver_data, NULL);
+	pgdev->rpdev = NULL;
+	atomic_set(&pgdev->state, 0);
+	up_write(&pgdev->rpdev_sem);
+	synchronize_srcu(&pmic_glink_callbacks);
+
 	pdr_handle_release(pgdev->pdr_handle);
 	qcom_unregister_ssr_notifier(pgdev->subsys_handle, &pgdev->ssr_nb);
-	device_init_wakeup(pgdev->dev, false);
-	debugfs_remove_recursive(pgdev->debugfs_dir);
+	cancel_work_sync(&pgdev->init_work);
 	flush_workqueue(pgdev->rx_wq);
-	destroy_workqueue(pgdev->rx_wq);
-	idr_destroy(&pgdev->client_idr);
+	/* Children still need the client IDR and logging during unregister. */
 	of_platform_depopulate(&pdev->dev);
 	pgdev->child_probed = false;
-	pmic_glink_dev_remove(pgdev);
-
+	destroy_workqueue(pgdev->rx_wq);
+	idr_destroy(&pgdev->client_idr);
+	device_init_wakeup(pgdev->dev, false);
+	debugfs_remove_recursive(pgdev->debugfs_dir);
+	ipc_log_context_destroy(pgdev->ipc_log);
 	return 0;
 }
 

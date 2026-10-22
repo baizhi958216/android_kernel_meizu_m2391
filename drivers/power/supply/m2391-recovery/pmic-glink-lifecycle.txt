@@ -1,0 +1,28 @@
+Provider lifetime fix required by charger integration
+===================================================
+Original pmic_glink_unregister_client removed its IDR entry and freed client
+storage after dropping client_lock. RX looked up the client under the lock,
+then used it outside the lock. Therefore an already-found client could be
+freed before msg_cb, and unregister did not drain callbacks as assumed.
+
+A global sleepable SRCU domain now covers client lookup through callback.
+Unregister unpublishes under client_lock, releases that lock, waits for prior
+SRCU readers, and then frees. Calling unregister from a Glink callback is
+forbidden, as documented in the public header. State callbacks retain the
+existing client_lock serialization. No client or transport layout is changed.
+
+The same domain covers RPMSG driver_data/registry users and client registration.
+Parent removal unpublishes the registry, drains preexisting probe users, clears
+RPMSG driver_data under rpdev_sem, drains receive publication, stops PDR/SSR,
+cancels init_work, drains RX work, depopulates children while IDR/logging remain
+valid, and only then destroys queue/IDR/logging. RPMSG remove reads driver_data
+rather than registry lookup, so concurrent parent unpublication still clears
+the live rpdev reference before the RPMSG device can be released.
+
+Complete pmic_glink.o Kbuild passes. Original unedited source genksyms CRCs
+match the new actual target values exactly: write5a5edc5c/register8945c783/
+unregister56e3edd9. pmic_glink.ko is an existing source-selected provider and
+is not one of the original 107 retained OEM module classes. No additional
+stock module was removed for this fix. Independent GPU-agent lifetime review passed before enabling the recovered
+charger consumer. The probe dev pointer is initialized before registering
+SSR/PDR notifiers, closing an additional early-callback NULL pointer window.

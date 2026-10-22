@@ -49,6 +49,7 @@ struct pmic_glink_hdr {
 #if IS_ENABLED(CONFIG_QTI_PMIC_GLINK)
 struct pmic_glink_client *pmic_glink_register_client(struct device *dev,
 			const struct pmic_glink_client_data *client_data);
+/* Drains callbacks; must not be called from a PMIC Glink callback. */
 int pmic_glink_unregister_client(struct pmic_glink_client *client);
 int pmic_glink_write(struct pmic_glink_client *client, void *data,
 			size_t len);

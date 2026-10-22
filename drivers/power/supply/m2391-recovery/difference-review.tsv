@@ -1,0 +1,31 @@
+kind	symbol	original_status	review
+FUNC	battery_chg_write	DIFFERENT	Restored 500ms post-shutdown TX delay; dual errors retained; original transport serialization unchanged.
+FUNC	battery_chg_probe	DIFFERENT	Restored interface cooling registration after complete initialization; error diagnostics retained.
+FUNC	battery_chg_add_debugfs	MISSING	Existing actual DEBUG_FS implementation exactly creates battery_charger/block_tx0600; missing artifact was config/inlining.
+FUNC	battery_chg_notify_enable	MISSING	Existing actual implementation is intact; missing standalone symbol was compiler inlining, not missing source behavior.
+FUNC	battery_chg_subsys_up_work	DIFFERENT	Unchanged control/data flow; stock adds dual printk/mpower_print error diagnostics, now forwarded by bc_err.
+FUNC	usb_psy_set_icl	DIFFERENT	Unchanged control/data flow; stock adds dual printk/mpower_print error diagnostics, now forwarded by bc_err.
+FUNC	battery_chg_update_usb_type_work	DIFFERENT	Restored adapter-type then VOLT_MAX then CURR_MAX refresh before type dispatch.
+FUNC	battery_chg_check_status_work	DIFFERENT	Restored refresh-only STATUS/CAPACITY/VOLT sequence; stock has no upstream shutdown policy here.
+FUNC	panel_event_notifier_callback	DIFFERENT	Unchanged control/data flow; stock adds dual printk/mpower_print error diagnostics, now forwarded by bc_err.
+FUNC	battery_chg_callback	DIFFERENT	Restored battery capacity change event, battery/USB thermal forwarding, USB/wireless plug logger+notifier and wireless notification forwarding.
+FUNC	battery_chg_state_cb	DIFFERENT	Unchanged control/data flow; stock adds dual printk/mpower_print error diagnostics, now forwarded by bc_err.
+FUNC	battery_chg_ship_mode	DIFFERENT	Unchanged control/data flow; stock adds dual printk/mpower_print error diagnostics, now forwarded by bc_err.
+FUNC	battery_psy_set_charge_current	DIFFERENT	Unchanged control/data flow; stock adds dual printk/mpower_print error diagnostics, now forwarded by bc_err.
+FUNC	restrict_cur_store	DIFFERENT	Unchanged control/data flow; stock adds dual printk/mpower_print error diagnostics, now forwarded by bc_err.
+FUNC	restrict_chg_store	DIFFERENT	Unchanged control/data flow; stock adds dual printk/mpower_print error diagnostics, now forwarded by bc_err.
+FUNC	battery_psy_get_prop	DIFFERENT	Restored private property route and manufacturer/model alias.
+FUNC	xcharge_chg_interface_get_prop	MISSING	Recovered supply-specific property ranges and firmware ID offset255.
+FUNC	battery_psy_set_prop	DIFFERENT	Restored private property route and signed fake temperature firmware encoding.
+FUNC	xcharge_chg_interface_set_prop	MISSING	Recovered supply-specific property ranges and firmware ID offset255.
+FUNC	battery_psy_prop_is_writeable	DIFFERENT	Restored writable TEMP in addition to charge control.
+FUNC	wls_psy_get_prop	DIFFERENT	Restored private route.
+FUNC	wls_psy_set_prop	DIFFERENT	Restored private route.
+FUNC	usb_psy_get_prop	DIFFERENT	Restored private route.
+FUNC	usb_psy_set_prop	DIFFERENT	Restored private route.
+OBJECT	battery_prop_map	DIFFERENT	Recovered exact original property IDs/capacity or exposed attribute set; stock bytes/relocations retained as evidence.
+OBJECT	usb_prop_map	DIFFERENT	Recovered exact original property IDs/capacity or exposed attribute set; stock bytes/relocations retained as evidence.
+OBJECT	wls_prop_map	DIFFERENT	Recovered exact original property IDs/capacity or exposed attribute set; stock bytes/relocations retained as evidence.
+OBJECT	batt_psy_desc	DIFFERENT	Recovered exact original property IDs/capacity or exposed attribute set; stock bytes/relocations retained as evidence.
+OBJECT	battery_props	DIFFERENT	Recovered exact original property IDs/capacity or exposed attribute set; stock bytes/relocations retained as evidence.
+OBJECT	battery_class_attrs	DIFFERENT	Recovered exact original property IDs/capacity or exposed attribute set; stock bytes/relocations retained as evidence.
