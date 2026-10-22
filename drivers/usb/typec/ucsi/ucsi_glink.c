@@ -12,6 +12,8 @@
 #include <linux/usb/typec_mux.h>
 #include <linux/gpio/consumer.h>
 #include <linux/soc/qcom/pmic_glink.h>
+#include <linux/usb/pmic_glink_audio.h>
+
 #include "ucsi.h"
 
 #define PMIC_GLINK_MAX_PORTS		3
@@ -55,6 +57,7 @@ struct ucsi_notify_ind_msg {
 };
 
 struct pmic_glink_ucsi {
+	struct list_head audio_node;
 	struct device *dev;
 
 	struct gpio_desc *port_orientation[PMIC_GLINK_MAX_PORTS];
@@ -180,10 +183,53 @@ static void pmic_glink_ucsi_update_connector(struct ucsi_connector *con)
 	con->typec_cap.orientation_aware = true;
 }
 
+/* Consumers may probe with the analog accessory already connected. */
+static DEFINE_MUTEX(accessory_lock);
+static LIST_HEAD(audio_ports);
+static BLOCKING_NOTIFIER_HEAD(accessory_notifiers);
+
+int pmic_glink_audio_register(struct notifier_block *nb)
+{
+	int ret;
+
+	mutex_lock(&accessory_lock);
+	ret = blocking_notifier_chain_register(&accessory_notifiers, nb);
+	if (!ret)
+		nb->notifier_call(nb, !list_empty(&audio_ports), NULL);
+	mutex_unlock(&accessory_lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(pmic_glink_audio_register);
+
+int pmic_glink_audio_unregister(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&accessory_notifiers, nb);
+}
+EXPORT_SYMBOL_GPL(pmic_glink_audio_unregister);
+
+static void pmic_glink_set_port1_audio(struct pmic_glink_ucsi *ucsi, bool audio)
+{
+	bool was_audio;
+
+	mutex_lock(&accessory_lock);
+	was_audio = !list_empty(&audio_ports);
+	if (audio && list_empty(&ucsi->audio_node))
+		list_add_tail(&ucsi->audio_node, &audio_ports);
+	else if (!audio)
+		list_del_init(&ucsi->audio_node);
+	if (was_audio != !list_empty(&audio_ports))
+		blocking_notifier_call_chain(&accessory_notifiers, !was_audio, NULL);
+	mutex_unlock(&accessory_lock);
+}
+
 static void pmic_glink_ucsi_connector_status(struct ucsi_connector *con)
 {
 	struct pmic_glink_ucsi *ucsi = ucsi_get_drvdata(con->ucsi);
 	int orientation;
+
+	if (con->num == 1)
+		pmic_glink_set_port1_audio(ucsi, UCSI_CONSTAT(con, CONNECTED) &&
+			UCSI_CONSTAT(con, PARTNER_TYPE) == UCSI_CONSTAT_PARTNER_TYPE_AUDIO);
 
 	if (!UCSI_CONSTAT(con, CONNECTED)) {
 		typec_set_orientation(con->port, TYPEC_ORIENTATION_NONE);
@@ -266,6 +312,7 @@ static void pmic_glink_ucsi_register(struct work_struct *work)
 	} else if (ucsi->ucsi_registered && !pd_running) {
 		ucsi_unregister(ucsi->ucsi);
 		ucsi->ucsi_registered = false;
+		pmic_glink_set_port1_audio(ucsi, false);
 	}
 }
 
@@ -334,6 +381,7 @@ static int pmic_glink_ucsi_probe(struct auxiliary_device *adev,
 	if (!ucsi)
 		return -ENOMEM;
 
+	INIT_LIST_HEAD(&ucsi->audio_node);
 	ucsi->dev = dev;
 	dev_set_drvdata(dev, ucsi);
 
@@ -405,6 +453,7 @@ static void pmic_glink_ucsi_remove(struct auxiliary_device *adev)
 
 	/* Unregister first to stop having read & writes */
 	ucsi_unregister(ucsi->ucsi);
+	pmic_glink_set_port1_audio(ucsi, false);
 }
 
 static const struct auxiliary_device_id pmic_glink_ucsi_id_table[] = {
