@@ -42,6 +42,9 @@ extbuild qcom/opensource/touch-drivers/mz_gesture \
 	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/system/Module.symvers"
 extbuild meizu/power-notify
 extbuild meizu/storage
+extbuild meizu/audio-dummy
+extbuild meizu/cs35l45
+extbuild meizu/cirrus-calibration KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/storage/Module.symvers"
 extbuild meizu/power-logger
 extbuild meizu/power-thermal
 extbuild meizu/power-interface KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/system/Module.symvers"
@@ -75,6 +78,20 @@ mm=qcom/opensource/mm-drivers
 extbuild "$mm/msm_ext_display" MSM_EXT_DISPLAY_ROOT="$external/$mm/"
 extbuild "$mm/sync_fence" SYNC_FENCE_ROOT="$external/$mm/"
 extbuild "$mm/hw_fence" MSM_HW_FENCE_ROOT="$external/$mm/"
+
+display=qcom/opensource/display-drivers
+display_symbols=("$out/m2391-external/meizu/system/Module.symvers"
+		 "$out/m2391-external/$mm/msm_ext_display/Module.symvers"
+		 "$out/m2391-external/$mm/hw_fence/Module.symvers"
+		 "$out/m2391-external/$mm/sync_fence/Module.symvers"
+		 "$out/m2391-external/qcom/opensource/mmrm-driver/Module.symvers"
+		 "$out/m2391-external/$secure/hdcp/Module.symvers"
+		 "$out/m2391-external/$secure/smcinvoke/Module.symvers")
+extbuild "$display/msm" DISPLAY_ROOT="$external/$display" KERNEL_SRC="$kernel" \
+	CONFIG_ARCH_KALAMA=y KBUILD_EXTRA_SYMBOLS="${display_symbols[*]}"
+gpu=qcom/opensource/graphics-kernel
+extbuild "$gpu" KGSL_PATH="$external/$gpu" KERNEL_SRC="$kernel" CONFIG_ARCH_KALAMA=y \
+	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$mm/hw_fence/Module.symvers"
 
 release=$(<"$out/include/config/kernel.release")
 cat "${symvers[@]}" > "$stage/Module.symvers"
