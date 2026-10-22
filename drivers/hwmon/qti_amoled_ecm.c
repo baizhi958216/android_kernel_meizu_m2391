@@ -180,6 +180,8 @@ struct amoled_ecm {
 	bool			enable;
 	bool			abort;
 	bool			reenable;
+	bool			stopping;
+	struct device		*hwmon_dev;
 };
 
 static struct amoled_ecm_sdam_config ecm_reset_config[] = {
@@ -251,6 +253,9 @@ static int amoled_ecm_enable(struct amoled_ecm *ecm)
 {
 	struct amoled_ecm_data *data = &ecm->data;
 	int rc;
+
+	if (READ_ONCE(ecm->stopping))
+		return -ENODEV;
 
 	if (data->frames) {
 		rc = ecm_nvmem_device_write(ecm->sdam[0].nvmem,
@@ -354,6 +359,9 @@ static void ecm_average_work(struct work_struct *work)
 			average_work.work);
 	struct amoled_ecm_data *data = &ecm->data;
 
+	if (READ_ONCE(ecm->stopping))
+		return;
+
 	mutex_lock(&ecm->sdam_lock);
 
 	if (!data->num_m_samples || !data->m_cumulative) {
@@ -374,7 +382,7 @@ static void ecm_average_work(struct work_struct *work)
 	 * If ECM is not aborted and still enabled, run it one more time
 	 */
 
-	if (!ecm->abort && ecm->enable)
+	if (!READ_ONCE(ecm->stopping) && !ecm->abort && ecm->enable)
 		schedule_delayed_work(&ecm->average_work,
 			msecs_to_jiffies(ecm->data.time_period_ms));
 }
@@ -586,6 +594,9 @@ static irqreturn_t sdam_full_irq_handler(int irq, void *_ecm)
 	int rc, i, sdam_num, sdam_start, num_ecm_samples, max_samples;
 	u16 ecm_sample, gain;
 	u8 buf[2], int_status, sdam_index, overwrite;
+
+	if (READ_ONCE(ecm->stopping))
+		return IRQ_HANDLED;
 
 	sdam_num = get_sdam_from_irq(ecm, irq);
 	if (sdam_num < 0) {
@@ -889,6 +900,27 @@ static inline int qti_amoled_unregister_panel_notifier(struct amoled_ecm *ecm)
 }
 #endif
 
+static void amoled_ecm_unregister_hwmon(void *arg)
+{
+	hwmon_device_unregister(arg);
+}
+
+static void amoled_ecm_stop_work(void *arg)
+{
+	struct amoled_ecm *ecm = arg;
+
+	WRITE_ONCE(ecm->stopping, true);
+	/* IRQ/sysfs/notifier producers must be drained before this normal-remove
+	 * call. On failed probe their later devres entries are released first.
+	 * Never hold sdam_lock while waiting for the worker that takes it.
+	 */
+	cancel_delayed_work_sync(&ecm->average_work);
+	if (ecm->enable)
+		amoled_ecm_disable(ecm);
+	ecm->enable = false;
+	ecm->reenable = false;
+}
+
 static int qti_amoled_ecm_probe(struct platform_device *pdev)
 {
 	struct device *hwmon_dev;
@@ -934,6 +966,9 @@ static int qti_amoled_ecm_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&ecm->average_work, ecm_average_work);
 
 	mutex_init(&ecm->sdam_lock);
+	rc = devm_add_action_or_reset(&pdev->dev, amoled_ecm_stop_work, ecm);
+	if (rc)
+		return rc;
 
 	dev_set_drvdata(ecm->dev, ecm);
 
@@ -951,7 +986,7 @@ static int qti_amoled_ecm_probe(struct platform_device *pdev)
 				: ECM_SDAM0_SAMPLE_START_ADDR;
 	}
 
-	hwmon_dev = devm_hwmon_device_register_with_groups(&pdev->dev,
+	hwmon_dev = hwmon_device_register_with_groups(&pdev->dev,
 				"amoled_ecm", ecm, amoled_ecm_groups);
 	if (IS_ERR_OR_NULL(hwmon_dev)) {
 		rc = PTR_ERR(hwmon_dev);
@@ -960,6 +995,12 @@ static int qti_amoled_ecm_probe(struct platform_device *pdev)
 		return rc;
 	}
 
+	rc = devm_add_action_or_reset(&pdev->dev, amoled_ecm_unregister_hwmon,
+			hwmon_dev);
+	if (rc)
+		return rc;
+	ecm->hwmon_dev = hwmon_dev;
+
 	return qti_amoled_register_panel_notifier(ecm);
 }
 
@@ -967,7 +1008,18 @@ static int qti_amoled_ecm_remove(struct platform_device *pdev)
 {
 	struct amoled_ecm *ecm = dev_get_drvdata(&pdev->dev);
 
-	return qti_amoled_unregister_panel_notifier(ecm);
+	int i, rc;
+
+	WRITE_ONCE(ecm->stopping, true);
+	/* Remove sysfs first so an in-flight enable cannot re-arm after drain. */
+	devm_release_action(ecm->dev, amoled_ecm_unregister_hwmon,
+			ecm->hwmon_dev);
+	rc = qti_amoled_unregister_panel_notifier(ecm);
+	for (i = 0; i < ecm->num_sdams; ++i)
+		disable_irq(ecm->sdam[i].irq);
+	amoled_ecm_stop_work(ecm);
+	devm_remove_action(&pdev->dev, amoled_ecm_stop_work, ecm);
+	return rc;
 }
 
 static const struct of_device_id amoled_ecm_match_table[] = {
