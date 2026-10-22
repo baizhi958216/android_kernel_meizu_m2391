@@ -1,0 +1,4 @@
+0x341267a0	mz_thermal_boost_restore	m2391-dependencies/mz_thermal_boost	EXPORT_SYMBOL	
+0x4d5a7d33	mz_thermal_boost_store	m2391-dependencies/mz_thermal_boost	EXPORT_SYMBOL	
+0xaef6d817	mz_thermal_boost_request	m2391-dependencies/mz_thermal_boost	EXPORT_SYMBOL	
+0xeee25bef	mz_thermal_sched_boost_request	m2391-dependencies/mz_thermal_boost	EXPORT_SYMBOL	

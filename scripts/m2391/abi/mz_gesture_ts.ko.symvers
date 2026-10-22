@@ -1,0 +1,5 @@
+0xde3a82ff	mz_gesture_handle_register	m2391-dependencies/mz_gesture_ts	EXPORT_SYMBOL	
+0x3bec0fd6	mz_gesture_get_gesture_statu	m2391-dependencies/mz_gesture_ts	EXPORT_SYMBOL	
+0x2505b27e	Gesture_switch_enable	m2391-dependencies/mz_gesture_ts	EXPORT_SYMBOL	
+0x1b75e0a2	FOD_switch_enable	m2391-dependencies/mz_gesture_ts	EXPORT_SYMBOL	
+0x1ccef4cb	mz_gesture_set_gesture_statu	m2391-dependencies/mz_gesture_ts	EXPORT_SYMBOL	

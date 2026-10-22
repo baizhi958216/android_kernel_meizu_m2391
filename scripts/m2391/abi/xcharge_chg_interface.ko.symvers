@@ -1,0 +1,4 @@
+0xad918bcd	xcharge_chg_interface_notify_coil_pwr_on_sta	m2391-dependencies/xcharge_chg_interface	EXPORT_SYMBOL	
+0xb215ca65	xcharge_chg_interface_register_cd	m2391-dependencies/xcharge_chg_interface	EXPORT_SYMBOL	
+0xa5f6672f	xcharge_chg_interface_notify_rev_chg_sta	m2391-dependencies/xcharge_chg_interface	EXPORT_SYMBOL	
+0xa2f5cb8c	mz_chg_discharging_vote	m2391-dependencies/xcharge_chg_interface	EXPORT_SYMBOL	

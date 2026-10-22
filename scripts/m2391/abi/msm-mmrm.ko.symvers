@@ -1,0 +1,7 @@
+0xde9150a8	mmrm_client_check_scaling_supported	m2391-dependencies/msm_mmrm	EXPORT_SYMBOL	
+0x15e4a2d8	mmrm_client_deregister	m2391-dependencies/msm_mmrm	EXPORT_SYMBOL	
+0xd04d3eaf	mmrm_client_get_clk_count	m2391-dependencies/msm_mmrm	EXPORT_SYMBOL	
+0xb6f77941	mmrm_client_get_value	m2391-dependencies/msm_mmrm	EXPORT_SYMBOL	
+0xbbd8dc5d	mmrm_client_register	m2391-dependencies/msm_mmrm	EXPORT_SYMBOL	
+0x6be8a03a	mmrm_client_set_value	m2391-dependencies/msm_mmrm	EXPORT_SYMBOL	
+0xf77f51e3	mmrm_client_set_value_in_range	m2391-dependencies/msm_mmrm	EXPORT_SYMBOL	

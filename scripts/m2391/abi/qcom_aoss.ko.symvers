@@ -1,0 +1,4 @@
+0x9e2aa1df	qmp_send	m2391-dependencies/qcom_aoss	EXPORT_SYMBOL	
+0x2333aed6	qmp_put	m2391-dependencies/qcom_aoss	EXPORT_SYMBOL	
+0xae0c82c3	qmp_register_rx_cb	m2391-dependencies/qcom_aoss	EXPORT_SYMBOL	
+0x0e93e8c4	qmp_get	m2391-dependencies/qcom_aoss	EXPORT_SYMBOL	

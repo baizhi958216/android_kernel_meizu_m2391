@@ -1,0 +1,3 @@
+0x8c31225e	mem_buf_free	m2391-dependencies/mem_buf	EXPORT_SYMBOL	
+0xb34362fe	mem_buf_get_sgl	m2391-dependencies/mem_buf	EXPORT_SYMBOL	
+0x50bb3339	mem_buf_retrieve	m2391-dependencies/mem_buf	EXPORT_SYMBOL	

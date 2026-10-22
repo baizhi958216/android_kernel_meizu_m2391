@@ -1,0 +1,2 @@
+0xb3bd3023	qcom_icc_debug_register	m2391-dependencies/icc_debug	EXPORT_SYMBOL	
+0xd8b309ab	qcom_icc_debug_unregister	m2391-dependencies/icc_debug	EXPORT_SYMBOL	

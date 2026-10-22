@@ -1,0 +1,3 @@
+# Seven-slot callback layout recovered; original struct type names unavailable.
+# Source consumers may use the new header; retained stock consumers are forbidden.
+flashlight_dev_register

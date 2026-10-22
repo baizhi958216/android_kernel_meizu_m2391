@@ -1,0 +1,2 @@
+0x0364b351	mz_get_cpu_ping_mask	m2391-dependencies/mz_enhance_qcom_wdog	EXPORT_SYMBOL	
+0x5fbee75e	mz_dump_cpu_online_smp_call	m2391-dependencies/mz_enhance_qcom_wdog	EXPORT_SYMBOL	

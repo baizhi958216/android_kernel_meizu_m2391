@@ -1,0 +1,5 @@
+0x6a376d11	qcom_wdt_register	m2391-dependencies/qcom_wdt_core	EXPORT_SYMBOL	
+0x07eb1161	qcom_wdt_pet_suspend	m2391-dependencies/qcom_wdt_core	EXPORT_SYMBOL	
+0xa2cc40c1	qcom_wdt_pet_resume	m2391-dependencies/qcom_wdt_core	EXPORT_SYMBOL	
+0x1797245e	qcom_wdt_trigger_bite	m2391-dependencies/qcom_wdt_core	EXPORT_SYMBOL	
+0x381ef1f4	qcom_wdt_remove	m2391-dependencies/qcom_wdt_core	EXPORT_SYMBOL	

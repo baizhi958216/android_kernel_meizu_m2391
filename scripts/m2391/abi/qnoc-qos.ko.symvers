@@ -1,0 +1,2 @@
+0xc893232c	icc_qnoc_qos_regs	m2391-dependencies/qnoc_qos	EXPORT_SYMBOL	
+0x88ce8325	qcom_qnoc4_ops	m2391-dependencies/qnoc_qos	EXPORT_SYMBOL	

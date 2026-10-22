@@ -1,0 +1,3 @@
+0x774a6ddf	register_mpower_notifier	m2391-dependencies/xcharge_notify_subsys	EXPORT_SYMBOL	
+0xee47005f	unregister_mpower_notifier	m2391-dependencies/xcharge_notify_subsys	EXPORT_SYMBOL	
+0x98fe0097	xcharge_notify_subsys_set_plug_status	m2391-dependencies/xcharge_notify_subsys	EXPORT_SYMBOL	

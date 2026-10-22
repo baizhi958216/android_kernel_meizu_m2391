@@ -1,0 +1,7 @@
+# Recovered getters use source display/parameter types; rmfb2 uses current DRM.
+# These exports may only be consumed within source-built module groups.
+display_get_power_status
+display_set_power_status
+get_main_display
+get_sec_display
+msm_ioctl_rmfb2

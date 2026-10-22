@@ -1,0 +1,5 @@
+0x432975e6	pdr_add_lookup	m2391-dependencies/pdr_interface	EXPORT_SYMBOL	
+0xf618ca5b	pdr_handle_release	m2391-dependencies/pdr_interface	EXPORT_SYMBOL	
+0xb875bb04	pdr_add_service_lookup	m2391-dependencies/pdr_interface	EXPORT_SYMBOL_GPL	
+0x47b2ed49	pdr_handle_alloc	m2391-dependencies/pdr_interface	EXPORT_SYMBOL	
+0x1c76ea4d	pdr_restart_pd	m2391-dependencies/pdr_interface	EXPORT_SYMBOL	

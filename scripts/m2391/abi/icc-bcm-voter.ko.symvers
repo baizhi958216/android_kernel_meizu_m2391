@@ -1,0 +1,4 @@
+0x3b5d1493	qcom_icc_bcm_voter_clear_init	m2391-dependencies/icc_bcm_voter	EXPORT_SYMBOL	
+0x0b39b783	qcom_icc_bcm_voter_commit	m2391-dependencies/icc_bcm_voter	EXPORT_SYMBOL_GPL	
+0xf7448193	qcom_icc_bcm_voter_add	m2391-dependencies/icc_bcm_voter	EXPORT_SYMBOL_GPL	
+0x766822c4	of_bcm_voter_get	m2391-dependencies/icc_bcm_voter	EXPORT_SYMBOL_GPL	

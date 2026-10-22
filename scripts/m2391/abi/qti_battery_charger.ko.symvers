@@ -1,0 +1,3 @@
+0x47653d56	qti_battery_charger_get_prop	m2391-dependencies/qti_battery_charger	EXPORT_SYMBOL	
+0x696c9e5f	register_hboost_event_notifier	m2391-dependencies/qti_battery_charger	EXPORT_SYMBOL	
+0x16d662d9	unregister_hboost_event_notifier	m2391-dependencies/qti_battery_charger	EXPORT_SYMBOL	
