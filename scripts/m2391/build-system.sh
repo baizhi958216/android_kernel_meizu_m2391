@@ -42,6 +42,12 @@ extbuild qcom/opensource/touch-drivers/mz_gesture \
 	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/system/Module.symvers"
 extbuild meizu/power-notify
 extbuild meizu/storage
+extbuild meizu/tof-ai11ba KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/system/Module.symvers"
+tof_symbols=("$out/m2391-external/meizu/system/Module.symvers"
+             "$out/m2391-external/meizu/storage/Module.symvers"
+             "$out/m2391-external/meizu/tof-ai11ba/Module.symvers")
+extbuild meizu/tof-vl53l1 KBUILD_EXTRA_SYMBOLS="${tof_symbols[*]}"
+extbuild meizu/v4l2loopback
 extbuild meizu/audio-dummy
 extbuild meizu/cs35l45
 extbuild meizu/cirrus-calibration KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/storage/Module.symvers"
