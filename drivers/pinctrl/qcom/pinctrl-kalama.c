@@ -2344,6 +2344,103 @@ static const struct msm_gpio_wakeirq_map kalama_pdc_map_v2[] = {
 	{ 207, 47 },  { 208, 121 }, { 209, 122 },
 };
 
+/* TLMM wake-enable gates, independent of PDC IRQ numbers. */
+static const struct msm_gpio_wake_gate kalama_wake_gates[210] = {
+	[0] = { REG_BASE + 0xd200c, 3 },
+	[2] = { REG_BASE + 0xd200c, 4 },
+	[3] = { REG_BASE + 0xd200c, 5 },
+	[8] = { REG_BASE + 0xd2000, 0 },
+	[9] = { REG_BASE + 0xd2000, 1 },
+	[11] = { REG_BASE + 0xd200c, 6 },
+	[14] = { REG_BASE + 0xd2000, 2 },
+	[15] = { REG_BASE + 0xd2000, 3 },
+	[16] = { REG_BASE + 0xd2000, 4 },
+	[17] = { REG_BASE + 0xd2000, 5 },
+	[18] = { REG_BASE + 0xd2000, 6 },
+	[19] = { REG_BASE + 0xd2000, 7 },
+	[25] = { REG_BASE + 0xd2014, 0 },
+	[26] = { REG_BASE + 0xd2014, 1 },
+	[27] = { REG_BASE + 0xd2014, 2 },
+	[28] = { REG_BASE + 0xd2014, 3 },
+	[31] = { REG_BASE + 0xd2014, 4 },
+	[32] = { REG_BASE + 0xd2014, 5 },
+	[35] = { REG_BASE + 0xd2014, 6 },
+	[39] = { REG_BASE + 0xd2014, 7 },
+	[40] = { REG_BASE + 0xd2014, 8 },
+	[41] = { REG_BASE + 0xd2014, 9 },
+	[43] = { REG_BASE + 0xd2014, 10 },
+	[44] = { REG_BASE + 0xd2014, 11 },
+	[45] = { REG_BASE + 0xd2014, 12 },
+	[46] = { REG_BASE + 0xd2014, 13 },
+	[47] = { REG_BASE + 0xd2014, 14 },
+	[48] = { REG_BASE + 0xd2014, 15 },
+	[51] = { REG_BASE + 0xd2018, 0 },
+	[55] = { REG_BASE + 0xd2018, 1 },
+	[56] = { REG_BASE + 0xd200c, 7 },
+	[59] = { REG_BASE + 0xd200c, 8 },
+	[60] = { REG_BASE + 0xd200c, 9 },
+	[62] = { REG_BASE + 0xd200c, 10 },
+	[63] = { REG_BASE + 0xd200c, 11 },
+	[67] = { REG_BASE + 0xd200c, 12 },
+	[71] = { REG_BASE + 0xd200c, 13 },
+	[73] = { REG_BASE + 0xd200c, 14 },
+	[75] = { REG_BASE + 0xd200c, 15 },
+	[79] = { REG_BASE + 0xd2010, 0 },
+	[82] = { REG_BASE + 0xd2010, 1 },
+	[83] = { REG_BASE + 0xd2010, 2 },
+	[84] = { REG_BASE + 0xd2000, 8 },
+	[85] = { REG_BASE + 0xd2000, 9 },
+	[86] = { REG_BASE + 0xd2018, 2 },
+	[87] = { REG_BASE + 0xd2018, 3 },
+	[88] = { REG_BASE + 0xd2018, 4 },
+	[89] = { REG_BASE + 0xd2018, 5 },
+	[95] = { REG_BASE + 0xd2010, 3 },
+	[96] = { REG_BASE + 0xd2010, 4 },
+	[98] = { REG_BASE + 0xd2010, 5 },
+	[99] = { REG_BASE + 0xd2010, 6 },
+	[107] = { REG_BASE + 0xd2010, 7 },
+	[119] = { REG_BASE + 0xd2010, 8 },
+	[120] = { REG_BASE + 0xd2010, 9 },
+	[133] = { REG_BASE + 0xd2018, 6 },
+	[137] = { REG_BASE + 0xd2018, 7 },
+	[148] = { REG_BASE + 0xd201c, 0 },
+	[150] = { REG_BASE + 0xd2018, 8 },
+	[153] = { REG_BASE + 0xd2018, 9 },
+	[154] = { REG_BASE + 0xd2018, 10 },
+	[155] = { REG_BASE + 0xd2018, 11 },
+	[156] = { REG_BASE + 0xd2018, 12 },
+	[159] = { REG_BASE + 0xd2018, 13 },
+	[162] = { REG_BASE + 0xd2018, 14 },
+	[166] = { REG_BASE + 0xd2004, 0 },
+	[169] = { REG_BASE + 0xd2004, 1 },
+	[171] = { REG_BASE + 0xd2004, 2 },
+	[172] = { REG_BASE + 0xd2004, 3 },
+	[174] = { REG_BASE + 0xd2004, 4 },
+	[176] = { REG_BASE + 0xd2004, 5 },
+	[177] = { REG_BASE + 0xd2004, 6 },
+	[181] = { REG_BASE + 0xd2004, 7 },
+	[182] = { REG_BASE + 0xd2004, 8 },
+	[185] = { REG_BASE + 0xd2004, 9 },
+	[187] = { REG_BASE + 0xd2004, 10 },
+	[188] = { REG_BASE + 0xd2004, 11 },
+	[190] = { REG_BASE + 0xd2004, 12 },
+	[191] = { REG_BASE + 0xd2004, 13 },
+	[192] = { REG_BASE + 0xd2004, 14 },
+	[193] = { REG_BASE + 0xd2004, 15 },
+	[196] = { REG_BASE + 0xd2008, 0 },
+	[197] = { REG_BASE + 0xd2008, 1 },
+	[198] = { REG_BASE + 0xd2008, 2 },
+	[199] = { REG_BASE + 0xd2008, 3 },
+	[200] = { REG_BASE + 0xd2008, 4 },
+	[201] = { REG_BASE + 0xd2008, 5 },
+	[203] = { REG_BASE + 0xd2008, 6 },
+	[205] = { REG_BASE + 0xd2008, 7 },
+	[206] = { REG_BASE + 0xd2008, 8 },
+	[207] = { REG_BASE + 0xd2008, 9 },
+	[208] = { REG_BASE + 0xd2008, 10 },
+	[209] = { REG_BASE + 0xd2008, 11 },
+};
+
 static const struct msm_pinctrl_soc_data kalama_pinctrl = {
 	.pins = kalama_pins,
 	.npins = ARRAY_SIZE(kalama_pins),
@@ -2353,6 +2450,8 @@ static const struct msm_pinctrl_soc_data kalama_pinctrl = {
 	.ngroups = ARRAY_SIZE(kalama_groups),
 	.ngpios = 211,
 	.egpio_func = 9,
+	.wake_gates = kalama_wake_gates,
+	.num_wake_gates = ARRAY_SIZE(kalama_wake_gates),
 	.wakeirq_map = kalama_pdc_map,
 	.nwakeirq_map = ARRAY_SIZE(kalama_pdc_map),
 };
@@ -2366,6 +2465,8 @@ static const struct msm_pinctrl_soc_data kalama_pinctrl_v2 = {
 	.ngroups = ARRAY_SIZE(kalama_groups),
 	.ngpios = 211,
 	.egpio_func = 9,
+	.wake_gates = kalama_wake_gates,
+	.num_wake_gates = ARRAY_SIZE(kalama_wake_gates),
 	.wakeirq_map = kalama_pdc_map_v2,
 	.nwakeirq_map = ARRAY_SIZE(kalama_pdc_map_v2),
 };
@@ -2395,6 +2496,24 @@ static struct platform_driver kalama_pinctrl_driver = {
 	},
 	.probe = kalama_pinctrl_probe,
 };
+
+int kalama_gpio_set_wake_gate(unsigned int gpio, bool enable)
+{
+	struct device *dev;
+	int ret = -EPROBE_DEFER;
+
+	dev = driver_find_next_device(&kalama_pinctrl_driver.driver, NULL);
+	if (!dev)
+		return ret;
+
+	device_lock(dev);
+	if (dev->driver == &kalama_pinctrl_driver.driver)
+		ret = msm_gpio_set_wake_gate(dev, gpio, enable);
+	device_unlock(dev);
+	put_device(dev);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(kalama_gpio_set_wake_gate);
 
 static int __init kalama_pinctrl_init(void)
 {

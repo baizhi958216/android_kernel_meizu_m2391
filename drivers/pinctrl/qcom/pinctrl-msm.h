@@ -129,6 +129,11 @@ struct msm_gpio_wakeirq_map {
 	unsigned int wakeirq;
 };
 
+struct msm_gpio_wake_gate {
+	u32 reg;
+	u8 bit;
+};
+
 /**
  * struct msm_pinctrl_soc_data - Qualcomm pin controller driver configuration
  * @pins:	    An array describing all pins the pin controller affects.
@@ -139,6 +144,8 @@ struct msm_gpio_wakeirq_map {
  * @ngroups:	    The numbmer of entries in @groups.
  * @ngpio:	    The number of pingroups the driver should expose as GPIOs.
  * @pull_no_keeper: The SoC does not support keeper bias.
+ * @wake_gates: Optional per-GPIO TLMM wake-enable registers.
+ * @num_wake_gates: Size of the wake-enable register table.
  * @wakeirq_map:    The map of wakeup capable GPIOs and the pin at PDC/MPM
  * @nwakeirq_map:   The number of entries in @wakeirq_map
  * @wakeirq_dual_edge_errata: If true then GPIOs using the wakeirq_map need
@@ -165,6 +172,8 @@ struct msm_pinctrl_soc_data {
 	const char *const *tiles;
 	unsigned int ntiles;
 	const int *reserved_gpios;
+	const struct msm_gpio_wake_gate *wake_gates;
+	unsigned int num_wake_gates;
 	const struct msm_gpio_wakeirq_map *wakeirq_map;
 	unsigned int nwakeirq_map;
 	bool wakeirq_dual_edge_errata;
@@ -174,6 +183,7 @@ struct msm_pinctrl_soc_data {
 
 extern const struct dev_pm_ops msm_pinctrl_dev_pm_ops;
 
+int msm_gpio_set_wake_gate(struct device *dev, unsigned int gpio, bool enable);
 int msm_pinctrl_probe(struct platform_device *pdev,
 		      const struct msm_pinctrl_soc_data *soc_data);
 

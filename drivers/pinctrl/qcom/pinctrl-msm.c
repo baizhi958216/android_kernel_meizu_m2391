@@ -100,6 +100,33 @@ MSM_ACCESSOR(intr_cfg)
 MSM_ACCESSOR(intr_status)
 MSM_ACCESSOR(intr_target)
 
+int msm_gpio_set_wake_gate(struct device *dev, unsigned int gpio, bool enable)
+{
+	struct msm_pinctrl *pctrl = dev_get_drvdata(dev);
+	const struct msm_gpio_wake_gate *gate;
+	void __iomem *reg;
+	unsigned long flags;
+	u32 val;
+
+	if (!pctrl || gpio >= pctrl->soc->num_wake_gates)
+		return -EINVAL;
+	gate = &pctrl->soc->wake_gates[gpio];
+	if (!gate->reg)
+		return -ENOENT;
+
+	reg = pctrl->regs[pctrl->soc->groups[gpio].tile] + gate->reg;
+	raw_spin_lock_irqsave(&pctrl->lock, flags);
+	val = readl_relaxed(reg);
+	if (enable)
+		val |= BIT(gate->bit);
+	else
+		val &= ~BIT(gate->bit);
+	writel_relaxed(val, reg);
+	raw_spin_unlock_irqrestore(&pctrl->lock, flags);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(msm_gpio_set_wake_gate);
+
 static void msm_ack_intr_status(struct msm_pinctrl *pctrl,
 				const struct msm_pingroup *g)
 {
