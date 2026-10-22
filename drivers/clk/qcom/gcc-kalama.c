@@ -442,6 +442,9 @@ static struct clk_regmap_mux gcc_usb3_prim_phy_pipe_clk_src = {
 };
 
 static const struct freq_tbl ftbl_gcc_gp1_clk_src[] = {
+	/* M2391 stock gcc-kalama table: TCXO / 4 with fractional M/N. */
+	F(36000, P_BI_TCXO, 4, 1, 133),
+	F(38000, P_BI_TCXO, 4, 1, 126),
 	F(50000000, P_GCC_GPLL0_OUT_EVEN, 6, 0, 0),
 	F(100000000, P_GCC_GPLL0_OUT_MAIN, 6, 0, 0),
 	F(200000000, P_GCC_GPLL0_OUT_MAIN, 3, 0, 0),
