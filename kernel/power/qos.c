@@ -20,6 +20,7 @@
 
 /*#define DEBUG*/
 
+#include <linux/meizu_freq_qos.h>
 #include <linux/pm_qos.h>
 #include <linux/sched.h>
 #include <linux/spinlock.h>
@@ -426,6 +427,36 @@ static int __init cpu_latency_qos_init(void)
 }
 late_initcall(cpu_latency_qos_init);
 #endif /* CONFIG_CPU_IDLE */
+
+#if IS_ENABLED(CONFIG_MEIZU_FREQ_QOS)
+/* A bounded atomic visitor replaces the OEM monitor's kprobe lookup of the
+ * private pm_qos_lock. The existing request and lock layouts remain intact.
+ */
+int meizu_freq_qos_walk(struct freq_constraints *qos,
+		enum freq_qos_req_type type,
+		void (*visit)(const struct freq_qos_request *, s32, void *),
+		void *data)
+{
+	struct pm_qos_constraints *constraints;
+	struct freq_qos_request *request;
+	unsigned long flags;
+
+	if (!qos || !visit)
+		return -EINVAL;
+	if (type == FREQ_QOS_MIN)
+		constraints = &qos->min_freq;
+	else if (type == FREQ_QOS_MAX)
+		constraints = &qos->max_freq;
+	else
+		return -EINVAL;
+	spin_lock_irqsave(&pm_qos_lock, flags);
+	plist_for_each_entry(request, &constraints->list, pnode)
+		visit(request, request->pnode.prio, data);
+	spin_unlock_irqrestore(&pm_qos_lock, flags);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(meizu_freq_qos_walk);
+#endif
 
 /* Definitions related to the frequency QoS below. */
 

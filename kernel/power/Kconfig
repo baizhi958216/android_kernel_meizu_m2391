@@ -331,3 +331,11 @@ config ENERGY_MODEL
 	  The exact usage of the energy model is subsystem-dependent.
 
 	  If in doubt, say N.
+
+config MEIZU_FREQ_QOS
+	tristate "Meizu M2391 frequency QoS diagnostics"
+	depends on CPU_FREQ && ANDROID_VENDOR_HOOKS && PROC_FS
+	default n
+	help
+	  Provide the locked request visitor used by the recovered M2391
+	  frequency QoS monitor, without looking up private kernel addresses.
