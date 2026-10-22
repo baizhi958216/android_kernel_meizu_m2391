@@ -3,6 +3,7 @@
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
+#include <linux/meizu_thermal_boost.h>
 #include <linux/of.h>
 
 #include "walt.h"
@@ -253,6 +254,8 @@ static void _sched_set_boost(int type)
 	sched_boost_type = sched_effective_boost();
 	sysctl_sched_boost = sched_boost_type;
 	set_boost_policy(sysctl_sched_boost);
+	if (IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
+		mz_thermal_sched_boost_request(sysctl_sched_boost);
 	trace_sched_set_boost(sysctl_sched_boost);
 }
 

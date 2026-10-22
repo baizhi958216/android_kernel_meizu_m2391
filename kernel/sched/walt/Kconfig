@@ -39,3 +39,12 @@ config SCHED_CONSERVATIVE_BOOST_LPM_BIAS
 	  will not enter low power mode for a hysteresis time period,
 	  which can be configured from userspace.
 endmenu
+
+config MEIZU_VIP_TASK
+	bool "Meizu M2391 VIP task scheduling policy"
+	depends on SMP && ANDROID_VENDOR_HOOKS && FAIR_GROUP_SCHED
+	default n
+	help
+	  Restore the M2391 VIP task, lock waiter, and scheduler policy.
+	  Restricted vendor hook callbacks are permanent, so this provider
+	  must be built into the kernel rather than loaded as a module.

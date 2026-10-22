@@ -5,6 +5,7 @@
  */
 
 #include <linux/seq_file.h>
+#include <linux/meizu_vip_task.h>
 #include <trace/hooks/sched.h>
 #include <trace/hooks/binder.h>
 
@@ -1450,6 +1451,8 @@ static void walt_cfs_check_preempt_wakeup(void *unused, struct rq *rq, struct ta
 	if (!curr_is_mvp) {
 		if (p_is_mvp)
 			goto preempt;
+		if (IS_ENABLED(CONFIG_MEIZU_VIP_TASK))
+			mz_check_preempt_wakeup(rq, p, preempt, nopreempt);
 		return; /* CFS decides preemption */
 	}
 
@@ -1511,7 +1514,7 @@ static void walt_cfs_replace_next_task_fair(void *unused, struct rq *rq, struct 
 
 	/* We don't have MVP tasks queued */
 	if (list_empty(&wrq->mvp_tasks))
-		return;
+		goto meizu_pick;
 
 	/* Return the first task from MVP queue */
 	wts = list_first_entry(&wrq->mvp_tasks, struct walt_task_struct, mvp_list);
@@ -1541,6 +1544,9 @@ static void walt_cfs_replace_next_task_fair(void *unused, struct rq *rq, struct 
 			 (*p)->on_rq, (*p)->cpu, cpu_of(rq), ((*p)->flags & PF_KTHREAD));
 
 	trace_walt_cfs_mvp_pick_next(mvp, wts, walt_cfs_mvp_task_limit(mvp));
+meizu_pick:
+	if (IS_ENABLED(CONFIG_MEIZU_VIP_TASK) && !*repick)
+		mz_replace_next_task_fair(rq, p, se, repick, simple);
 }
 
 void walt_cfs_init(void)

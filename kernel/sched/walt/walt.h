@@ -227,7 +227,7 @@ extern unsigned int sysctl_sched_boost_on_input;
 extern unsigned int sysctl_sched_user_hint;
 extern unsigned int sysctl_sched_conservative_pl;
 extern unsigned int sysctl_sched_hyst_min_coloc_ns;
-extern unsigned int sysctl_sched_long_running_rt_task_ms;
+extern unsigned long sysctl_sched_long_running_rt_task_ms;
 extern unsigned int sysctl_ed_boost_pct;
 extern unsigned int sysctl_em_inflate_pct;
 extern unsigned int sysctl_em_inflate_thres;

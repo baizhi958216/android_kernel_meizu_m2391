@@ -39,3 +39,9 @@ obj-$(CONFIG_PSI) += psi.o
 obj-$(CONFIG_SCHED_CORE) += core_sched.o
 obj-$(CONFIG_SCHED_WALT) += walt/
 obj-$(CONFIG_ANDROID_VENDOR_HOOKS) += vendor_hooks.o
+# Restricted Meizu scheduler hooks require permanent callback text.
+obj-$(CONFIG_MEIZU_VIP_TASK) += mz_vip_task.o
+ifeq ($(CONFIG_MEIZU_VIP_TASK)$(CONFIG_LTO_CLANG),yy)
+# Native prelink for retained ABI checks; never installed as a module.
+targets += mz_vip_task.lto.o
+endif

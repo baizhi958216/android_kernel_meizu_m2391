@@ -4,6 +4,7 @@
  * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include <linux/meizu_vip_task.h>
 #include <trace/hooks/sched.h>
 
 #include "walt.h"
@@ -54,7 +55,7 @@ static void long_running_rt_task_notifier(void *unused, struct rq *rq)
 	if (rq->clock_task -
 		per_cpu(rt_task_arrival_time, cpu)
 			> sysctl_sched_long_running_rt_task_ms * MSEC_TO_NSEC) {
-		printk_deferred("RT task %s (%d) runtime > %u now=%llu task arrival time=%llu runtime=%llu\n",
+		printk_deferred("RT task %s (%d) runtime > %lu now=%llu task arrival time=%llu runtime=%llu\n",
 				curr->comm, curr->pid,
 				sysctl_sched_long_running_rt_task_ms * MSEC_TO_NSEC,
 				rq->clock_task,
@@ -111,6 +112,29 @@ static void walt_rt_energy_aware_wake_cpu(struct task_struct *task, struct cpuma
 
 	if (!ret)
 		return; /* No targets found */
+
+	/* Original M2391 full boost gives a VIP process leader first choice of
+	 * the first eligible CPU in the highest cluster; otherwise use EAS.
+	 */
+	if (IS_ENABLED(CONFIG_MEIZU_VIP_TASK)) {
+		rcu_read_lock();
+		if (sched_boost_type == FULL_THROTTLE_BOOST &&
+		    task->pid == task->tgid && num_sched_clusters > 0 &&
+		    test_task_vip(task)) {
+			cpu = cpumask_first_and(lowest_mask,
+				&cpu_array[0][num_sched_clusters - 1]);
+			if (cpu < nr_cpu_ids) {
+				trace_printk(" select_cpu = %d\n", cpu);
+				if (cpu_active(cpu) && !cpu_halted(cpu) &&
+				    !sched_cpu_high_irqload(cpu)) {
+					*best_cpu = cpu;
+					rcu_read_unlock();
+					return;
+				}
+			}
+		}
+		rcu_read_unlock();
+	}
 
 	rcu_read_lock();
 	for (cluster = 0; cluster < num_sched_clusters; cluster++) {

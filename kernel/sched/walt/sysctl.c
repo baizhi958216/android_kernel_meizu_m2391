@@ -20,7 +20,6 @@ static int __maybe_unused four = 4;
 static int one_hundred = 100;
 static int one_thousand = 1000;
 static int one_thousand_twenty_four = 1024;
-static int two_thousand = 2000;
 static int walt_max_cpus = WALT_NR_CPUS;
 
 /*
@@ -76,7 +75,8 @@ unsigned int sysctl_sched_suppress_region2;
 unsigned int sysctl_sched_skip_sp_newly_idle_lb = 1;
 unsigned int sysctl_sched_hyst_min_coloc_ns = 80000000;
 unsigned int sysctl_sched_asymcap_boost;
-unsigned int sysctl_sched_long_running_rt_task_ms;
+/* Stock uses 64-bit storage/arithmetic with a 32-bit sysctl wire value. */
+unsigned long sysctl_sched_long_running_rt_task_ms;
 unsigned int sysctl_sched_idle_enough;
 unsigned int sysctl_sched_cluster_util_thres_pct;
 unsigned int sysctl_ed_boost_pct;
@@ -1023,7 +1023,7 @@ struct ctl_table walt_table[] = {
 		.mode		= 0644,
 		.proc_handler	= sched_long_running_rt_task_ms_handler,
 		.extra1		= SYSCTL_ZERO,
-		.extra2		= &two_thousand,
+		.extra2		= SYSCTL_INT_MAX,
 	},
 	{
 		.procname	= "sched_ed_boost",
