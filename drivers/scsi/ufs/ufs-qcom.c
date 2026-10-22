@@ -31,6 +31,7 @@
 #include "ufshcd-pltfrm.h"
 #include "unipro.h"
 #include "ufs-qcom.h"
+#include "ufs-meizu.h"
 
 #define CREATE_TRACE_POINTS
 #include "ufs-qcom-trace.h"
@@ -4067,6 +4068,15 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 			ufs_qcom_msg(WARN, dev, "Fail to register UFS panic notifier\n");
 	}
 
+	/* Publish the OEM nodes only after controller initialization succeeds. */
+	if (err)
+		goto out;
+	host->meizu_fbo_registered = !ufs_fbo_init(hba);
+	if (!host->meizu_fbo_registered)
+		dev_warn(dev, "Unable to register Meizu FBO sysfs\n");
+	host->meizu_health_registered = !ufs_health_init_sysfs(hba);
+	if (!host->meizu_health_registered)
+		dev_warn(dev, "Unable to register Samsung health sysfs\n");
 	goto out;
 
 out_disable_vccq_parent:
@@ -4087,6 +4097,14 @@ static void ufs_qcom_exit(struct ufs_hba *hba)
 {
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
 
+	if (host->meizu_fbo_registered) {
+		ufs_fbo_exit(hba);
+		host->meizu_fbo_registered = false;
+	}
+	if (host->meizu_health_registered) {
+		ufs_health_exit(hba);
+		host->meizu_health_registered = false;
+	}
 	ufs_qcom_disable_lane_clks(host);
 	ufs_qcom_phy_power_off(hba);
 	phy_exit(host->generic_phy);

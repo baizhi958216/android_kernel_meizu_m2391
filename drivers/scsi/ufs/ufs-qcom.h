@@ -622,6 +622,9 @@ struct ufs_qcom_host {
 	bool irq_affinity_support;
 	bool bypass_pbl_rst_wa;
 	struct notifier_block ufs_qcom_panic_nb;
+	/* Private to the source-built QCOM variant and its OEM sysfs objects. */
+	bool meizu_fbo_registered;
+	bool meizu_health_registered;
 
 };
 
