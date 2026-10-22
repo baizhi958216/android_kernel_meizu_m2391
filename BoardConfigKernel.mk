@@ -17,22 +17,10 @@ TARGET_NO_KERNEL_OVERRIDE := true
 M2391_KERNEL_BUILD_OUT = $(OUT_DIR)/target/product/$(TARGET_DEVICE)/obj/KERNEL_OBJ
 TARGET_PREBUILT_KERNEL = $(M2391_KERNEL_BUILD_OUT)/arch/arm64/boot/Image
 
-# Pin the toolchain the kernel itself designates.  This 5.15 ACK source
-# declares CLANG_VERSION=r450784e in build.config.constants, and the defconfig
-# enables LTO_CLANG_FULL + CFI_CLANG, so the kernel must be built with that
-# exact clang rather than the platform's clang-stable (r596125), which
-# additionally rejects this source with -Wdefault-const-init-var-unsafe.
-#
-# The prebuilt is not part of the LineageOS 24 / AOSP 17 prebuilts; fetch it
-# with (see patches/README.md):
-#   curl -L -o clang.tar.gz \
-#     "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android14-release/clang-r450784e.tar.gz"
-#   mkdir -p prebuilts/clang/kernel/linux-x86/clang-r450784e
-#   tar -xzf clang.tar.gz -C prebuilts/clang/kernel/linux-x86/clang-r450784e
-TARGET_KERNEL_CLANG_VERSION := r450784e
-# `=` (deferred) on purpose: $(BUILD_TOP) is not defined yet while BoardConfig
-# files are parsed, so `:=` would bake in a broken "/prebuilts/..." path.
-TARGET_KERNEL_CLANG_PATH = $(BUILD_TOP)/prebuilts/clang/kernel/linux-x86/clang-r450784e
+# Follow the platform's selected AOSP clang by default.  This keeps the kernel
+# toolchain in sync with the rest of the build instead of pinning a kernel
+# release.  TARGET_KERNEL_CLANG_PATH can still be set explicitly by a build
+# environment when a one-off toolchain comparison is needed.
 # Keep automatic BTF feature detection identical to the stock GKI config.
 TARGET_KERNEL_ADDITIONAL_FLAGS += PAHOLE=$(abspath prebuilts/kernel-build-tools/linux-x86/bin/pahole)
 BOARD_KERNEL_IMAGE_NAME := Image

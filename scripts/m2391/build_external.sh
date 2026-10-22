@@ -112,7 +112,8 @@ main() {
     original="$top/kernel/meizu/m2391-modules"
     mirror="$out/m2391-external-src/m2391-modules"
     source="$mirror/qcom/opensource"
-    clang="$top/prebuilts/clang/kernel/linux-x86/clang-r450784e"
+    clang="${CLANG_PATH:-$(dirname "$(command -v clang)")}"
+    clang=$(cd "$clang" && pwd)
     READELF="$clang/bin/llvm-readelf"
     plan="$out/m2391-external-plan.tsv"
     symbols="$out/m2391-external-symbols"

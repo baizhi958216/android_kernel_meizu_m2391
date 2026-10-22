@@ -469,6 +469,11 @@ KBUILD_USERLDFLAGS := $(USERLDFLAGS)
 KBUILD_HOSTCFLAGS   := $(KBUILD_USERHOSTCFLAGS) $(HOST_LFS_CFLAGS) $(HOSTCFLAGS)
 KBUILD_HOSTCXXFLAGS := -Wall -O2 $(HOST_LFS_CFLAGS) $(HOSTCXXFLAGS)
 KBUILD_HOSTLDFLAGS  := $(HOST_LFS_LDFLAGS) $(HOSTLDFLAGS)
+# clang 22 defaults host executables to PIE, while some kernel host tools link
+# non-PIC helper libraries such as libbpf. Keep host tools non-PIE as the
+# target build does.
+KBUILD_HOSTCFLAGS   += -fno-pie
+KBUILD_HOSTLDFLAGS  += -no-pie
 KBUILD_HOSTLDLIBS   := $(HOST_LFS_LIBS) $(HOSTLDLIBS)
 
 # Make variables (CC, etc...)
@@ -836,6 +841,11 @@ ifdef CONFIG_CC_IS_CLANG
 KBUILD_CPPFLAGS += -Qunused-arguments
 # The kernel builds with '-std=gnu89' so use of GNU extensions is acceptable.
 KBUILD_CFLAGS += -Wno-gnu
+# clang 22 diagnoses the kernel's unevaluated typeof() checks as uninitialized
+# const objects even though the expressions are only used by typecheck().
+KBUILD_CFLAGS += $(call cc-disable-warning, default-const-init-var-unsafe)
+KBUILD_CFLAGS += $(call cc-disable-warning, default-const-init-field-unsafe)
+KBUILD_CFLAGS += $(call cc-disable-warning, uninitialized-const-pointer)
 # CLANG uses a _MergedGlobals as optimization, but this breaks modpost, as the
 # source of a reference will be _MergedGlobals and not on of the whitelisted names.
 # See modpost pattern 2

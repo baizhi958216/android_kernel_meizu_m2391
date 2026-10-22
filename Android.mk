@@ -43,7 +43,7 @@ $(M2391_KERNEL_STAMP): $(M2391_KERNEL_CONFIG) $(M2391_KERNEL_BUILD_INPUTS) $(M23
 	        $(M2391_KERNEL_PATH)/scripts/m2391/abi/$$name.builtin.symvers \
 	        $(M2391_KERNEL_BUILD_OUT)/$$object $(TARGET_KERNEL_CLANG_PATH)/bin/llvm-readelf || exit $$?; \
 	done
-	bash $(M2391_KERNEL_PATH)/scripts/m2391/prepare_external_exports.sh $(abspath .) $(abspath $(M2391_KERNEL_BUILD_OUT)) $(shell getconf _NPROCESSORS_ONLN) $(M2391_KERNEL_VERSION_FLAGS)
+	CLANG_PATH=$(TARGET_KERNEL_CLANG_PATH) bash $(M2391_KERNEL_PATH)/scripts/m2391/prepare_external_exports.sh $(abspath .) $(abspath $(M2391_KERNEL_BUILD_OUT)) $(shell getconf _NPROCESSORS_ONLN) $(M2391_KERNEL_VERSION_FLAGS)
 	$(M2391_MAKE_KERNEL) KBUILD_EXTRA_SYMBOLS=$(abspath $(M2391_KERNEL_BUILD_OUT))/m2391-core-external.symvers $(BOARD_KERNEL_IMAGE_NAME)
 	$(M2391_MAKE_KERNEL) dtbs
 	$(M2391_MAKE_KERNEL) KBUILD_EXTRA_SYMBOLS=$(abspath $(M2391_KERNEL_BUILD_OUT))/m2391-core-external.symvers modules
@@ -100,7 +100,7 @@ $(M2391_EXTERNAL_STAMP): $(M2391_KERNEL_STAMP) $(M2391_KERNEL_MODULE_OUTPUTS) $(
 	    $(M2391_KERNEL_PATH)/scripts/m2391/source-abi-groups.json \
 	    $(M2391_KERNEL_BUILD_OUT)/m2391-source-selected-names.txt \
 	    vendor/meizu/m2391/proprietary $(TARGET_KERNEL_CLANG_PATH)/bin/llvm-nm
-	bash $(M2391_KERNEL_PATH)/scripts/m2391/build_external.sh $(abspath .) $(abspath $(M2391_KERNEL_BUILD_OUT)) $(shell getconf _NPROCESSORS_ONLN) $(M2391_KERNEL_VERSION_FLAGS)
+	CLANG_PATH=$(TARGET_KERNEL_CLANG_PATH) bash $(M2391_KERNEL_PATH)/scripts/m2391/build_external.sh $(abspath .) $(abspath $(M2391_KERNEL_BUILD_OUT)) $(shell getconf _NPROCESSORS_ONLN) $(M2391_KERNEL_VERSION_FLAGS)
 	@for output in $(M2391_EXTERNAL_OUTPUTS); do \
 	    test -s "$$output" || { echo "Missing external module: $$output" >&2; exit 1; }; \
 	done
