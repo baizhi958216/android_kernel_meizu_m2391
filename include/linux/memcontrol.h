@@ -855,6 +855,7 @@ static inline unsigned short mem_cgroup_id(struct mem_cgroup *memcg)
 	return memcg->id.id;
 }
 struct mem_cgroup *mem_cgroup_from_id(unsigned short id);
+void mem_cgroup_id_put2(struct mem_cgroup *memcg);
 
 static inline struct mem_cgroup *mem_cgroup_from_seq(struct seq_file *m)
 {

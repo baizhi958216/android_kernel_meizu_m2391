@@ -18,6 +18,7 @@
 #include <linux/gfp.h>
 #include <linux/kernel_stat.h>
 #include <linux/swap.h>
+#include <linux/meizu_smartswap.h>
 #include <linux/pagemap.h>
 #include <linux/init.h>
 #include <linux/highmem.h>
@@ -4642,6 +4643,59 @@ static bool isolate_page(struct lruvec *lruvec, struct page *page, struct scan_c
 
 	return true;
 }
+
+/* Keep the M2391 SmartSwap isolation inside the native VM implementation.
+ * The original module duplicated scan_control and MGLRU helpers. Reusing the
+ * actual isolate_page() avoids a second private VM ABI when the kernel moves.
+ * Select the requested anonymous generations, rotate unisolatable pages and
+ * reclaim the isolated list only after dropping the LRU spinlock.
+ */
+unsigned long meizu_smartshrink_anon(struct mem_cgroup *memcg,
+	unsigned long nr_to_scan, struct lruvec *lruvec, bool active)
+{
+	struct scan_control sc = {
+		.gfp_mask = current_gfp_context(GFP_HIGHUSER_MOVABLE),
+		.target_mem_cgroup = memcg,
+		.may_writepage = 1,
+		.may_unmap = 1,
+		.may_swap = 1,
+	};
+	LIST_HEAD(isolated);
+	unsigned long scanned = 0;
+	int gen, zone;
+
+	if (!memcg || !lruvec || !nr_to_scan)
+		return 0;
+	nr_to_scan = max(nr_to_scan, SWAP_CLUSTER_MAX);
+	spin_lock_irq(&lruvec->lru_lock);
+	for (zone = MAX_NR_ZONES - 1; zone >= 0 && scanned < nr_to_scan; zone--) {
+		for (gen = 0; gen < MAX_NR_GENS && scanned < nr_to_scan; gen++) {
+			struct list_head *head = &lruvec->lrugen.lists[gen][LRU_GEN_ANON][zone];
+			LIST_HEAD(skipped);
+			unsigned long nr_skipped = 0;
+
+			if (lru_gen_is_active(lruvec, gen) != active)
+				continue;
+			while (!list_empty(head) && scanned < nr_to_scan) {
+				struct page *page = lru_to_page(head);
+				unsigned long count = thp_nr_pages(page);
+
+				scanned += count;
+				if (isolate_page(lruvec, page, &sc))
+					list_add_tail(&page->lru, &isolated);
+				else {
+					list_move_tail(&page->lru, &skipped);
+					nr_skipped += count;
+				}
+			}
+			list_splice_tail(&skipped, head);
+			__count_zid_vm_events(PGSCAN_SKIP, zone, nr_skipped);
+		}
+	}
+	spin_unlock_irq(&lruvec->lru_lock);
+	return list_empty(&isolated) ? 0 : reclaim_pages(&isolated);
+}
+EXPORT_SYMBOL_GPL(meizu_smartshrink_anon);
 
 static int scan_pages(struct lruvec *lruvec, struct scan_control *sc,
 		      int type, int tier, struct list_head *list)
