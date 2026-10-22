@@ -15,6 +15,7 @@
 #include <trace/events/power.h>
 #include <linux/sysfs.h>
 #include <linux/module.h>
+#include <linux/meizu_thermal_boost.h>
 #include <linux/input.h>
 #include <linux/kthread.h>
 #include <linux/sched/walt.h>
@@ -323,6 +324,8 @@ cleanup:
 static ssize_t set_cpu_min_freq(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count)
 {
+	struct cpufreq_policy policy;
+	int policy_status;
 	int i, ntokens = 0;
 	unsigned int val, cpu;
 	const char *cp = buf;
@@ -378,11 +381,21 @@ static ssize_t set_cpu_min_freq(struct kobject *kobj,
 	 */
 	cpus_read_lock();
 	for_each_cpu(i, limit_mask_min) {
+		policy_status = -ENODEV;
+		if (IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
+			memset(&policy, 0, sizeof(policy));
 		i_cpu_stats = &per_cpu(msm_perf_cpu_stats, i);
+		if (IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST)) {
+			policy_status = cpufreq_get_policy(&policy, i);
+			if (!policy_status)
+				mz_thermal_boost_request(&policy, i_cpu_stats->min);
+		}
 
 		req = &per_cpu(qos_req_min, i);
 		if (freq_qos_update_request(req, i_cpu_stats->min) < 0)
 			continue;
+		if (IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST) && !policy_status)
+			mz_thermal_boost_restore(&policy, i_cpu_stats->min);
 
 	}
 	cpus_read_unlock();

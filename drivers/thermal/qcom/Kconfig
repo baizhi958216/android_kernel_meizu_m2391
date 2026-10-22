@@ -149,9 +149,18 @@ config QTI_QMI_SENSOR_V2
 	   the remote sensor. These sensors can take thresholds and notify the
 	   thermal framework when the threshold is reached.
 
+config MEIZU_THERMAL_BOOST
+	tristate "Meizu thermal frequency QoS boost"
+	depends on CPU_FREQ && THERMAL_OF && PROC_FS
+	help
+	  Restore the M2391 thermal boost cooling control and its policy QoS
+	  interfaces. The provider and its cooling consumer use normal core
+	  module symbol resolution.
+
 config QTI_CPUFREQ_CDEV
 	tristate "QTI CPU frequency cooling device"
 	depends on CPU_FREQ && THERMAL && PM_OPP
+	depends on MEIZU_THERMAL_BOOST || !MEIZU_THERMAL_BOOST
 	help
 	   This enables the QTI cpufreq cooling device, which will help
 	   register the cpu freq devices with thermal framework and allow

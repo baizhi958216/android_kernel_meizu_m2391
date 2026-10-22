@@ -8,6 +8,7 @@
 
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
+#include <linux/meizu_thermal_boost.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
@@ -61,6 +62,9 @@ static int cpufreq_cdev_set_state(struct thermal_cooling_device *cdev,
 	if (freq_qos_request_active(&cdev_data->qos_max_freq_req)) {
 		freq = state_to_cpufreq(cdev_data, state);
 		pr_debug("cdev:%s Limit:%u\n", cdev->type, freq);
+		if (IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
+			mz_thermal_boost_store(&cdev_data->qos_max_freq_req,
+					cdev_data->policy, &freq);
 		ret = freq_qos_update_request(&cdev_data->qos_max_freq_req,
 						freq);
 		if (ret < 0) {
@@ -104,6 +108,8 @@ static void cpufreq_cdev_register(struct work_struct *work)
 			struct cpufreq_cdev_device, register_work.work);
 	struct cpufreq_policy *policy = NULL;
 	int freq_count = 0, i;
+	unsigned int freq;
+	int ret;
 
 	policy = cpufreq_cpu_get(cdev_data->cpu);
 	if (!policy) {
@@ -143,14 +149,24 @@ static void cpufreq_cdev_register(struct work_struct *work)
 	cdev_data->policy = policy;
 	cdev_data->max_state = freq_count;
 	cdev_data->cur_state = 0;
-	freq_qos_add_request(&policy->constraints,
+	freq = state_to_cpufreq(cdev_data, 0);
+	if (IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
+		mz_thermal_boost_store(&cdev_data->qos_max_freq_req, policy, &freq);
+	ret = freq_qos_add_request(&policy->constraints,
 			   &cdev_data->qos_max_freq_req, FREQ_QOS_MAX,
 			   state_to_cpufreq(cdev_data, 0));
+	if (ret < 0) {
+		if (IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
+			mz_thermal_boost_forget(&cdev_data->qos_max_freq_req);
+		goto error_exit;
+	}
 	cdev_data->cdev = thermal_cooling_device_register(cdev_data->cdev_name,
 						cdev_data, &cpufreq_cdev_ops);
 	if (IS_ERR(cdev_data->cdev)) {
 		pr_err("Cdev register failed for %s, ret:%d\n",
 			cdev_data->cdev_name, PTR_ERR(cdev_data->cdev));
+		if (IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
+			mz_thermal_boost_forget(&cdev_data->qos_max_freq_req);
 		freq_qos_remove_request(&cdev_data->qos_max_freq_req);
 		goto error_exit;
 	}
@@ -160,9 +176,11 @@ static void cpufreq_cdev_register(struct work_struct *work)
 error_exit:
 	if (policy)
 		cpufreq_cpu_put(policy);
+	cdev_data->policy = NULL;
 	if (cdev_data->cdev)
 		cdev_data->cdev = NULL;
 	kfree(cdev_data->freq_table);
+	cdev_data->freq_table = NULL;
 }
 
 static int cpufreq_cdev_hp_online(unsigned int online_cpu)
@@ -233,22 +251,32 @@ static int cpufreq_cdev_probe(struct platform_device *pdev)
 
 static int cpufreq_cdev_remove(struct platform_device *pdev)
 {
-	struct cpufreq_cdev_device *cdev_data;
+	struct cpufreq_cdev_device *cdev_data, *next;
 
-	mutex_lock(&qti_cpufreq_cdev_lock);
+	/* Hotplug callbacks take the list mutex; drain them before taking it. */
 	if (cpu_hp_online) {
 		cpuhp_remove_state_nocalls(cpu_hp_online);
 		cpu_hp_online = 0;
 	}
-	list_for_each_entry(cdev_data, &qti_cpufreq_cdev_list, node) {
-		if (!cdev_data->cdev)
-			continue;
-		thermal_cooling_device_unregister(cdev_data->cdev);
+	mutex_lock(&qti_cpufreq_cdev_lock);
+	list_for_each_entry_safe(cdev_data, next, &qti_cpufreq_cdev_list, node) {
+		cancel_delayed_work_sync(&cdev_data->register_work);
+		if (cdev_data->cdev)
+			thermal_cooling_device_unregister(cdev_data->cdev);
+		/* No producer can now reinstall the request. Drain the boost worker
+		 * before removing the request or releasing its containing object.
+		 */
+		if (IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
+			mz_thermal_boost_forget(&cdev_data->qos_max_freq_req);
 		if (freq_qos_request_active(&cdev_data->qos_max_freq_req))
 			freq_qos_remove_request(&cdev_data->qos_max_freq_req);
 		cdev_data->cdev = NULL;
-		cpufreq_cpu_put(cdev_data->policy);
+		if (cdev_data->policy)
+			cpufreq_cpu_put(cdev_data->policy);
+		cdev_data->policy = NULL;
 		kfree(cdev_data->freq_table);
+		cdev_data->freq_table = NULL;
+		list_del_init(&cdev_data->node);
 	}
 	mutex_unlock(&qti_cpufreq_cdev_lock);
 	return 0;
