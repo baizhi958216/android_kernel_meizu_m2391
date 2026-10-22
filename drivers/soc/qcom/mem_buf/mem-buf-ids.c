@@ -32,6 +32,8 @@ static struct mem_buf_vm vm_ ## _lname = {	\
 	.allowed_api = 0,			\
 }
 
+PERIPHERAL_VM(LPASS, lpass);
+PERIPHERAL_VM(ADSP_HEAP, adsp_heap);
 PERIPHERAL_VM(CP_TOUCH, cp_touch);
 PERIPHERAL_VM(CP_BITSTREAM, cp_bitstream);
 PERIPHERAL_VM(CP_PIXEL, cp_pixel);
@@ -79,6 +81,8 @@ struct mem_buf_vm *pdata_array[] = {
 	&vm_trusted_vm,
 	&vm_oemvm,
 	&vm_hlos,
+	&vm_lpass,
+	&vm_adsp_heap,
 	&vm_cp_touch,
 	&vm_cp_bitstream,
 	&vm_cp_pixel,
