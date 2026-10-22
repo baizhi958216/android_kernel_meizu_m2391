@@ -24,6 +24,7 @@ enum panel_event_notifier_client {
 	PANEL_EVENT_NOTIFIER_CLIENT_SECONDARY_TOUCH,
 	PANEL_EVENT_NOTIFIER_CLIENT_ECM,
 	PANEL_EVENT_NOTIFIER_CLIENT_BATTERY_CHARGER,
+	PANEL_EVENT_NOTIFIER_CLIENT_FORCE_TOUCH,
 	PANEL_EVENT_NOTIFIER_CLIENT_MAX
 };
 
@@ -57,6 +58,9 @@ void *panel_event_notifier_register(enum panel_event_notifier_tag tag,
 		enum panel_event_notifier_client client_handle,
 		struct drm_panel *panel,
 		panel_event_notifier_handler notif_handler, void *pvt_data);
+/* Sleeps until in-flight callbacks return. Do not call from a callback or
+ * while holding a lock needed by a callback.
+ */
 void panel_event_notifier_unregister(void *cookie);
 void panel_event_notification_trigger(enum panel_event_notifier_tag tag,
 		 struct panel_event_notification *notification);

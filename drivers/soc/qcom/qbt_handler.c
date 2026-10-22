@@ -8,6 +8,7 @@
 #define pr_fmt(fmt) "qbt:%s: " fmt, __func__
 
 #include <linux/input.h>
+#include <linux/regulator/consumer.h>
 #include <linux/ktime.h>
 #include <linux/time.h>
 #include <linux/kernel.h>
@@ -117,7 +118,43 @@ struct qbt_drvdata {
 	bool is_wuhb_connected;
 	struct fd_userspace_buf scrath_buf;
 	atomic_t wakelock_acquired;
+	struct regulator *vreg_1v8;
 };
+
+/* The input handler and character-device pair are global singletons. Publish
+ * readiness only after probe completes, before allowing userspace callbacks.
+ */
+static bool qbt_ready;
+
+static int qbt_power_on(struct qbt_drvdata *drvdata)
+{
+	int rc;
+
+	if (IS_ERR_OR_NULL(drvdata->vreg_1v8))
+		return 0;
+	rc = regulator_set_voltage(drvdata->vreg_1v8, 1800000, 1800000);
+	if (rc)
+		pr_err("set 1.8 V failed, rc = %d\n", rc);
+	/* The original treats a voltage-setting failure as diagnostic and only
+	 * fails probe when enabling a disabled regulator fails.
+	 */
+	if (regulator_is_enabled(drvdata->vreg_1v8))
+		return 0;
+	return regulator_enable(drvdata->vreg_1v8);
+}
+
+static void qbt_power_off(struct qbt_drvdata *drvdata)
+{
+	int rc;
+
+	if (IS_ERR_OR_NULL(drvdata->vreg_1v8))
+		return;
+	if (!regulator_is_enabled(drvdata->vreg_1v8))
+		return;
+	rc = regulator_disable(drvdata->vreg_1v8);
+	if (rc)
+		pr_err("disable power failed, rc = %d\n", rc);
+}
 
 static void qbt_fd_report_event(struct qbt_drvdata *drvdata,
 		struct fd_event *event)
@@ -227,13 +264,11 @@ static void qbt_touch_report_event(struct input_handle *handle,
 		if ((!fd_touch->config.touch_fd_enable) &&
 				(!fd_touch->config.intr2_enable &&
 				!drvdata->fd_gpio.irq_enabled)) {
-			pr_debug("Received touch event but not scheduling\n");
 			memcpy(fd_touch->last_events,
 					fd_touch->current_events,
 					MT_MAX_FINGERS * sizeof(
 					struct touch_event));
 		} else {
-			pr_debug("Received touch event scheduling\n");
 			pm_stay_awake(drvdata->dev);
 			schedule_work(&drvdata->fd_touch.work);
 		}
@@ -397,6 +432,8 @@ static int qbt_open(struct inode *inode, struct file *file)
 		pr_err("NULL pointer passed\n");
 		return -EINVAL;
 	}
+	if (!smp_load_acquire(&qbt_ready))
+		return -ENODEV;
 	minor_no = iminor(inode);
 	if (minor_no == MINOR_NUM_FD) {
 		drvdata = container_of(inode->i_cdev,
@@ -1350,8 +1387,10 @@ static int qbt_probe(struct platform_device *pdev)
 	struct qbt_drvdata *drvdata;
 	int rc = 0;
 	int slot = 0;
+	bool fd_irq_live = false, ipc_irq_live = false;
 
 	pr_debug("entry\n");
+	WRITE_ONCE(qbt_ready, false);
 	drvdata = devm_kzalloc(dev, sizeof(*drvdata), GFP_KERNEL);
 	if (!drvdata)
 		return -ENOMEM;
@@ -1363,6 +1402,14 @@ static int qbt_probe(struct platform_device *pdev)
 	if (rc < 0)
 		goto end;
 
+	drvdata->vreg_1v8 = devm_regulator_get(dev, "fp_1v8");
+	if (IS_ERR(drvdata->vreg_1v8))
+		pr_err("failed to get fp_1v8 regulator: %ld\n",
+			PTR_ERR(drvdata->vreg_1v8));
+	rc = qbt_power_on(drvdata);
+	if (rc < 0)
+		goto end;
+
 	atomic_set(&drvdata->fd_available, 1);
 	atomic_set(&drvdata->ipc_available, 1);
 	atomic_set(&drvdata->wakelock_acquired, 0);
@@ -1370,17 +1417,24 @@ static int qbt_probe(struct platform_device *pdev)
 	mutex_init(&drvdata->mutex);
 	mutex_init(&drvdata->fd_events_mutex);
 	mutex_init(&drvdata->ipc_events_mutex);
-
-	rc = qbt_dev_register(drvdata);
-	if (rc < 0)
-		goto end;
-	rc = qbt_create_input_device(drvdata);
-	if (rc < 0)
-		goto err_input_device;
+	INIT_WORK(&drvdata->fd_touch.work, qbt_touch_work_func);
+	INIT_WORK(&drvdata->fd_gpio.work, qbt_gpio_work_func);
+	INIT_WORK(&drvdata->fw_ipc.work, qbt_irq_report_event);
 	INIT_KFIFO(drvdata->fd_events);
 	INIT_KFIFO(drvdata->ipc_events);
 	init_waitqueue_head(&drvdata->read_wait_queue_fd);
 	init_waitqueue_head(&drvdata->read_wait_queue_ipc);
+	for (slot = 0; slot < MT_MAX_FINGERS; slot++) {
+		drvdata->fd_touch.current_events[slot].id = -1;
+		drvdata->fd_touch.last_events[slot].id = -1;
+	}
+
+	rc = qbt_dev_register(drvdata);
+	if (rc < 0)
+		goto err_power;
+	rc = qbt_create_input_device(drvdata);
+	if (rc < 0)
+		goto err_input_device;
 
 	if (gpio_is_valid(drvdata->intr2_gpio)) {
 		rc = setup_intr2_irq(pdev, drvdata);
@@ -1392,11 +1446,15 @@ static int qbt_probe(struct platform_device *pdev)
 	if (rc < 0)
 		goto err_irq;
 	drvdata->fd_gpio.irq_enabled = false;
-	disable_irq(drvdata->fd_gpio.irq);
+	if (drvdata->is_wuhb_connected) {
+		fd_irq_live = true;
+		disable_irq(drvdata->fd_gpio.irq);
+	}
 
 	rc = setup_ipc_irq(pdev, drvdata);
 	if (rc < 0)
 		goto err_irq;
+	ipc_irq_live = true;
 	drvdata->fw_ipc.irq_enabled = false;
 	disable_irq(drvdata->fw_ipc.irq);
 
@@ -1407,25 +1465,33 @@ static int qbt_probe(struct platform_device *pdev)
 	}
 
 	qbt_touch_handler.private = drvdata;
-	INIT_WORK(&drvdata->fd_touch.work, qbt_touch_work_func);
-	for (slot = 0; slot < MT_MAX_FINGERS; slot++) {
-		drvdata->fd_touch.current_events[slot].id = -1;
-		drvdata->fd_touch.last_events[slot].id = -1;
-	}
 	rc = input_register_handler(&qbt_touch_handler);
 	if (rc < 0) {
 		pr_err("Failed to register input handler: %d\n", rc);
 		goto err_input_handler;
 	}
+	smp_store_release(&qbt_ready, true);
 	return rc;
 
 err_input_handler:
 	device_init_wakeup(&pdev->dev, 0);
 err_device_wakeup:
-err_irq: // IRQs/GPIOs will be freed up automatically when the device is destroyed
+err_irq:
+	/* Stop producers before releasing their work/input and power resources. */
+	if (ipc_irq_live)
+		devm_free_irq(dev, drvdata->fw_ipc.irq, drvdata);
+	if (fd_irq_live)
+		devm_free_irq(dev, drvdata->fd_gpio.irq, drvdata);
+	cancel_work_sync(&drvdata->fw_ipc.work);
+	cancel_work_sync(&drvdata->fd_gpio.work);
+	cancel_work_sync(&drvdata->fd_touch.work);
 	qbt_unregister_input_device(drvdata);
 err_input_device:
+	device_destroy(drvdata->qbt_class, drvdata->qbt_fd_cdev.dev);
+	device_destroy(drvdata->qbt_class, drvdata->qbt_ipc_cdev.dev);
 	qbt_dev_unregister(drvdata);
+err_power:
+	qbt_power_off(drvdata);
 end:
 
 	pr_debug("exit\n");
@@ -1435,6 +1501,17 @@ end:
 static int qbt_remove(struct platform_device *pdev)
 {
 	struct qbt_drvdata *drvdata = platform_get_drvdata(pdev);
+
+	WRITE_ONCE(qbt_ready, false);
+	input_unregister_handler(&qbt_touch_handler);
+	devm_free_irq(&pdev->dev, drvdata->fw_ipc.irq, drvdata);
+	if (drvdata->is_wuhb_connected)
+		devm_free_irq(&pdev->dev, drvdata->fd_gpio.irq, drvdata);
+	cancel_work_sync(&drvdata->fw_ipc.work);
+	cancel_work_sync(&drvdata->fd_gpio.work);
+	cancel_work_sync(&drvdata->fd_touch.work);
+	qbt_unregister_input_device(drvdata);
+	qbt_power_off(drvdata);
 
 	mutex_destroy(&drvdata->mutex);
 	mutex_destroy(&drvdata->fd_events_mutex);
@@ -1450,7 +1527,6 @@ static int qbt_remove(struct platform_device *pdev)
 	unregister_chrdev_region(drvdata->qbt_ipc_cdev.dev, 1);
 
 	device_init_wakeup(&pdev->dev, 0);
-	input_unregister_handler(&qbt_touch_handler);
 
 	return 0;
 }
@@ -1506,6 +1582,8 @@ static struct platform_driver qbt_plat_driver = {
 	.driver = {
 		.name = "qbt_handler",
 		.of_match_table = qbt_match,
+		/* Open character files retain devm data until module removal. */
+		.suppress_bind_attrs = true,
 	},
 };
 

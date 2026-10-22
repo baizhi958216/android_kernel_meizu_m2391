@@ -17,9 +17,44 @@
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
+#include <linux/pm8941-pwrkey.h>
 #include <linux/reboot.h>
 #include <linux/regmap.h>
 #include <linux/suspend.h>
+#include <linux/srcu.h>
+
+/* Legacy symbol retained for the paired display source replacement. */
+unsigned int (*dsi_display_off_at_pmic_s1_bark)(void);
+EXPORT_SYMBOL_GPL(dsi_display_off_at_pmic_s1_bark);
+static DEFINE_MUTEX(pm8941_bark_lock);
+DEFINE_STATIC_SRCU(pm8941_bark_srcu);
+
+int pm8941_pwrkey_register_bark_callback(unsigned int (*callback)(void))
+{
+	int ret = 0;
+
+	if (!callback)
+		return -EINVAL;
+	mutex_lock(&pm8941_bark_lock);
+	if (READ_ONCE(dsi_display_off_at_pmic_s1_bark))
+		ret = -EBUSY;
+	else
+		smp_store_release(&dsi_display_off_at_pmic_s1_bark, callback);
+	mutex_unlock(&pm8941_bark_lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(pm8941_pwrkey_register_bark_callback);
+
+void pm8941_pwrkey_unregister_bark_callback(unsigned int (*callback)(void))
+{
+	mutex_lock(&pm8941_bark_lock);
+	if (READ_ONCE(dsi_display_off_at_pmic_s1_bark) == callback) {
+		WRITE_ONCE(dsi_display_off_at_pmic_s1_bark, NULL);
+		synchronize_srcu(&pm8941_bark_srcu);
+	}
+	mutex_unlock(&pm8941_bark_lock);
+}
+EXPORT_SYMBOL_GPL(pm8941_pwrkey_unregister_bark_callback);
 
 #define PON_REV2			0x01
 
@@ -84,6 +119,38 @@ struct pm8941_pwrkey {
 	bool pull_up;
 	const struct pm8941_data *data;
 };
+
+static irqreturn_t pm8941_kpdpwr_bark_irq(int irq, void *data)
+{
+	struct pm8941_pwrkey *pwrkey = data;
+	unsigned int sts;
+	int remaining = 180;
+	unsigned int (*callback)(void);
+	int idx;
+
+	/* Stock polls bit zero at 10 ms intervals for 1.8 seconds. Read errors
+	 * consume an attempt without a delay; release ends polling immediately.
+	 */
+	do {
+		if (regmap_read(pwrkey->regmap, pwrkey->baseaddr + PON_RT_STS,
+				&sts))
+			continue;
+		if (!(sts & PON_KPDPWR_N_SET))
+			break;
+		if (remaining == 1) {
+			dev_err(pwrkey->dev, "[%s]: display off\n", __func__);
+			idx = srcu_read_lock(&pm8941_bark_srcu);
+			callback = smp_load_acquire(&dsi_display_off_at_pmic_s1_bark);
+			if (callback)
+				callback();
+			srcu_read_unlock(&pm8941_bark_srcu, idx);
+			mdelay(10);
+			break;
+		}
+		mdelay(10);
+	} while (--remaining);
+	return IRQ_HANDLED;
+}
 
 static int pm8941_reboot_notify(struct notifier_block *nb,
 				unsigned long code, void *unused)
@@ -437,7 +504,13 @@ static int pm8941_pwrkey_probe(struct platform_device *pdev)
 			return error;
 	}
 
-	error = devm_request_threaded_irq(&pdev->dev, pwrkey->irq,
+	if (of_property_read_bool(pdev->dev.of_node, "qcom,use-bark"))
+		error = devm_request_threaded_irq(&pdev->dev, pwrkey->irq,
+			NULL, pm8941_kpdpwr_bark_irq,
+			IRQF_ONESHOT | IRQF_TRIGGER_RISING,
+			pwrkey->data->name, pwrkey);
+	else
+		error = devm_request_threaded_irq(&pdev->dev, pwrkey->irq,
 					  NULL, pm8941_pwrkey_irq,
 					  IRQF_ONESHOT,
 					  pwrkey->data->name, pwrkey);
