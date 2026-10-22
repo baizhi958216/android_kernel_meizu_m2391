@@ -784,6 +784,24 @@ static void socinfo_debugfs_exit(struct qcom_socinfo *qcom_socinfo) {  }
 #endif /* CONFIG_DEBUG_FS */
 
 /* The version 16 SMEM part map has fixed-size, potentially unaligned records. */
+bool qcom_socinfo_part_disabled(unsigned int part)
+{
+	const struct socinfo *info;
+	u32 offset, count;
+	size_t size;
+
+	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_HW_SW_BUILD_ID, &size);
+	if (IS_ERR(info) || size < offsetofend(struct socinfo, nsubset_parts_array_offset) ||
+	    le32_to_cpu(info->fmt) < SOCINFO_VERSION(0, 14))
+		return false;
+	offset = le32_to_cpu(info->nsubset_parts_array_offset);
+	count = le32_to_cpu(info->num_subset_parts);
+	if (!offset || offset > size || count > (size - offset) / sizeof(__le32) || part >= count)
+		return false;
+	return get_unaligned_le32((const u8 *)info + offset + part * sizeof(__le32)) & 1;
+}
+EXPORT_SYMBOL_GPL(qcom_socinfo_part_disabled);
+
 int qcom_socinfo_get_adreno(struct qcom_socinfo_adreno *gpu)
 {
 	struct socinfo *info;
