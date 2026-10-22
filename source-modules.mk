@@ -2,7 +2,30 @@
 # Source replacements and external build groups for m2391.
 M2391_SOURCE_MODULES_OUT = $(M2391_KERNEL_BUILD_OUT)/m2391-modules
 
+# Built-in replacements exclude legacy blobs but never produce fictitious .ko files.
+M2391_SOURCE_BUILTIN_REPLACEMENT_NAMES := mz_vip_task.ko
+M2391_SOURCE_BUILTIN_ABI_OBJECTS := kernel/sched/mz_vip_task.lto.o
+
 M2391_SOURCE_MODULE_PATHS := \
+    drivers/char/frpc-adsprpc.ko \
+    drivers/scsi/ufs/ufs_qcom.ko \
+    drivers/scsi/ufs/ufshcd-crypto-qti.ko \
+    kernel/sched/walt/sched-walt.ko \
+    drivers/pci/controller/pci-msm-drv.ko \
+    drivers/platform/msm/ep_pcie/ep_pcie_drv.ko \
+    drivers/virt/gunyah/gunyah.ko \
+    drivers/mmc/host/sdhci-msm.ko \
+    drivers/soc/qcom/panel_event_notifier.ko \
+    drivers/usb/dwc3/dwc3-msm.ko \
+    drivers/soc/qcom/mem_buf/mem_buf.ko \
+    drivers/soc/qcom/mem_buf/mem_buf_dev.ko \
+    drivers/soc/qcom/mem_buf/mem_buf_msgq.ko \
+    drivers/iommu/qcom_iommu_util.ko \
+    drivers/soc/qcom/msm_performance.ko \
+    drivers/power/supply/qti_battery_charger.ko \
+    drivers/interconnect/qcom/icc-debug.ko \
+    drivers/hwmon/qti_amoled_ecm.ko \
+    drivers/soc/qcom/pdr_interface.ko \
     arch/arm64/gunyah/gh_arm_drv.ko \
     drivers/base/regmap/qti-regmap-debugfs.ko \
     drivers/base/regmap/regmap-spmi.ko \
@@ -55,6 +78,7 @@ M2391_SOURCE_MODULE_PATHS := \
     drivers/iio/adc/qcom-vadc-common.ko \
     drivers/iio/adc/qti-glink-adc.ko \
     drivers/iio/buffer/industrialio-buffer-cb.ko \
+    drivers/input/misc/pm8941-pwrkey.ko \
     drivers/input/misc/qcom-hv-haptics.ko \
     drivers/interconnect/icc-test.ko \
     drivers/iommu/arm/arm-smmu/arm_smmu.ko \
@@ -95,6 +119,7 @@ M2391_SOURCE_MODULE_PATHS := \
     drivers/platform/msm/ipa_fmwk/ipa_fmwk.ko \
     drivers/platform/msm/mhi_dev/mhi_dev_drv.ko \
     drivers/platform/msm/mhi_dev/mhi_dev_net.ko \
+    drivers/power/reset/qcom-dload-mode.ko \
     drivers/power/reset/qcom-pon.ko \
     drivers/power/reset/qcom-reboot-reason.ko \
     drivers/power/reset/reboot-mode.ko \
@@ -107,8 +132,10 @@ M2391_SOURCE_MODULE_PATHS := \
     drivers/regulator/qti-ocp-notifier.ko \
     drivers/regulator/rpmh-regulator.ko \
     drivers/regulator/stub-regulator.ko \
+    drivers/tty/serial/msm_geni_serial.ko \
     drivers/remoteproc/qcom_esoc.ko \
     drivers/remoteproc/qcom_pil_info.ko \
+    drivers/remoteproc/qcom_q6v5.ko \
     drivers/remoteproc/qcom_q6v5_pas.ko \
     drivers/remoteproc/qcom_spss.ko \
     drivers/remoteproc/qcom_sysmon.ko \
@@ -158,7 +185,10 @@ M2391_SOURCE_MODULE_PATHS := \
     drivers/soc/qcom/memshare/heap_mem_ext_v01.ko \
     drivers/soc/qcom/memshare/msm_memshare.ko \
     drivers/soc/qcom/microdump_collector.ko \
+    drivers/soc/qcom/minidump.ko \
+    drivers/soc/qcom/mz_info.ko \
     drivers/soc/qcom/msm_show_epoch.ko \
+    drivers/soc/qcom/mz_enhance_qcom_wdog.ko \
     drivers/soc/qcom/plh_scmi.ko \
     drivers/soc/qcom/pmic-glink-debug.ko \
     drivers/soc/qcom/pmic-pon-log.ko \
@@ -171,6 +201,7 @@ M2391_SOURCE_MODULE_PATHS := \
     drivers/soc/qcom/qcom_rimps.ko \
     drivers/soc/qcom/qcom_rpmh.ko \
     drivers/soc/qcom/qcom_va_minidump.ko \
+    drivers/soc/qcom/qcom_wdt_core.ko \
     drivers/soc/qcom/qdsp6v2/cdsp-loader.ko \
     drivers/soc/qcom/qdss_bridge.ko \
     drivers/soc/qcom/qfprom-sys.ko \
@@ -208,6 +239,8 @@ M2391_SOURCE_MODULE_PATHS := \
     drivers/thermal/qcom/qcom-spmi-temp-alarm.ko \
     drivers/thermal/qcom/qcom_tsens.ko \
     drivers/thermal/qcom/qti_devfreq_cdev.ko \
+    drivers/thermal/qcom/mz_thermal_boost.ko \
+    drivers/thermal/qcom/qti_cpufreq_cdev.ko \
     drivers/thermal/qcom/qti_qmi_cdev.ko \
     drivers/thermal/qcom/qti_qmi_sensor_v2.ko \
     drivers/thermal/qcom/qti_userspace_cdev.ko \
@@ -243,6 +276,29 @@ M2391_SOURCE_MODULE_PATHS := \
     drivers/virt/gunyah/gh_rm_drv.ko \
     drivers/virt/gunyah/gh_virt_wdt.ko \
     kernel/msm_sysstats.ko \
+    kernel/trace/qcom_ipc_logging.ko \
+    drivers/clk/qcom/clk-qcom.ko \
+    drivers/clk/qcom/clk-dummy.ko \
+    drivers/clk/qcom/debugcc-crow.ko \
+    drivers/clk/qcom/debugcc-kalama.ko \
+    drivers/clk/qcom/camcc-crow.ko \
+    drivers/clk/qcom/camcc-kalama.ko \
+    drivers/clk/qcom/dispcc-crow.ko \
+    drivers/clk/qcom/dispcc-kalama.ko \
+    drivers/clk/qcom/gcc-crow.ko \
+    drivers/clk/qcom/gcc-kalama.ko \
+    drivers/clk/qcom/gpucc-crow.ko \
+    drivers/clk/qcom/gpucc-kalama.ko \
+    drivers/clk/qcom/tcsrcc-kalama.ko \
+    drivers/clk/qcom/videocc-crow.ko \
+    drivers/clk/qcom/videocc-kalama.ko \
+    drivers/soc/qcom/qbt_handler.ko \
+    drivers/soc/qcom/qcom_aoss.ko \
+    drivers/interconnect/qcom/qnoc-qos.ko \
+    drivers/interconnect/qcom/icc-rpmh.ko \
+    drivers/interconnect/qcom/icc-bcm-voter.ko \
+    drivers/interconnect/qcom/qnoc-crow.ko \
+    drivers/interconnect/qcom/qnoc-kalama.ko \
     lib/kunit/kunit.ko \
     net/mac80211/mac80211.ko \
     net/qrtr/qrtr-gunyah.ko \
@@ -256,13 +312,64 @@ M2391_SOURCE_MODULE_PATHS := \
 # External groups are built in dependency order. Entries use installed-name:source-path, with paths relative to
 # kernel/meizu/m2391-modules/qcom/opensource. This preserves the Wi-Fi module alias.
 M2391_EXTERNAL_GROUPS := \
+    ../../meizu/smart-zsmalloc \
+    ../../meizu/smartswap-zram \
+    ../../meizu/aks-adc \
+    ../../meizu/aks-joystick \
+    ../../meizu/audio-dummy \
     dataipa/drivers/platform/msm \
     datarmnet-ext/sch \
     datarmnet/core \
+    ../../meizu/boot-mode \
+    ../../meizu/system \
+    ../../meizu/debug-vendor-hooks \
+    ../../meizu/reclaim-opt \
+    ../../meizu/kshrink-slabd \
+    ../../meizu/freq-qos \
+    ../../meizu/multiple-rail-governor \
+    ../../meizu/probe \
+    ../../meizu/compaction-opt \
+    ../../meizu/hang-dump \
+    ../../meizu/audit \
+    ../../meizu/pwm-ir \
+    ../../meizu/storage \
+    ../../meizu/cirrus-calibration \
+    ../../meizu/pressure-m68 \
+    ../../meizu/pressure-f71 \
+    ../../meizu/v4l2loopback \
+    ../../meizu/haptic-hv \
+    ../../meizu/reset-info \
+    ../../meizu/bootloader-lock \
+    ../../meizu/key-value \
+    ../../meizu/rpmb-control \
+    ../../meizu/power-notify \
+    ../../meizu/power-logger \
+    ../../meizu/bootloader-log \
+    ../../meizu/power-interface \
+    ../../meizu/power-manager \
+    ../../meizu/power-thermal \
+    ../../meizu/power-battery-logger \
+    ../../meizu/thermal-log \
+    ../../meizu/tof-ai11ba \
+    ../../meizu/tof-vl53l1 \
+    ../../st/opensource/st54se-gpio \
+    securemsm-kernel \
+    ../../st/opensource/nfc \
+    ../../nxp/opensource/driver \
+    ../../nxp/opensource/uwb \
+    touch-drivers/mz_gesture \
+    touch-drivers \
+    mmrm-driver \
+    mm-drivers/sync_fence \
+    graphics-kernel \
+    camera-kernel \
+    eva-kernel \
+    video-driver \
     mm-drivers/hw_fence \
     mm-drivers/msm_ext_display \
-    securemsm-kernel \
+    display-drivers \
     audio-kernel \
+    ../../meizu/cs35l45 \
     datarmnet-ext/aps \
     datarmnet-ext/offload \
     datarmnet-ext/perf \
@@ -272,6 +379,214 @@ M2391_EXTERNAL_GROUPS := \
     wlan/platform \
     bt-kernel \
     wlan/qcacld-3.0
+
+# Recovered OEM drivers live outside qcom/opensource in the same checkout.
+M2391_EXTERNAL_MODULES.../../meizu/smart-zsmalloc := \
+    smart_zsmalloc.ko:../../meizu/smart-zsmalloc/smart_zsmalloc.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/smart-zsmalloc := smart_zsmalloc.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/smartswap-zram := \
+    smartswap_zram.ko:../../meizu/smartswap-zram/smartswap_zram.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/smartswap-zram := smartswap_zram.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/aks-adc := \
+    aks-ads1015.ko:../../meizu/aks-adc/aks-ads1015.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/aks-adc := aks-ads1015.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/aks-joystick := \
+    aks-adc-joystick.ko:../../meizu/aks-joystick/aks-adc-joystick.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/aks-joystick := aks-adc-joystick.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/audio-dummy := \
+    dummy_dlkm.ko:../../meizu/audio-dummy/dummy_dlkm.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/audio-dummy := dummy_dlkm.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/boot-mode := \
+    boot_mode.ko:../../meizu/boot-mode/boot_mode.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/boot-mode := boot_mode.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/system := \
+    meizu-sys.ko:../../meizu/system/meizu-sys.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/system := meizu-sys.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/pressure-m68 := \
+    cs_press_m68.ko:../../meizu/pressure-m68/cs_press_m68.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/pressure-m68 := cs_press_m68.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/pressure-f71 := \
+    cs_press_f71.ko:../../meizu/pressure-f71/cs_press_f71.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/pressure-f71 := cs_press_f71.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/v4l2loopback := \
+    v4l2loopback.ko:../../meizu/v4l2loopback/v4l2loopback.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/v4l2loopback := v4l2loopback.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/kshrink-slabd := \
+    mz_kshrink_slabd.ko:../../meizu/kshrink-slabd/mz_kshrink_slabd.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/kshrink-slabd := mz_kshrink_slabd.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/freq-qos := \
+    mz_freq_qos.ko:../../meizu/freq-qos/mz_freq_qos.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/freq-qos := mz_freq_qos.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/multiple-rail-governor := \
+    mz_mrg.ko:../../meizu/multiple-rail-governor/mz_mrg.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/multiple-rail-governor := mz_mrg.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/probe := \
+    mzprobe.ko:../../meizu/probe/mzprobe.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/probe := mzprobe.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/cirrus-calibration := \
+    cirrus_cali_dlkm.ko:../../meizu/cirrus-calibration/cirrus_cali_dlkm.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/cirrus-calibration := cirrus_cali_dlkm.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/cs35l45 := \
+    cs35l45_dlkm.ko:../../meizu/cs35l45/cs35l45_dlkm.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/cs35l45 := cs35l45_dlkm.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/reclaim-opt := \
+    mz_reclaim_opt.ko:../../meizu/reclaim-opt/mz_reclaim_opt.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/reclaim-opt := mz_reclaim_opt.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/compaction-opt := \
+    mz_compaction_opt.ko:../../meizu/compaction-opt/mz_compaction_opt.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/compaction-opt := mz_compaction_opt.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/hang-dump := \
+    mz_hang_dump.ko:../../meizu/hang-dump/mz_hang_dump.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/hang-dump := mz_hang_dump.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/audit := \
+    maudit.ko:../../meizu/audit/maudit.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/audit := maudit.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/pwm-ir := \
+    pwm_ir.ko:../../meizu/pwm-ir/pwm_ir.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/pwm-ir := pwm_ir.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/debug-vendor-hooks := \
+    mz_debug_vendor_hooks.ko:../../meizu/debug-vendor-hooks/mz_debug_vendor_hooks.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/debug-vendor-hooks := mz_debug_vendor_hooks.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/storage := \
+    meizu_private.ko:../../meizu/storage/meizu_private.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/storage := meizu_private.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/haptic-hv := \
+    haptic_hv.ko:../../meizu/haptic-hv/haptic_hv.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/haptic-hv := haptic_hv.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/reset-info := \
+    mz_rstinfo.ko:../../meizu/reset-info/mz_rstinfo.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/reset-info := mz_rstinfo.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/bootloader-lock := \
+    mz_bl_lock.ko:../../meizu/bootloader-lock/mz_bl_lock.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/bootloader-lock := mz_bl_lock.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/power-notify := \
+    xcharge_notify_subsys.ko:../../meizu/power-notify/xcharge_notify_subsys.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/power-notify := xcharge_notify_subsys.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/power-manager := \
+    xcharge_chg_manager.ko:../../meizu/power-manager/xcharge_chg_manager.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/power-manager := xcharge_chg_manager.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/power-thermal := \
+    xcharge_thermal.ko:../../meizu/power-thermal/xcharge_thermal.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/power-thermal := xcharge_thermal.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/power-battery-logger := \
+    xcharge_mbattery_logger.ko:../../meizu/power-battery-logger/xcharge_mbattery_logger.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/power-battery-logger := xcharge_mbattery_logger.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/power-logger := \
+    mpower_logger.ko:../../meizu/power-logger/mpower_logger.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/power-logger := mpower_logger.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/bootloader-log := \
+    bootloader_log.ko:../../meizu/bootloader-log/bootloader_log.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/bootloader-log := bootloader_log.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/key-value := \
+    meizu_key_value.ko:../../meizu/key-value/meizu_key_value.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/key-value := meizu_key_value.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/rpmb-control := \
+    mz_rpmb_ctl.ko:../../meizu/rpmb-control/mz_rpmb_ctl.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/rpmb-control := mz_rpmb_ctl.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/power-interface := \
+    xcharge_chg_interface.ko:../../meizu/power-interface/xcharge_chg_interface.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/power-interface := xcharge_chg_interface.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/thermal-log := \
+    mz_thermal_log.ko:../../meizu/thermal-log/mz_thermal_log.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/thermal-log := mz_thermal_log.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/tof-ai11ba := \
+    ai11ba.ko:../../meizu/tof-ai11ba/ai11ba.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/tof-ai11ba := ai11ba.ko
+
+M2391_EXTERNAL_MODULES.../../meizu/tof-vl53l1 := \
+    vl53l1.ko:../../meizu/tof-vl53l1/vl53l1.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../meizu/tof-vl53l1 := vl53l1.ko
+
+M2391_EXTERNAL_MODULES.../../st/opensource/st54se-gpio := \
+    stm_st54se_gpio.ko:../../st/opensource/st54se-gpio/stm_st54se_gpio.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../st/opensource/st54se-gpio := stm_st54se_gpio.ko
+
+M2391_EXTERNAL_MODULES.../../st/opensource/nfc := \
+    stm_nfc_i2c.ko:../../st/opensource/nfc/stm_nfc_i2c.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../st/opensource/nfc := stm_nfc_i2c.ko
+
+M2391_EXTERNAL_MODULES.../../nxp/opensource/driver := \
+    nxp-nci.ko:../../nxp/opensource/driver/nxp-nci.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../nxp/opensource/driver := nxp-nci.ko
+
+M2391_EXTERNAL_MODULES.../../nxp/opensource/uwb := \
+    nxp-sr100.ko:../../nxp/opensource/uwb/nxp-sr100.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.../../nxp/opensource/uwb := nxp-sr100.ko
+
+M2391_EXTERNAL_MODULES.touch-drivers/mz_gesture := \
+    mz_gesture_ts.ko:touch-drivers/mz_gesture/mz_gesture_ts.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.touch-drivers/mz_gesture := mz_gesture_ts.ko
+
+M2391_EXTERNAL_MODULES.touch-drivers := \
+    qts.ko:touch-drivers/qts.ko \
+    goodix_ts.ko:touch-drivers/goodix_ts.ko \
+    nt36xxx-i2c.ko:touch-drivers/nt36xxx-i2c.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.touch-drivers := qts.ko goodix_ts.ko nt36xxx-i2c.ko
+
+M2391_EXTERNAL_MODULES.graphics-kernel := \
+    msm_kgsl.ko:graphics-kernel/msm_kgsl.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.graphics-kernel := msm_kgsl.ko
+
+M2391_EXTERNAL_MODULES.video-driver := \
+    msm_video.ko:video-driver/msm_video.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.video-driver := msm_video.ko
+
+M2391_EXTERNAL_MODULES.eva-kernel := \
+    msm-eva.ko:eva-kernel/msm/msm-eva.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.eva-kernel := msm-eva.ko
+
+M2391_EXTERNAL_MODULES.camera-kernel := \
+    camera.ko:camera-kernel/camera.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.camera-kernel := camera.ko
+
+M2391_EXTERNAL_MODULES.display-drivers := \
+    msm_drm.ko:display-drivers/msm/msm_drm.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.display-drivers := msm_drm.ko
+
+M2391_EXTERNAL_MODULES.mmrm-driver := \
+    msm-mmrm.ko:mmrm-driver/driver/msm-mmrm.ko \
+    mmrm_test_module.ko:mmrm-driver/test/mmrm_test_module.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.mmrm-driver := msm-mmrm.ko mmrm_test_module.ko
+
+M2391_EXTERNAL_MODULES.mm-drivers/sync_fence := \
+    sync_fence.ko:mm-drivers/sync_fence/sync_fence.ko
+M2391_EXTERNAL_BUILT_MODULE_NAMES.mm-drivers/sync_fence := sync_fence.ko
 
 M2391_EXTERNAL_MODULES.dataipa/drivers/platform/msm := \
     gsim.ko:dataipa/drivers/platform/msm/gsi/gsim.ko \
@@ -332,6 +647,7 @@ M2391_EXTERNAL_BUILT_MODULE_NAMES.securemsm-kernel := \
     tz_log_dlkm.ko
 
 M2391_EXTERNAL_MODULES.audio-kernel := \
+    machine_dlkm.ko:audio-kernel/asoc/machine_dlkm.ko \
     adsp_loader_dlkm.ko:audio-kernel/dsp/adsp_loader_dlkm.ko \
     audio_pkt_dlkm.ko:audio-kernel/ipc/audio_pkt_dlkm.ko \
     audio_prm_dlkm.ko:audio-kernel/dsp/audio_prm_dlkm.ko \
@@ -475,6 +791,40 @@ M2391_EXTERNAL_BUILT_MODULE_NAMES.wlan/qcacld-3.0 := \
 M2391_SOURCE_EXTERNAL_MODULE_NAMES := $(sort $(foreach group,$(M2391_EXTERNAL_GROUPS),$(foreach module,$(M2391_EXTERNAL_MODULES.$(group)),$(word 1,$(subst :, ,$(module))))))
 
 M2391_SOURCE_VENDOR_MODULE_NAMES := \
+    smartswap_zram.ko \
+    machine_dlkm.ko \
+    cs35l45_dlkm.ko \
+    msm_video.ko \
+    frpc-adsprpc.ko \
+    msm-eva.ko \
+    cirrus_cali_dlkm.ko \
+    mzprobe.ko \
+    smart_zsmalloc.ko \
+    nt36xxx-i2c.ko \
+    aks-ads1015.ko \
+    aks-adc-joystick.ko \
+    cs_press_m68.ko \
+    cs_press_f71.ko \
+    v4l2loopback.ko \
+    dummy_dlkm.ko \
+    pci-msm-drv.ko \
+    ep_pcie_drv.ko \
+    msm_geni_serial.ko \
+    haptic_hv.ko \
+    qcom_q6v5.ko \
+    mz_rstinfo.ko \
+    panel_event_notifier.ko \
+    dwc3-msm.ko \
+    mmrm_test_module.ko \
+    pwm_ir.ko \
+    maudit.ko \
+    msm_performance.ko \
+    qti_battery_charger.ko \
+    mz_hang_dump.ko \
+    qti_amoled_ecm.ko \
+    pdr_interface.ko \
+    mz_reclaim_opt.ko \
+    mz_debug_vendor_hooks.ko \
     adsp_loader_dlkm.ko \
     adsp_sleepmon.ko \
     altmode-glink.ko \
@@ -483,6 +833,7 @@ M2391_SOURCE_VENDOR_MODULE_NAMES := \
     audpkt_ion_dlkm.ko \
     bam_dma.ko \
     bcl_soc.ko \
+    boot_mode.ko \
     boot_stats.ko \
     bt_fm_slim.ko \
     btpower.ko \
@@ -557,6 +908,8 @@ M2391_SOURCE_VENDOR_MODULE_NAMES := \
     memlat.ko \
     memlat_scmi.ko \
     memlat_vendor.ko \
+    meizu_private.ko \
+    mz_bl_lock.ko \
     mhi.ko \
     mhi_cntrl_qcom.ko \
     mhi_dev_drv.ko \
@@ -566,6 +919,7 @@ M2391_SOURCE_VENDOR_MODULE_NAMES := \
     mhi_dev_satellite.ko \
     mhi_dev_uci.ko \
     microdump_collector.ko \
+    msm-mmrm.ko \
     msm_ext_display.ko \
     msm_gpi.ko \
     msm_hw_fence.ko \
@@ -692,6 +1046,7 @@ M2391_SOURCE_VENDOR_MODULE_NAMES := \
     swr_dlkm.ko \
     swr_dmic_dlkm.ko \
     swr_haptics_dlkm.ko \
+    sync_fence.ko \
     synx-driver.ko \
     sys_pm_vx.ko \
     sysmon_subsystem_stats.ko \
@@ -715,15 +1070,83 @@ M2391_SOURCE_VENDOR_MODULE_NAMES := \
     wcd_usbss_i2c.ko \
     wlan_firmware_service.ko \
     wsa883x_dlkm.ko \
-    wsa884x_dlkm.ko
+    wsa884x_dlkm.ko \
+    xcharge_chg_manager.ko \
+    mpower_logger.ko \
+    bootloader_log.ko \
+    meizu_key_value.ko \
+    mz_rpmb_ctl.ko \
+    camcc-crow.ko \
+    gpucc-crow.ko \
+    gpucc-kalama.ko \
+    videocc-crow.ko \
+    mz_thermal_log.ko \
+    mz_gesture_ts.ko \
+    goodix_ts.ko \
+    msm_kgsl.ko \
+    camera.ko \
+    msm_drm.ko \
+    qts.ko \
+    debugcc-crow.ko \
+    debugcc-kalama.ko \
+    qti_cpufreq_cdev.ko \
+    pm8941-pwrkey.ko \
+    qbt_handler.ko \
+    ai11ba.ko \
+    vl53l1.ko \
+    stm_st54se_gpio.ko \
+    stm_nfc_i2c.ko \
+    nxp-nci.ko \
+    nxp-sr100.ko
 
 M2391_SOURCE_RAMDISK_MODULE_NAMES := \
+    smartswap_zram.ko \
+    frpc-adsprpc.ko \
+    mzprobe.ko \
+    smart_zsmalloc.ko \
+    meizu-sys.ko \
+    ufs_qcom.ko \
+    ufshcd-crypto-qti.ko \
+    sched-walt.ko \
+    pci-msm-drv.ko \
+    mz_kshrink_slabd.ko \
+    mz_freq_qos.ko \
+    mz_mrg.ko \
+    ep_pcie_drv.ko \
+    gunyah.ko \
+    msm_geni_serial.ko \
+    sdhci-msm.ko \
+    qcom_q6v5.ko \
+    mz_rstinfo.ko \
+    panel_event_notifier.ko \
+    dwc3-msm.ko \
+    mem_buf.ko \
+    mem_buf_dev.ko \
+    mem_buf_msgq.ko \
+    qcom_iommu_util.ko \
+    maudit.ko \
+    msm_performance.ko \
+    qti_battery_charger.ko \
+    mz_hang_dump.ko \
+    icc-debug.ko \
+    msm_drm.ko \
+    qti_amoled_ecm.ko \
+    mz_compaction_opt.ko \
+    pdr_interface.ko \
+    mz_reclaim_opt.ko \
+    qcom-dload-mode.ko \
+    mz_debug_vendor_hooks.ko \
+    minidump.ko \
+    mz_enhance_qcom_wdog.ko \
+    qcom_wdt_core.ko \
+    bootloader_log.ko \
     adsp_sleepmon.ko \
     altmode-glink.ko \
     arm_smmu.ko \
     bam_dma.ko \
     bcl_pmic5.ko \
     bcl_soc.ko \
+    boot_mode.ko \
     boot_stats.ko \
     bwmon.ko \
     c1dcvs_scmi.ko \
@@ -804,6 +1227,8 @@ M2391_SOURCE_RAMDISK_MODULE_NAMES := \
     memlat.ko \
     memlat_scmi.ko \
     memlat_vendor.ko \
+    meizu_private.ko \
+    mz_bl_lock.ko \
     memory_dump_v2.ko \
     mhi.ko \
     mhi_cntrl_qcom.ko \
@@ -815,6 +1240,7 @@ M2391_SOURCE_RAMDISK_MODULE_NAMES := \
     mhi_dev_uci.ko \
     microdump_collector.ko \
     msm_dma_iommu_mapping.ko \
+    msm-mmrm.ko \
     msm_ext_display.ko \
     msm_gpi.ko \
     msm_hw_fence.ko \
@@ -957,6 +1383,7 @@ M2391_SOURCE_RAMDISK_MODULE_NAMES := \
     stm_p_ost.ko \
     stub-regulator.ko \
     subsystem_sleep_stats.ko \
+    sync_fence.ko \
     synx-driver.ko \
     sys_pm_vx.ko \
     sysmon_subsystem_stats.ko \
@@ -972,5 +1399,44 @@ M2391_SOURCE_RAMDISK_MODULE_NAMES := \
     usb_f_gsi.ko \
     usb_f_qdss.ko \
     usbmon.ko \
-    wcd_usbss_i2c.ko
+    wcd_usbss_i2c.ko \
+    xcharge_notify_subsys.ko \
+    xcharge_chg_manager.ko \
+    xcharge_thermal.ko \
+    xcharge_mbattery_logger.ko \
+    mpower_logger.ko \
+    mz_info.ko \
+    meizu_key_value.ko \
+    qcom_ipc_logging.ko \
+    mz_rpmb_ctl.ko \
+    qcom_aoss.ko \
+    qnoc-qos.ko \
+    icc-rpmh.ko \
+    icc-bcm-voter.ko \
+    clk-qcom.ko \
+    camcc-crow.ko \
+    camcc-kalama.ko \
+    dispcc-crow.ko \
+    dispcc-kalama.ko \
+    gcc-crow.ko \
+    gcc-kalama.ko \
+    gpucc-crow.ko \
+    gpucc-kalama.ko \
+    tcsrcc-kalama.ko \
+    videocc-crow.ko \
+    videocc-kalama.ko \
+    xcharge_chg_interface.ko \
+    mz_thermal_log.ko \
+    mz_gesture_ts.ko \
+    goodix_ts.ko \
+    qts.ko \
+    clk-dummy.ko \
+    debugcc-crow.ko \
+    debugcc-kalama.ko \
+    qnoc-crow.ko \
+    qnoc-kalama.ko \
+    mz_thermal_boost.ko \
+    qti_cpufreq_cdev.ko \
+    pm8941-pwrkey.ko \
+    qbt_handler.ko
 

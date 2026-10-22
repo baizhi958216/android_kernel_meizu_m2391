@@ -1,0 +1,261 @@
+[
+  {
+    "name": "qcom-clock-reset",
+    "modules": [
+      "clk-qcom.ko",
+      "camcc-crow.ko",
+      "camcc-kalama.ko",
+      "dispcc-crow.ko",
+      "dispcc-kalama.ko",
+      "gcc-crow.ko",
+      "gcc-kalama.ko",
+      "gpucc-crow.ko",
+      "gpucc-kalama.ko",
+      "tcsrcc-kalama.ko",
+      "videocc-crow.ko",
+      "videocc-kalama.ko"
+    ],
+    "internal_exports": [
+      "qcom_cc_map",
+      "qcom_cc_probe",
+      "qcom_cc_probe_by_index",
+      "qcom_cc_really_probe",
+      "qcom_cc_runtime_init",
+      "qcom_cc_sync_state"
+    ]
+  },
+  {
+    "name": "meizu-goodix-gesture",
+    "modules": [
+      "mz_gesture_ts.ko",
+      "qts.ko",
+      "goodix_ts.ko",
+      "nt36xxx-i2c.ko"
+    ],
+    "internal_exports": [
+      "mz_gesture_report",
+      "goodix_FOD_function",
+      "goodix_gesture_function",
+      "qts_client_register"
+    ]
+  },
+  {
+    "name": "meizu-watchdog-minidump",
+    "modules": [
+      "minidump.ko",
+      "mz_enhance_qcom_wdog.ko",
+      "qcom_wdt_core.ko"
+    ],
+    "internal_exports": [
+      "mz_dump_wdog_cpu"
+    ]
+  },
+  {
+    "name": "meizu-thermal-boost-cooling",
+    "modules": [
+      "mz_thermal_boost.ko",
+      "qti_cpufreq_cdev.ko"
+    ],
+    "internal_exports": [
+      "mz_thermal_boost_forget"
+    ]
+  },
+  {
+    "name": "kgsl-thermal-telemetry",
+    "modules": [
+      "mz_thermal_log.ko",
+      "msm_kgsl.ko"
+    ],
+    "internal_exports": [
+      "mz_thermal_register_gpu_callbacks",
+      "mz_thermal_unregister_gpu_callbacks"
+    ]
+  },
+  {
+    "name": "display-pwrkey",
+    "modules": [
+      "msm_drm.ko",
+      "pm8941-pwrkey.ko"
+    ],
+    "internal_exports": [
+      "get_main_display",
+      "get_sec_display",
+      "display_get_power_status",
+      "display_set_power_status",
+      "msm_ioctl_rmfb2",
+      "pm8941_pwrkey_register_bark_callback",
+      "pm8941_pwrkey_unregister_bark_callback",
+      "dsi_display_off_at_pmic_s1_bark"
+    ]
+  },
+  {
+    "name": "m2391-charger-providers",
+    "modules": [
+      "qti_battery_charger.ko",
+      "xcharge_notify_subsys.ko",
+      "xcharge_mbattery_logger.ko",
+      "xcharge_thermal.ko",
+      "xcharge_chg_manager.ko",
+      "xcharge_chg_interface.ko",
+      "mpower_logger.ko"
+    ],
+    "internal_exports": []
+  },
+  {
+    "name": "m2391-reset-ssr",
+    "modules": [
+      "qcom_q6v5.ko",
+      "qcom_q6v5_pas.ko",
+      "mz_rstinfo.ko"
+    ],
+    "internal_exports": [
+      "qcom_q6v5_init",
+      "qcom_q6v5_panic",
+      "qcom_q6v5_prepare",
+      "qcom_q6v5_register_ssr_subdev",
+      "qcom_q6v5_request_stop",
+      "qcom_q6v5_unprepare",
+      "qcom_q6v5_wait_for_start",
+      "qcom_q6v5_register_rstinfo",
+      "qcom_q6v5_unregister_rstinfo",
+      "send_ssrinfo_to_rstinfo"
+    ]
+  },
+  {
+    "name": "m2391-tof-alternatives",
+    "modules": [
+      "ai11ba.ko",
+      "vl53l1.ko"
+    ],
+    "internal_exports": [
+      "s_module_load_state"
+    ]
+  },
+  {
+    "name": "m2391-vip-walt",
+    "modules": [
+      "mz_vip_task.ko",
+      "sched-walt.ko"
+    ],
+    "internal_exports": [
+      "test_task_vip",
+      "mz_check_preempt_wakeup",
+      "mz_replace_next_task_fair"
+    ]
+  },
+  {
+    "name": "meizu-ufs-crypto",
+    "modules": [
+      "ufs_qcom.ko",
+      "ufshcd-crypto-qti.ko"
+    ],
+    "internal_exports": [
+      "ufshcd_qti_hba_init_crypto_capabilities"
+    ]
+  },
+  {
+    "name": "meizu-system-consumers",
+    "modules": [
+      "meizu-sys.ko",
+      "ai11ba.ko",
+      "camera.ko",
+      "cs_press_m68.ko",
+      "goodix_ts.ko",
+      "haptic_hv.ko",
+      "msm_drm.ko",
+      "mz_bl_lock.ko",
+      "mz_gesture_ts.ko",
+      "mz_thermal_log.ko",
+      "vl53l1.ko",
+      "xcharge_chg_interface.ko"
+    ],
+    "internal_exports": [
+      "meizu_sysfslink_get_kobj",
+      "meizu_sysfslink_register",
+      "meizu_sysfslink_register_kobj_name",
+      "meizu_sysfslink_register_name",
+      "meizu_sysfslink_unregister",
+      "mz_sysfs_create_directory",
+      "mz_sysfs_create_directory_specify_parent",
+      "mz_sysfs_destory_directory"
+    ]
+  },
+  {
+    "name": "m2391-freq-qos-monitor",
+    "modules": [
+      "mz_freq_qos.ko"
+    ],
+    "internal_exports": [
+      "meizu_freq_qos_walk"
+    ]
+  },
+  {
+    "name": "m2391-multiple-rail-governor",
+    "modules": [
+      "mz_mrg.ko"
+    ],
+    "internal_exports": [
+      "mrg_cpufreq_register",
+      "mrg_cpufreq_unregister",
+      "mrg_cpufreq_check_limit"
+    ]
+  },
+  {
+    "name": "m2391-fastrpc-eva",
+    "modules": [
+      "frpc-adsprpc.ko",
+      "msm-eva.ko"
+    ],
+    "internal_exports": [
+      "fastrpc_driver_invoke",
+      "fastrpc_driver_register",
+      "fastrpc_driver_unregister"
+    ]
+  },
+  {
+    "name": "cs35l45-module-private",
+    "modules": [
+      "cs35l45_dlkm.ko"
+    ],
+    "internal_exports": [
+      "cs35l45_i2c_regmap",
+      "cs35l45_initialize",
+      "cs35l45_probe",
+      "cs35l45_remove",
+      "cs35l45_resume_runtime",
+      "cs35l45_set_csplmboxcmd",
+      "cs35l45_spi_regmap",
+      "cs35l45_suspend_runtime",
+      "wm_adsp1_event",
+      "wm_adsp1_init",
+      "wm_adsp2_bus_error",
+      "wm_adsp2_component_probe",
+      "wm_adsp2_component_remove",
+      "wm_adsp2_init",
+      "wm_adsp2_preloader_get",
+      "wm_adsp2_preloader_put",
+      "wm_adsp2_remove",
+      "wm_adsp2_set_dspclk",
+      "wm_adsp_cal_controls",
+      "wm_adsp_compr_copy",
+      "wm_adsp_compr_free",
+      "wm_adsp_compr_get_caps",
+      "wm_adsp_compr_handle_irq",
+      "wm_adsp_compr_open",
+      "wm_adsp_compr_pointer",
+      "wm_adsp_compr_set_params",
+      "wm_adsp_compr_trigger",
+      "wm_adsp_early_event",
+      "wm_adsp_event",
+      "wm_adsp_fw_enum",
+      "wm_adsp_fw_get",
+      "wm_adsp_fw_put",
+      "wm_adsp_handle_fw_event",
+      "wm_adsp_read_ctl",
+      "wm_adsp_write_ctl",
+      "wm_halo_bus_error",
+      "wm_halo_init",
+      "wm_halo_wdt_expire"
+    ]
+  }
+]

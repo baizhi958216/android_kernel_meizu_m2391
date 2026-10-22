@@ -5,7 +5,7 @@ set -euo pipefail
 # Emit KBUILD_EXTRA_SYMBOLS rows using the LLVM tools already in the toolchain.
 module_symvers() {
     local module=$1 fallback
-    fallback=$(basename "$module" .ko)
+    fallback=${2:-$(basename "$module" .ko)}
     "$READELF" --elf-output-style=GNU --wide --sections --symbols \
         --string-dump=.modinfo --string-dump=__ksymtab_strings "$module" 2>/dev/null |
         awk -v fallback="$fallback" '
@@ -55,6 +55,52 @@ module_symvers() {
         }'
 }
 
+# Retained OEM camera/display/video modules import these interfaces. Compare
+# compiler-generated CRCs; never rewrite a module's version metadata to match.
+check_retained_abi() {
+    local expected=$1 actual=$2
+    if [[ ! -s "$expected" ]]; then
+        echo "Empty retained ABI snapshot: $expected" >&2
+        return 1
+    fi
+    awk '
+        FNR==NR { expected[$2]=$1 SUBSEP $4 SUBSEP $5; next }
+        $2 in expected {
+            seen[$2]=1
+            if (expected[$2] != $1 SUBSEP $4 SUBSEP $5) {
+                print "Retained OEM ABI mismatch: " $2 > "/dev/stderr"
+                failed=1
+            }
+        }
+        END {
+            for (symbol in expected) if (!(symbol in seen)) {
+                print "Missing retained OEM export: " symbol > "/dev/stderr"
+                failed=1
+            }
+            exit failed
+        }' "$expected" "$actual"
+}
+
+# Some recovered source interfaces preserve behavior and machine layout while
+# their unavailable original type names prevent retaining a truthful old CRC.
+# Never let a retained binary acquire one of those source-group interfaces.
+check_private_abi_consumers() {
+    local private=$1 top=$2 plan=$3 selected module name
+    selected=" $(awk -F '\t' '{ n=split($3,a," "); for(i=1;i<=n;i++) { split(a[i],b,":"); printf "%s ",b[1] } }' "$plan")"
+    while IFS= read -r -d '' module; do
+        name=$(basename "$module")
+        case "$selected" in *" $name "*) continue ;; esac
+        "$READELF" --elf-output-style=GNU --wide --symbols "$module" |
+            awk -v consumer="$module" '
+            FNR==NR { if (NF && $1 !~ /^#/) private[$1]=1; next }
+            $7=="UND" && $8 in private {
+                print "Retained stock consumer of source-private ABI: " consumer ": " $8 > "/dev/stderr"
+                failed=1
+            }
+            END { exit failed }' "$private" - || return 1
+    done < <(find "$top/vendor/meizu/m2391/proprietary" -name '*.ko' -type f -print0)
+}
+
 main() {
     local top=$1 out=$2 jobs=$3 original mirror source clang symbols plan
     # Use the same ACK version arguments as the core kernel build.
@@ -76,7 +122,7 @@ main() {
 
     # Keep Kbuild writes under out while including tracked worktree edits.
     mkdir -p "$mirror" "$symbols/stock" "$symbols/built"
-    git --no-optional-locks -C "$original" ls-files -z > "$out/m2391-external-files.list"
+    git --no-optional-locks -C "$original" ls-files --cached --others --exclude-standard -z > "$out/m2391-external-files.list"
     # Android's sanitized PATH may resolve tar to Toybox, which lacks --format.
     # Use the host tar for the NUL-delimited list and pax archive on both sides.
     /usr/bin/tar -C "$original" --null -T "$out/m2391-external-files.list" --format=pax -cf - |
@@ -99,6 +145,7 @@ main() {
         "DATAIPA_ROOT=$source/dataipa" "WLAN_PLATFORM_ROOT=$source/wlan/platform"
         "SSG_MODULE_ROOT=$source/securemsm-kernel" "MSM_EXT_DISPLAY_ROOT=$source/mm-drivers"
         "MSM_HW_FENCE_ROOT=$source/mm-drivers/" "MMRM_ROOT=$source/mmrm-driver"
+        "SYNC_FENCE_ROOT=$source/mm-drivers/"
         "RMNET_CORE_ROOT=$source/datarmnet/core" "RMNET_CORE_INC_DIR=$source/datarmnet/core"
         "BT_ROOT=$source/bt-kernel" "AUDIO_ROOT=$source/audio-kernel"
         MODNAME=audio_dlkm BOARD_PLATFORM=kalama CONFIG_MSM_BT_POWER=m
@@ -122,12 +169,47 @@ main() {
                 if (!index(excluded," " file " ") && !($2 in core)) print
             }' "$out/Module.symvers" "${tables[@]}" > "$symvers"
         groupflags=("${flags[@]}")
+        if [[ "$group" == audio-kernel ]]; then
+            groupflags+=(CONFIG_M2391_AUDIO_MACHINE_RECOVERY=y)
+        fi
+        if [[ "$group" == ../../nxp/opensource/driver ]]; then
+            groupflags+=("NFC_ROOT=$source/$group")
+        fi
         if [[ "$group" == wlan/qcacld-3.0 ]]; then
             groupflags+=("WLAN_ROOT=$source/$group" WLAN_COMMON_ROOT=cmn
                 "WLAN_COMMON_INC=$source/wlan/qca-wifi-host-cmn" "WLAN_FW_API=$source/wlan/fw-api"
                 WLAN_PROFILE=kiwi_v2 DYNAMIC_SINGLE_CHIP=kiwi_v2 DEVNAME=kiwi_v2
                 WLAN_CTRL_NAME=wlan CONFIG_QCA_CLD_WLAN=m CONFIG_BUS_AUTO_SUSPEND=y MODNAME=kiwi_v2)
         fi
+        if [[ "$group" == touch-drivers ]]; then
+            groupflags+=("TOUCH_ROOT=$source/touch-drivers" CONFIG_ARCH_KALAMA=y
+                CONFIG_MSM_TOUCH=m CONFIG_TOUCHSCREEN_GOODIX_BRL=y CONFIG_QTS_ENABLE=y
+                CONFIG_TOUCHSCREEN_GOODIX_BRL_MEIZU=y CONFIG_TOUCHSCREEN_NT36XXX_I2C=y
+                CONFIG_TOUCHSCREEN_ATMEL_MXT=n CONFIG_TOUCHSCREEN_DUMMY=n)
+        fi
+        if [[ "$group" == graphics-kernel ]]; then
+            groupflags+=("KGSL_PATH=$source/graphics-kernel" "KERNEL_SRC=$top/kernel/meizu/m2391"
+                CONFIG_ARCH_KALAMA=y CONFIG_QCOM_KGSL=m MODNAME=msm_kgsl
+                CONFIG_QCOM_KGSL_MEIZU_DIAGNOSTICS=y CONFIG_QCOM_KGSL_MEIZU_THERMAL_LOG=y)
+        fi
+        if [[ "$group" == camera-kernel ]]; then
+            groupflags+=("CAMERA_KERNEL_ROOT=$source/camera-kernel"
+                "KERNEL_ROOT=$top/kernel/meizu/m2391" "KERNEL_SRC=$top/kernel/meizu/m2391"
+                CONFIG_ARCH_KALAMA=y CONFIG_SPECTRA_CAMERA=m CONFIG_INTERCONNECT_QCOM=y
+                MODNAME=camera)
+        fi
+        if [[ "$group" == display-drivers ]]; then
+            groupflags+=("DISPLAY_ROOT=$source/display-drivers"
+                "KERNEL_ROOT=$top/kernel/meizu/m2391" "KERNEL_SRC=$top/kernel/meizu/m2391"
+                CONFIG_ARCH_KALAMA=y CONFIG_DRM_MSM=m MODNAME=msm_drm)
+        fi
+        for relative in $selected; do
+            name=${relative%%:*}
+            if [[ -f "$top/kernel/meizu/m2391/scripts/m2391/abi/$name.private-symbols" ]]; then
+                check_private_abi_consumers \
+                    "$top/kernel/meizu/m2391/scripts/m2391/abi/$name.private-symbols" "$top" "$plan"
+            fi
+        done
         echo "Building m2391 external group: $group"
         "$top/prebuilts/build-tools/linux-x86/bin/make" -j"$jobs" \
             -C "$top/kernel/meizu/m2391" "O=$out" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
@@ -137,7 +219,15 @@ main() {
         for relative in $selected; do
             name=${relative%%:*}
             module="$source/${relative#*:}"
+            if [[ ! -f "$module" ]]; then
+                echo "Expected source module missing: $module" >&2
+                return 1
+            fi
             module_symvers "$module" > "$symbols/built/$name.symvers"
+            if [[ -f "$top/kernel/meizu/m2391/scripts/m2391/abi/$name.symvers" ]]; then
+                check_retained_abi "$top/kernel/meizu/m2391/scripts/m2391/abi/$name.symvers" \
+                    "$symbols/built/$name.symvers"
+            fi
         done
     done < "$plan"
 

@@ -59,12 +59,13 @@ BOARD_PREBUILT_DTBOIMAGE = $(M2391_KERNEL_BUILD_OUT)/m2391-dtbo.img
 BOARD_DO_NOT_STRIP_VENDOR_MODULES := true
 BOARD_DO_NOT_STRIP_VENDOR_RAMDISK_MODULES := true
 include $(M2391_KERNEL_PATH)/source-modules.mk
-BOARD_VENDOR_KERNEL_MODULES = $(wildcard $(M2391_KERNEL_BLOBS)/vendor_dlkm/lib/modules/*.ko) \
+# Prefer source replacements even if an old dump restores a same-name blob.
+BOARD_VENDOR_KERNEL_MODULES = $(filter-out $(addprefix $(M2391_KERNEL_BLOBS)/vendor_dlkm/lib/modules/,$(M2391_SOURCE_VENDOR_MODULE_NAMES) $(M2391_SOURCE_BUILTIN_REPLACEMENT_NAMES)),$(wildcard $(M2391_KERNEL_BLOBS)/vendor_dlkm/lib/modules/*.ko)) \
     $(addprefix $(M2391_SOURCE_MODULES_OUT)/,$(M2391_SOURCE_VENDOR_MODULE_NAMES))
-BOARD_VENDOR_KERNEL_MODULES_LOAD := $(strip $(shell cat $(DEVICE_PATH)/configs/modules/modules.load.vendor_dlkm))
+BOARD_VENDOR_KERNEL_MODULES_LOAD := $(filter-out $(M2391_SOURCE_BUILTIN_REPLACEMENT_NAMES),$(strip $(shell cat $(DEVICE_PATH)/configs/modules/modules.load.vendor_dlkm)))
 BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := $(DEVICE_PATH)/configs/modules/modules.blocklist.vendor_dlkm
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES = $(wildcard $(M2391_KERNEL_BLOBS)/vendor_boot/lib/modules/*.ko) \
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES = $(filter-out $(addprefix $(M2391_KERNEL_BLOBS)/vendor_boot/lib/modules/,$(M2391_SOURCE_RAMDISK_MODULE_NAMES) $(M2391_SOURCE_BUILTIN_REPLACEMENT_NAMES)),$(wildcard $(M2391_KERNEL_BLOBS)/vendor_boot/lib/modules/*.ko)) \
     $(addprefix $(M2391_SOURCE_MODULES_OUT)/,$(M2391_SOURCE_RAMDISK_MODULE_NAMES))
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD := $(strip $(shell cat $(DEVICE_PATH)/configs/modules/modules.load.vendor_ramdisk))
-BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD := $(strip $(shell cat $(DEVICE_PATH)/configs/modules/modules.load.recovery))
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD := $(filter-out $(M2391_SOURCE_BUILTIN_REPLACEMENT_NAMES),$(strip $(shell cat $(DEVICE_PATH)/configs/modules/modules.load.vendor_ramdisk)))
+BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD := $(filter-out $(M2391_SOURCE_BUILTIN_REPLACEMENT_NAMES),$(strip $(shell cat $(DEVICE_PATH)/configs/modules/modules.load.recovery)))
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES_BLOCKLIST_FILE := $(DEVICE_PATH)/configs/modules/modules.blocklist.vendor_ramdisk
