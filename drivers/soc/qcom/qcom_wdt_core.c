@@ -35,6 +35,10 @@
 #include <linux/suspend.h>
 #include <linux/notifier.h>
 
+#if IS_ENABLED(CONFIG_QCOM_WDT_MEIZU_DIAGNOSTICS)
+#include "mz_enhance_qcom_wdog.h"
+#endif
+
 #define MASK_SIZE        32
 #define COMPARE_RET      -1
 
@@ -404,7 +408,7 @@ static int qcom_wdt_panic_handler(struct notifier_block *this,
 	return NOTIFY_DONE;
 }
 
-#ifdef CONFIG_QCOM_MINIDUMP_PANIC_DUMP
+#if defined(CONFIG_QCOM_MINIDUMP_PANIC_DUMP) || IS_ENABLED(CONFIG_QCOM_WDT_MEIZU_DIAGNOSTICS)
 static int qcom_wdt_die_handler(struct notifier_block *this,
 				unsigned long val, void *data)
 {
@@ -643,6 +647,17 @@ static void qcom_wdt_ping_other_cpus(struct msm_watchdog_data *wdog_dd)
 {
 	int cpu;
 
+#if IS_ENABLED(CONFIG_QCOM_WDT_MEIZU_DIAGNOSTICS)
+	/* Stock .ref.text+0x164 samples IRQ deltas before the synchronous
+	 * ping loop. The returned mask is diagnostic; keep the online/idle
+	 * checks below as the actual IPI selection, exactly as stock does.
+	 */
+	cpumask_t ping_mask;
+
+	cpumask_clear(&ping_mask);
+	mz_get_cpu_ping_mask(&ping_mask, wdog_dd->cpu_idle_pc_state);
+#endif
+
 	cpumask_clear(&wdog_dd->alive_mask);
 	/* Make sure alive mask is cleared and set in order */
 	smp_mb();
@@ -832,7 +847,17 @@ static irqreturn_t qcom_wdt_bark_handler(int irq, void *dev_id)
 		dev_info(wdog_dd->dev, "Suspend in progress\n");
 
 	md_dump_process();
+#if IS_ENABLED(CONFIG_QCOM_WDT_MEIZU_DIAGNOSTICS)
+	/* Stock bark .text+0x1528..0x1540 enters the die/panic path after
+	 * diagnostics, giving the registered notifiers time to capture state.
+	 */
+	mz_dump_cpu_online_smp_call();
+	mz_dump_wdog_cpu(wdog_dd->watchdog_task);
+	pr_err("Handle a watchdog bite! - Falling back to kernel panic!\n");
+	BUG();
+#else
 	qcom_wdt_trigger_bite();
+#endif
 
 	return IRQ_HANDLED;
 }

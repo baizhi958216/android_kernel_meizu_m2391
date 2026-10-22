@@ -15,11 +15,63 @@
 #include <linux/soc/qcom/smem_state.h>
 #include <linux/remoteproc.h>
 #include <linux/delay.h>
+#include <linux/mutex.h>
+#include <linux/srcu.h>
+#include <linux/soc/qcom/q6v5_rstinfo.h>
 #include "qcom_common.h"
 #include "qcom_q6v5.h"
 #include <trace/events/rproc_qcom.h>
 
 #define Q6V5_PANIC_DELAY_MS	200
+
+/* M2391's original exported pointer is retained. The paired source consumer
+ * uses registration so a threaded crash IRQ cannot call an unloaded module.
+ */
+void (*send_ssrinfo_to_rstinfo)(const char *, char *, char *, size_t);
+EXPORT_SYMBOL_GPL(send_ssrinfo_to_rstinfo);
+static DEFINE_MUTEX(rstinfo_callback_lock);
+static DEFINE_SRCU(rstinfo_callback_srcu);
+
+int qcom_q6v5_register_rstinfo(void (*callback)(const char *, char *, char *, size_t))
+{
+ int ret = 0;
+ if (!callback)
+  return -EINVAL;
+ mutex_lock(&rstinfo_callback_lock);
+ if (READ_ONCE(send_ssrinfo_to_rstinfo))
+  ret = -EBUSY;
+ else
+  smp_store_release(&send_ssrinfo_to_rstinfo, callback);
+ mutex_unlock(&rstinfo_callback_lock);
+ return ret;
+}
+EXPORT_SYMBOL_GPL(qcom_q6v5_register_rstinfo);
+
+void qcom_q6v5_unregister_rstinfo(void (*callback)(const char *, char *, char *, size_t))
+{
+ mutex_lock(&rstinfo_callback_lock);
+ if (READ_ONCE(send_ssrinfo_to_rstinfo) == callback) {
+  WRITE_ONCE(send_ssrinfo_to_rstinfo, NULL);
+  synchronize_srcu(&rstinfo_callback_srcu);
+ }
+ mutex_unlock(&rstinfo_callback_lock);
+}
+EXPORT_SYMBOL_GPL(qcom_q6v5_unregister_rstinfo);
+
+static void q6v5_record_ssr(struct qcom_q6v5 *q6v5, char *type,
+         char *message, size_t length)
+{
+ void (*callback)(const char *, char *, char *, size_t);
+ int index;
+
+ if (q6v5->rproc->recovery_disabled)
+  return;
+ index = srcu_read_lock(&rstinfo_callback_srcu);
+ callback = smp_load_acquire(&send_ssrinfo_to_rstinfo);
+ if (callback)
+  callback(dev_name(q6v5->dev), type, message, length);
+ srcu_read_unlock(&rstinfo_callback_srcu, index);
+}
 
 /**
  * qcom_q6v5_prepare() - reinitialize the qcom_q6v5 context before start
@@ -111,8 +163,10 @@ static irqreturn_t q6v5_wdog_interrupt(int irq, void *data)
 	if (!IS_ERR(msg) && len > 0 && msg[0]) {
 		dev_err(q6v5->dev, "watchdog received: %s\n", msg);
 		trace_rproc_qcom_event(dev_name(q6v5->dev), "q6v5_wdog", msg);
+		q6v5_record_ssr(q6v5, "watchdog", msg, len);
 	} else {
 		dev_err(q6v5->dev, "watchdog without message\n");
+		q6v5_record_ssr(q6v5, "watchdog", "without message", 16);
 	}
 
 	q6v5->running = false;
@@ -148,8 +202,10 @@ static irqreturn_t q6v5_fatal_interrupt(int irq, void *data)
 	if (!IS_ERR(msg) && len > 0 && msg[0]) {
 		dev_err(q6v5->dev, "fatal error received: %s\n", msg);
 		trace_rproc_qcom_event(dev_name(q6v5->dev), "q6v5_fatal", msg);
+		q6v5_record_ssr(q6v5, "fatal", msg, len);
 	} else {
 		dev_err(q6v5->dev, "fatal error without message\n");
+		q6v5_record_ssr(q6v5, "fatal", "without message", 16);
 	}
 
 	q6v5->running = false;

@@ -96,7 +96,7 @@ static inline void dump_stack_minidump(u64 sp) {}
 static inline void add_trace_event(char *buf, size_t size) {}
 #endif
 
-#if IS_ENABLED(CONFIG_QCOM_MINIDUMP_PANIC_DUMP)
+#if IS_ENABLED(CONFIG_QCOM_MINIDUMP_PANIC_DUMP) || IS_ENABLED(CONFIG_QCOM_WDT_MEIZU_DIAGNOSTICS)
 extern void md_dump_process(void);
 #else
 static inline void md_dump_process(void) {}
