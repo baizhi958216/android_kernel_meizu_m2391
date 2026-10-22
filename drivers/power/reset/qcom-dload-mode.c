@@ -16,7 +16,11 @@
 #include <linux/panic_notifier.h>
 #include <linux/qcom_scm.h>
 #include <soc/qcom/minidump.h>
+#include <linux/slab.h>
 #include <linux/syscore_ops.h>
+#ifdef CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_MEIZU
+#include <linux/meizu_info.h>
+#endif
 
 enum qcom_download_dest {
 	QCOM_DOWNLOAD_DEST_UNKNOWN = -1,
@@ -38,7 +42,8 @@ struct qcom_dload {
 #define QCOM_DOWNLOAD_BOTHDUMP (QCOM_DOWNLOAD_FULLDUMP | QCOM_DOWNLOAD_MINIDUMP)
 
 static bool enable_dump =
-	IS_ENABLED(CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_DEFAULT);
+	IS_ENABLED(CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_DEFAULT) ||
+	IS_ENABLED(CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_MEIZU);
 static enum qcom_download_mode current_download_mode = QCOM_DOWNLOAD_NODUMP;
 static enum qcom_download_mode dump_mode = QCOM_DOWNLOAD_FULLDUMP;
 
@@ -59,8 +64,16 @@ static int set_dump_mode(enum qcom_download_mode mode)
 {
 	int ret = 0, temp;
 
+#ifdef CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_MEIZU
+	pr_info("%s: mode %d.\n", __func__, mode);
+#endif
 	if (enable_dump) {
-		ret = set_download_mode(mode);
+#ifdef CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_MEIZU
+		if (mode == QCOM_DOWNLOAD_NODUMP)
+			qcom_scm_disable_sdi();
+		else
+#endif
+			ret = set_download_mode(mode);
 		if (likely(!ret))
 			dump_mode = qcom_scm_get_download_mode(&temp, 0) ? dump_mode : temp;
 	} else
@@ -159,7 +172,13 @@ static const struct sysfs_ops reset_sysfs_ops = {
 	.store	= attr_store,
 };
 
+static void qcom_dload_release(struct kobject *kobj)
+{
+	kfree(to_qcom_dload(kobj));
+}
+
 static struct kobj_type qcom_dload_kobj_type = {
+	.release = qcom_dload_release,
 	.sysfs_ops	= &reset_sysfs_ops,
 };
 
@@ -207,6 +226,11 @@ static ssize_t dload_mode_show(struct kobject *kobj,
 	const char *mode;
 
 	switch ((unsigned int)dump_mode) {
+#ifdef CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_MEIZU
+	case QCOM_DOWNLOAD_NODUMP:
+		mode = "nodump";
+		break;
+#endif
 	case QCOM_DOWNLOAD_FULLDUMP:
 		mode = "full";
 		break;
@@ -234,9 +258,17 @@ static ssize_t dload_mode_store(struct kobject *kobj,
 		mode = QCOM_DOWNLOAD_MINIDUMP;
 	else if (sysfs_streq(buf, "both"))
 		mode = QCOM_DOWNLOAD_BOTHDUMP;
+#ifdef CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_MEIZU
+	else if (sysfs_streq(buf, "nodump"))
+		mode = QCOM_DOWNLOAD_NODUMP;
+#endif
 	else {
 		pr_err("Invalid dump mode request...\n");
+#ifdef CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_MEIZU
+		pr_err("Supported dumps: 'full', 'nodump', 'mini', or 'both'\n");
+#else
 		pr_err("Supported dumps: 'full', 'mini', or 'both'\n");
+#endif
 		return -EINVAL;
 	}
 
@@ -285,7 +317,11 @@ static int qcom_dload_reboot(struct notifier_block *this, unsigned long event,
 		set_download_mode(QCOM_DOWNLOAD_NODUMP);
 
 	if (cmd) {
-		if (!strcmp(cmd, "edl"))
+		if (!strcmp(cmd, "edl")
+#ifdef CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_MEIZU
+		    && !is_minidump()
+#endif
+		   )
 			set_download_mode(QCOM_DOWNLOAD_EDL);
 		else if (!strcmp(cmd, "qcom_dload"))
 			msm_enable_dump_mode(true);
@@ -312,6 +348,7 @@ static void __iomem *map_prop_mem(const char *propname)
 	}
 
 	addr = of_iomap(np, 0);
+	of_node_put(np);
 	if (!addr)
 		pr_err("Unable to map memory for DT property: %s\n", propname);
 	return addr;
@@ -322,7 +359,7 @@ static int qcom_dload_probe(struct platform_device *pdev)
 	struct qcom_dload *poweroff;
 	int ret, temp;
 
-	poweroff = devm_kzalloc(&pdev->dev, sizeof(*poweroff), GFP_KERNEL);
+	poweroff = kzalloc(sizeof(*poweroff), GFP_KERNEL);
 	if (!poweroff)
 		return -ENOMEM;
 
@@ -337,11 +374,18 @@ static int qcom_dload_probe(struct platform_device *pdev)
 	ret = sysfs_create_group(&poweroff->kobj, &qcom_dload_attr_group);
 	if (ret) {
 		pr_err("%s: Error in creation sysfs_create_group\n", __func__);
-		kobject_del(&poweroff->kobj);
+		kobject_put(&poweroff->kobj);
 		return ret;
 	}
 
 	poweroff->dload_dest_addr = map_prop_mem("qcom,msm-imem-dload-type");
+#ifdef CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_MEIZU
+	/* Original probe selects mini + eMMC when /bootinfo/dp_exist is zero. */
+	if (is_minidump()) {
+		dump_mode = QCOM_DOWNLOAD_MINIDUMP;
+		set_download_dest(poweroff, QCOM_DOWNLOAD_DEST_EMMC);
+	}
+#endif
 	msm_enable_dump_mode(enable_dump);
 	dump_mode = qcom_scm_get_download_mode(&temp, 0) ? dump_mode : temp;
 	pr_info("%s: Current dump mode: 0x%x\n", __func__, dump_mode);
@@ -351,17 +395,31 @@ static int qcom_dload_probe(struct platform_device *pdev)
 
 	poweroff->panic_nb.notifier_call = qcom_dload_panic;
 	poweroff->panic_nb.priority = INT_MAX;
-	atomic_notifier_chain_register(&panic_notifier_list,
-				       &poweroff->panic_nb);
+	ret = atomic_notifier_chain_register(&panic_notifier_list,
+					    &poweroff->panic_nb);
+	if (ret)
+		goto remove_sysfs;
 
 	poweroff->reboot_nb.notifier_call = qcom_dload_reboot;
 	poweroff->reboot_nb.priority = 255;
-	register_reboot_notifier(&poweroff->reboot_nb);
+	ret = register_reboot_notifier(&poweroff->reboot_nb);
+	if (ret)
+		goto remove_panic_notifier;
 	register_syscore_ops(&qcom_dload_syscore_ops);
 
 	platform_set_drvdata(pdev, poweroff);
 
 	return 0;
+
+remove_panic_notifier:
+	atomic_notifier_chain_unregister(&panic_notifier_list, &poweroff->panic_nb);
+remove_sysfs:
+	/* Drain attribute callbacks before their MMIO mapping is released. */
+	sysfs_remove_group(&poweroff->kobj, &qcom_dload_attr_group);
+	if (poweroff->dload_dest_addr)
+		iounmap(poweroff->dload_dest_addr);
+	kobject_put(&poweroff->kobj);
+	return ret;
 }
 
 static int qcom_dload_remove(struct platform_device *pdev)
@@ -371,9 +429,12 @@ static int qcom_dload_remove(struct platform_device *pdev)
 	atomic_notifier_chain_unregister(&panic_notifier_list,
 					 &poweroff->panic_nb);
 	unregister_reboot_notifier(&poweroff->reboot_nb);
+	unregister_syscore_ops(&qcom_dload_syscore_ops);
+	sysfs_remove_group(&poweroff->kobj, &qcom_dload_attr_group);
 
 	if (poweroff->dload_dest_addr)
 		iounmap(poweroff->dload_dest_addr);
+	kobject_put(&poweroff->kobj);
 
 	return 0;
 }

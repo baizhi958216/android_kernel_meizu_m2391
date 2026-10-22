@@ -132,6 +132,14 @@ config POWER_RESET_QCOM_DOWNLOAD_MODE
           ramdump collection mode (CrashDump), or restarting into "emergency
           download mode".
 
+config POWER_RESET_QCOM_DOWNLOAD_MODE_MEIZU
+	bool "Meizu download mode policy"
+	depends on POWER_RESET_QCOM_DOWNLOAD_MODE && MEIZU_DEVICE_INFO
+	depends on POWER_RESET_QCOM_DOWNLOAD_MODE=m || MEIZU_DEVICE_INFO=y
+	help
+	  Restore M2391's bootinfo-selected minidump destination and emergency
+	  download policy, and its nodump sysfs request.
+
 config POWER_RESET_QCOM_DOWNLOAD_MODE_DEFAULT
         bool "MSM download mode enabled by default"
         help
