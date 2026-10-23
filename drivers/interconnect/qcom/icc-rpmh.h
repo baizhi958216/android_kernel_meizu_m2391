@@ -32,6 +32,8 @@ struct qcom_icc_provider {
 	struct qcom_icc_bcm * const *bcms;
 	size_t num_bcms;
 	struct bcm_voter *voter;
+	struct bcm_voter **extra_voters;
+	size_t num_extra_voters;
 	struct qcom_icc_node * const *nodes;
 	size_t num_nodes;
 	struct regmap *regmap;
@@ -105,6 +107,7 @@ struct qcom_icc_node {
 	u16 buswidth;
 	u64 sum_avg[QCOM_ICC_NUM_BUCKETS];
 	u64 max_peak[QCOM_ICC_NUM_BUCKETS];
+	bool perf_mode[QCOM_ICC_NUM_BUCKETS];
 	struct qcom_icc_bcm *bcms[MAX_BCM_PER_NODE];
 	size_t num_bcms;
 	const struct qcom_icc_qosbox *qosbox;
@@ -137,6 +140,8 @@ struct qcom_icc_bcm {
 	u64 vote_y[QCOM_ICC_NUM_BUCKETS];
 	u64 vote_scale;
 	u32 enable_mask;
+	u32 perf_mode_mask;
+	u8 voter_idx;
 	bool dirty;
 	bool keepalive;
 	struct bcm_db aux_data;
@@ -159,6 +164,8 @@ struct qcom_icc_desc {
 	size_t num_bcms;
 	bool qos_requires_clocks;
 	bool alloc_dyn_id;
+	const char * const *extra_voters;
+	size_t num_extra_voters;
 };
 
 int qcom_icc_aggregate(struct icc_node *node, u32 tag, u32 avg_bw,

@@ -37,6 +37,8 @@ struct bcm_voter {
 	struct list_head ws_list;
 	struct list_head voter_node;
 	u32 tcs_wait;
+	bool hw_channel;
+	bool display_solver;
 };
 
 static int cmp_vcd(void *priv, const struct list_head *a, const struct list_head *b)
@@ -74,8 +76,9 @@ static void bcm_aggregate_mask(struct qcom_icc_bcm *bcm)
 			/* If any vote in this bucket exists, keep the BCM enabled */
 			if (node->sum_avg[bucket] || node->max_peak[bucket]) {
 				bcm->vote_x[bucket] = 0;
-				bcm->vote_y[bucket] = bcm->enable_mask;
-				break;
+				bcm->vote_y[bucket] |= bcm->enable_mask;
+				if (node->perf_mode[bucket])
+					bcm->vote_y[bucket] |= bcm->perf_mode_mask;
 			}
 		}
 	}
@@ -229,7 +232,10 @@ struct bcm_voter *of_bcm_voter_get(struct device *dev, const char *name)
 	mutex_lock(&bcm_voter_lock);
 	list_for_each_entry(temp, &bcm_voters, voter_node) {
 		if (temp->np == node) {
-			voter = temp;
+			if (!device_link_add(dev, temp->dev, DL_FLAG_AUTOREMOVE_CONSUMER))
+				voter = ERR_PTR(-ENOMEM);
+			else
+				voter = temp;
 			break;
 		}
 	}
@@ -312,8 +318,12 @@ int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 
 	rpmh_invalidate(voter->dev);
 
-	ret = rpmh_write_batch(voter->dev, RPMH_ACTIVE_ONLY_STATE,
-			       cmds, commit_idx);
+	if (!voter->hw_channel) {
+		ret = rpmh_write_batch(voter->dev, RPMH_ACTIVE_ONLY_STATE,
+				       cmds, commit_idx);
+		if (voter->display_solver && ret == -EBUSY)
+			ret = 0;
+	}
 	if (ret) {
 		pr_err("Error sending AMC RPMH requests (%d)\n", ret);
 		goto out;
@@ -328,7 +338,7 @@ int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 		 * requirements change as the execution environment transitions
 		 * between different power states.
 		 */
-		if (bcm->vote_x[QCOM_ICC_BUCKET_WAKE] !=
+		if (voter->hw_channel || bcm->vote_x[QCOM_ICC_BUCKET_WAKE] !=
 		    bcm->vote_x[QCOM_ICC_BUCKET_SLEEP] ||
 		    bcm->vote_y[QCOM_ICC_BUCKET_WAKE] !=
 		    bcm->vote_y[QCOM_ICC_BUCKET_SLEEP])
@@ -378,6 +388,12 @@ static int qcom_icc_bcm_voter_probe(struct platform_device *pdev)
 
 	voter->dev = &pdev->dev;
 	voter->np = np;
+	if (pdev->dev.parent && pdev->dev.parent->parent) {
+		struct device_node *rsc = pdev->dev.parent->parent->of_node;
+
+		voter->hw_channel = of_property_present(rsc, "qcom,hw-channel");
+		voter->display_solver = of_property_match_string(rsc, "label", "disp_rsc") >= 0;
+	}
 
 	if (of_property_read_u32(np, "qcom,tcs-wait", &voter->tcs_wait))
 		voter->tcs_wait = QCOM_ICC_TAG_ACTIVE_ONLY;
@@ -387,10 +403,19 @@ static int qcom_icc_bcm_voter_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&voter->ws_list);
 
 	mutex_lock(&bcm_voter_lock);
+	platform_set_drvdata(pdev, voter);
 	list_add_tail(&voter->voter_node, &bcm_voters);
 	mutex_unlock(&bcm_voter_lock);
 
 	return 0;
+}
+
+static void qcom_icc_bcm_voter_remove(struct platform_device *pdev)
+{
+	struct bcm_voter *voter = platform_get_drvdata(pdev);
+
+	guard(mutex)(&bcm_voter_lock);
+	list_del(&voter->voter_node);
 }
 
 static const struct of_device_id bcm_voter_of_match[] = {
@@ -401,6 +426,7 @@ MODULE_DEVICE_TABLE(of, bcm_voter_of_match);
 
 static struct platform_driver qcom_icc_bcm_voter_driver = {
 	.probe = qcom_icc_bcm_voter_probe,
+	.remove = qcom_icc_bcm_voter_remove,
 	.driver = {
 		.name		= "bcm_voter",
 		.of_match_table = bcm_voter_of_match,

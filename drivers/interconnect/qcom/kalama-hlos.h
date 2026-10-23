@@ -4,6 +4,12 @@
  */
 #include <dt-bindings/interconnect/qcom,kalama.h>
 
+#include "kalama-mm-voters.h"
+
+static const char * const kalama_mm_voters[] = {
+	"disp", "cam_ife_0", "cam_ife_1", "cam_ife_2",
+};
+
 static struct qcom_icc_node * const kalama_aggre1_noc_nodes[] = {
 	[KALAMA_MASTER_QSPI_0] = &qhm_qspi,
 	[KALAMA_MASTER_QUP_1] = &qhm_qup1,
@@ -146,13 +152,43 @@ static struct qcom_icc_node * const kalama_gem_noc_nodes[] = {
 	[KALAMA_SLAVE_GEM_NOC_CNOC] = &qns_gem_noc_cnoc,
 	[KALAMA_SLAVE_LLCC] = &qns_llcc,
 	[KALAMA_SLAVE_MEM_NOC_PCIE_SNOC] = &qns_pcie,
+	[KALAMA_MASTER_MNOC_HF_MEM_NOC_DISP] = &qnm_mnoc_hf_disp,
+	[KALAMA_MASTER_ANOC_PCIE_GEM_NOC_DISP] = &qnm_pcie_disp,
+	[KALAMA_SLAVE_LLCC_DISP] = &qns_llcc_disp,
+	[KALAMA_MASTER_MNOC_HF_MEM_NOC_CAM_IFE_0] = &qnm_mnoc_hf_cam_ife_0,
+	[KALAMA_MASTER_MNOC_SF_MEM_NOC_CAM_IFE_0] = &qnm_mnoc_sf_cam_ife_0,
+	[KALAMA_MASTER_ANOC_PCIE_GEM_NOC_CAM_IFE_0] = &qnm_pcie_cam_ife_0,
+	[KALAMA_SLAVE_LLCC_CAM_IFE_0] = &qns_llcc_cam_ife_0,
+	[KALAMA_MASTER_MNOC_HF_MEM_NOC_CAM_IFE_1] = &qnm_mnoc_hf_cam_ife_1,
+	[KALAMA_MASTER_MNOC_SF_MEM_NOC_CAM_IFE_1] = &qnm_mnoc_sf_cam_ife_1,
+	[KALAMA_MASTER_ANOC_PCIE_GEM_NOC_CAM_IFE_1] = &qnm_pcie_cam_ife_1,
+	[KALAMA_SLAVE_LLCC_CAM_IFE_1] = &qns_llcc_cam_ife_1,
+	[KALAMA_MASTER_MNOC_HF_MEM_NOC_CAM_IFE_2] = &qnm_mnoc_hf_cam_ife_2,
+	[KALAMA_MASTER_MNOC_SF_MEM_NOC_CAM_IFE_2] = &qnm_mnoc_sf_cam_ife_2,
+	[KALAMA_MASTER_ANOC_PCIE_GEM_NOC_CAM_IFE_2] = &qnm_pcie_cam_ife_2,
+	[KALAMA_SLAVE_LLCC_CAM_IFE_2] = &qns_llcc_cam_ife_2,
+};
+
+static struct qcom_icc_bcm * const kalama_gem_noc_bcms[] = {
+	&bcm_sh0,
+	&bcm_sh1,
+	&bcm_sh0_disp,
+	&bcm_sh1_disp,
+	&bcm_sh0_cam_ife_0,
+	&bcm_sh1_cam_ife_0,
+	&bcm_sh0_cam_ife_1,
+	&bcm_sh1_cam_ife_1,
+	&bcm_sh0_cam_ife_2,
+	&bcm_sh1_cam_ife_2,
 };
 
 static const struct qcom_icc_desc kalama_gem_noc = {
 	.nodes = kalama_gem_noc_nodes,
 	.num_nodes = ARRAY_SIZE(kalama_gem_noc_nodes),
-	.bcms = gem_noc_bcms,
-	.num_bcms = ARRAY_SIZE(gem_noc_bcms),
+	.bcms = kalama_gem_noc_bcms,
+	.num_bcms = ARRAY_SIZE(kalama_gem_noc_bcms),
+	.extra_voters = kalama_mm_voters,
+	.num_extra_voters = ARRAY_SIZE(kalama_mm_voters),
 };
 
 static struct qcom_icc_node * const kalama_lpass_ag_noc_nodes[] = {
@@ -194,13 +230,36 @@ static const struct qcom_icc_desc kalama_lpass_lpicx_noc = {
 static struct qcom_icc_node * const kalama_mc_virt_nodes[] = {
 	[KALAMA_MASTER_LLCC] = &llcc_mc,
 	[KALAMA_SLAVE_EBI1] = &ebi,
+	[KALAMA_MASTER_LLCC_DISP] = &llcc_mc_disp,
+	[KALAMA_SLAVE_EBI1_DISP] = &ebi_disp,
+	[KALAMA_MASTER_LLCC_CAM_IFE_0] = &llcc_mc_cam_ife_0,
+	[KALAMA_SLAVE_EBI1_CAM_IFE_0] = &ebi_cam_ife_0,
+	[KALAMA_MASTER_LLCC_CAM_IFE_1] = &llcc_mc_cam_ife_1,
+	[KALAMA_SLAVE_EBI1_CAM_IFE_1] = &ebi_cam_ife_1,
+	[KALAMA_MASTER_LLCC_CAM_IFE_2] = &llcc_mc_cam_ife_2,
+	[KALAMA_SLAVE_EBI1_CAM_IFE_2] = &ebi_cam_ife_2,
+};
+
+static struct qcom_icc_bcm * const kalama_mc_virt_bcms[] = {
+	&bcm_acv,
+	&bcm_mc0,
+	&bcm_acv_disp,
+	&bcm_mc0_disp,
+	&bcm_acv_cam_ife_0,
+	&bcm_mc0_cam_ife_0,
+	&bcm_acv_cam_ife_1,
+	&bcm_mc0_cam_ife_1,
+	&bcm_acv_cam_ife_2,
+	&bcm_mc0_cam_ife_2,
 };
 
 static const struct qcom_icc_desc kalama_mc_virt = {
 	.nodes = kalama_mc_virt_nodes,
 	.num_nodes = ARRAY_SIZE(kalama_mc_virt_nodes),
-	.bcms = mc_virt_bcms,
-	.num_bcms = ARRAY_SIZE(mc_virt_bcms),
+	.bcms = kalama_mc_virt_bcms,
+	.num_bcms = ARRAY_SIZE(kalama_mc_virt_bcms),
+	.extra_voters = kalama_mm_voters,
+	.num_extra_voters = ARRAY_SIZE(kalama_mm_voters),
 };
 
 static struct qcom_icc_node * const kalama_mmss_noc_nodes[] = {
@@ -217,13 +276,44 @@ static struct qcom_icc_node * const kalama_mmss_noc_nodes[] = {
 	[KALAMA_SLAVE_MNOC_HF_MEM_NOC] = &qns_mem_noc_hf,
 	[KALAMA_SLAVE_MNOC_SF_MEM_NOC] = &qns_mem_noc_sf,
 	[KALAMA_SLAVE_SERVICE_MNOC] = &srvc_mnoc,
+	[KALAMA_MASTER_MDP_DISP] = &qnm_mdp_disp,
+	[KALAMA_SLAVE_MNOC_HF_MEM_NOC_DISP] = &qns_mem_noc_hf_disp,
+	[KALAMA_MASTER_CAMNOC_HF_CAM_IFE_0] = &qnm_camnoc_hf_cam_ife_0,
+	[KALAMA_MASTER_CAMNOC_ICP_CAM_IFE_0] = &qnm_camnoc_icp_cam_ife_0,
+	[KALAMA_MASTER_CAMNOC_SF_CAM_IFE_0] = &qnm_camnoc_sf_cam_ife_0,
+	[KALAMA_SLAVE_MNOC_HF_MEM_NOC_CAM_IFE_0] = &qns_mem_noc_hf_cam_ife_0,
+	[KALAMA_SLAVE_MNOC_SF_MEM_NOC_CAM_IFE_0] = &qns_mem_noc_sf_cam_ife_0,
+	[KALAMA_MASTER_CAMNOC_HF_CAM_IFE_1] = &qnm_camnoc_hf_cam_ife_1,
+	[KALAMA_MASTER_CAMNOC_ICP_CAM_IFE_1] = &qnm_camnoc_icp_cam_ife_1,
+	[KALAMA_MASTER_CAMNOC_SF_CAM_IFE_1] = &qnm_camnoc_sf_cam_ife_1,
+	[KALAMA_SLAVE_MNOC_HF_MEM_NOC_CAM_IFE_1] = &qns_mem_noc_hf_cam_ife_1,
+	[KALAMA_SLAVE_MNOC_SF_MEM_NOC_CAM_IFE_1] = &qns_mem_noc_sf_cam_ife_1,
+	[KALAMA_MASTER_CAMNOC_HF_CAM_IFE_2] = &qnm_camnoc_hf_cam_ife_2,
+	[KALAMA_MASTER_CAMNOC_ICP_CAM_IFE_2] = &qnm_camnoc_icp_cam_ife_2,
+	[KALAMA_MASTER_CAMNOC_SF_CAM_IFE_2] = &qnm_camnoc_sf_cam_ife_2,
+	[KALAMA_SLAVE_MNOC_HF_MEM_NOC_CAM_IFE_2] = &qns_mem_noc_hf_cam_ife_2,
+	[KALAMA_SLAVE_MNOC_SF_MEM_NOC_CAM_IFE_2] = &qns_mem_noc_sf_cam_ife_2,
+};
+
+static struct qcom_icc_bcm * const kalama_mmss_noc_bcms[] = {
+	&bcm_mm0,
+	&bcm_mm1,
+	&bcm_mm0_disp,
+	&bcm_mm0_cam_ife_0,
+	&bcm_mm1_cam_ife_0,
+	&bcm_mm0_cam_ife_1,
+	&bcm_mm1_cam_ife_1,
+	&bcm_mm0_cam_ife_2,
+	&bcm_mm1_cam_ife_2,
 };
 
 static const struct qcom_icc_desc kalama_mmss_noc = {
 	.nodes = kalama_mmss_noc_nodes,
 	.num_nodes = ARRAY_SIZE(kalama_mmss_noc_nodes),
-	.bcms = mmss_noc_bcms,
-	.num_bcms = ARRAY_SIZE(mmss_noc_bcms),
+	.bcms = kalama_mmss_noc_bcms,
+	.num_bcms = ARRAY_SIZE(kalama_mmss_noc_bcms),
+	.extra_voters = kalama_mm_voters,
+	.num_extra_voters = ARRAY_SIZE(kalama_mm_voters),
 };
 
 static struct qcom_icc_node * const kalama_nsp_noc_nodes[] = {

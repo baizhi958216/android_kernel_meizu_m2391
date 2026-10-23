@@ -65,10 +65,16 @@ void qcom_icc_pre_aggregate(struct icc_node *node)
 	for (i = 0; i < QCOM_ICC_NUM_BUCKETS; i++) {
 		qn->sum_avg[i] = 0;
 		qn->max_peak[i] = 0;
+		qn->perf_mode[i] = false;
 	}
 
-	for (i = 0; i < qn->num_bcms; i++)
-		qcom_icc_bcm_voter_add(qp->voter, qn->bcms[i]);
+	for (i = 0; i < qn->num_bcms; i++) {
+		struct qcom_icc_bcm *bcm = qn->bcms[i];
+		struct bcm_voter *voter = bcm->voter_idx ?
+			qp->extra_voters[bcm->voter_idx - 1] : qp->voter;
+
+		qcom_icc_bcm_voter_add(voter, bcm);
+	}
 }
 EXPORT_SYMBOL_GPL(qcom_icc_pre_aggregate);
 
@@ -95,6 +101,8 @@ int qcom_icc_aggregate(struct icc_node *node, u32 tag, u32 avg_bw,
 	for (i = 0; i < QCOM_ICC_NUM_BUCKETS; i++) {
 		if (tag & BIT(i)) {
 			qn->sum_avg[i] += avg_bw;
+			if ((tag & QCOM_ICC_TAG_PERF_MODE) && (avg_bw || peak_bw))
+				qn->perf_mode[i] = true;
 			qn->max_peak[i] = max_t(u32, qn->max_peak[i], peak_bw);
 		}
 
@@ -122,6 +130,8 @@ int qcom_icc_set(struct icc_node *src, struct icc_node *dst)
 {
 	struct qcom_icc_provider *qp;
 	struct icc_node *node;
+	size_t i;
+	int ret;
 
 	if (!src)
 		node = dst;
@@ -130,9 +140,10 @@ int qcom_icc_set(struct icc_node *src, struct icc_node *dst)
 
 	qp = to_qcom_provider(node->provider);
 
-	qcom_icc_bcm_voter_commit(qp->voter);
-
-	return 0;
+	ret = qcom_icc_bcm_voter_commit(qp->voter);
+	for (i = 0; !ret && i < qp->num_extra_voters; i++)
+		ret = qcom_icc_bcm_voter_commit(qp->extra_voters[i]);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(qcom_icc_set);
 
@@ -148,14 +159,15 @@ int qcom_icc_bcm_init(struct qcom_icc_bcm *bcm, struct device *dev)
 	struct qcom_icc_node *qn;
 	const struct bcm_db *data;
 	size_t data_count;
+	u32 addr;
 	int i;
 
 	/* BCM is already initialised*/
 	if (bcm->addr)
 		return 0;
 
-	bcm->addr = cmd_db_read_addr(bcm->name);
-	if (!bcm->addr) {
+	addr = cmd_db_read_addr(bcm->name);
+	if (!addr) {
 		dev_err(dev, "%s could not find RPMh address\n",
 			bcm->name);
 		return -EINVAL;
@@ -173,6 +185,7 @@ int qcom_icc_bcm_init(struct qcom_icc_bcm *bcm, struct device *dev)
 		return -EINVAL;
 	}
 
+	bcm->addr = addr;
 	bcm->aux_data.unit = le32_to_cpu(data->unit);
 	bcm->aux_data.width = le16_to_cpu(data->width);
 	bcm->aux_data.vcd = data->vcd;
@@ -272,8 +285,29 @@ int qcom_icc_rpmh_probe(struct platform_device *pdev)
 	if (IS_ERR(qp->voter))
 		return PTR_ERR(qp->voter);
 
-	for (i = 0; i < qp->num_bcms; i++)
-		qcom_icc_bcm_init(qp->bcms[i], dev);
+	if (desc->num_extra_voters) {
+		qp->extra_voters = devm_kcalloc(dev, desc->num_extra_voters,
+						sizeof(*qp->extra_voters), GFP_KERNEL);
+		if (!qp->extra_voters)
+			return -ENOMEM;
+		for (i = 0; i < desc->num_extra_voters; i++) {
+			struct bcm_voter *voter = of_bcm_voter_get(dev, desc->extra_voters[i]);
+
+			if (IS_ERR(voter))
+				return dev_err_probe(dev, PTR_ERR(voter), "BCM voter %s\n",
+						     desc->extra_voters[i]);
+			qp->extra_voters[i] = voter;
+		}
+		qp->num_extra_voters = desc->num_extra_voters;
+	}
+
+	for (i = 0; i < qp->num_bcms; i++) {
+		if (qp->bcms[i]->voter_idx > qp->num_extra_voters)
+			return -EINVAL;
+		ret = qcom_icc_bcm_init(qp->bcms[i], dev);
+		if (ret && desc->num_extra_voters)
+			return ret;
+	}
 
 	for (i = 0; i < num_nodes; i++) {
 		qn = qnodes[i];
