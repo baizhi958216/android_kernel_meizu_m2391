@@ -92,7 +92,9 @@ struct qcom_socinfo_adreno {
 	char part_name[SMEM_SOCINFO_CHIP_ID_LENGTH];
 };
 
+#define QCOM_SOCINFO_PART_CAMERA 3
 #define QCOM_SOCINFO_PART_DISPLAY 4
+int qcom_socinfo_get_subpart(unsigned int part, u32 *value);
 bool qcom_socinfo_part_disabled(unsigned int part);
 
 int qcom_socinfo_get_adreno(struct qcom_socinfo_adreno *gpu);

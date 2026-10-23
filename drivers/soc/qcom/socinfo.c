@@ -784,21 +784,32 @@ static void socinfo_debugfs_exit(struct qcom_socinfo *qcom_socinfo) {  }
 #endif /* CONFIG_DEBUG_FS */
 
 /* The version 16 SMEM part map has fixed-size, potentially unaligned records. */
-bool qcom_socinfo_part_disabled(unsigned int part)
+int qcom_socinfo_get_subpart(unsigned int part, u32 *value)
 {
 	const struct socinfo *info;
 	u32 offset, count;
 	size_t size;
 
 	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_HW_SW_BUILD_ID, &size);
-	if (IS_ERR(info) || size < offsetofend(struct socinfo, nsubset_parts_array_offset) ||
+	if (IS_ERR(info))
+		return PTR_ERR(info);
+	if (size < offsetofend(struct socinfo, nsubset_parts_array_offset) ||
 	    le32_to_cpu(info->fmt) < SOCINFO_VERSION(0, 14))
-		return false;
+		return -ENODATA;
 	offset = le32_to_cpu(info->nsubset_parts_array_offset);
 	count = le32_to_cpu(info->num_subset_parts);
 	if (!offset || offset > size || count > (size - offset) / sizeof(__le32) || part >= count)
-		return false;
-	return get_unaligned_le32((const u8 *)info + offset + part * sizeof(__le32)) & 1;
+		return -ENODATA;
+	*value = get_unaligned_le32((const u8 *)info + offset + part * sizeof(__le32));
+	return 0;
+}
+EXPORT_SYMBOL_GPL(qcom_socinfo_get_subpart);
+
+bool qcom_socinfo_part_disabled(unsigned int part)
+{
+	u32 value;
+
+	return !qcom_socinfo_get_subpart(part, &value) && (value & BIT(0));
 }
 EXPORT_SYMBOL_GPL(qcom_socinfo_part_disabled);
 
