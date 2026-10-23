@@ -436,6 +436,37 @@ int slim_stream_disable(struct slim_stream_runtime *stream)
 EXPORT_SYMBOL_GPL(slim_stream_disable);
 
 /**
+ * slim_stream_unprepare_disconnect_port() - stage stream disconnection and release
+ * @stream: stream being torn down
+ * @disconnect: disconnect the hardware ports
+ * @release: release port storage after the last hardware operation
+ *
+ * Some Bluetooth audio rates require port disconnection before channel removal.
+ * Return: zero on success or a negative error code.
+ */
+int slim_stream_unprepare_disconnect_port(struct slim_stream_runtime *stream,
+					 bool disconnect, bool release)
+{
+	int i;
+
+	if (!stream || !stream->ports || !stream->num_ports)
+		return -EINVAL;
+
+	if (disconnect)
+		for (i = 0; i < stream->num_ports; i++)
+			slim_disconnect_port(stream, &stream->ports[i]);
+
+	if (release) {
+		kfree(stream->ports);
+		stream->ports = NULL;
+		stream->num_ports = 0;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(slim_stream_unprepare_disconnect_port);
+
+/**
  * slim_stream_unprepare() - Un-prepare a SLIMbus Stream
  *
  * @stream: instance of slim stream runtime to unprepare
@@ -448,19 +479,7 @@ EXPORT_SYMBOL_GPL(slim_stream_disable);
  */
 int slim_stream_unprepare(struct slim_stream_runtime *stream)
 {
-	int i;
-
-	if (!stream->ports || !stream->num_ports)
-		return -EINVAL;
-
-	for (i = 0; i < stream->num_ports; i++)
-		slim_disconnect_port(stream, &stream->ports[i]);
-
-	kfree(stream->ports);
-	stream->ports = NULL;
-	stream->num_ports = 0;
-
-	return 0;
+	return slim_stream_unprepare_disconnect_port(stream, true, true);
 }
 EXPORT_SYMBOL_GPL(slim_stream_unprepare);
 

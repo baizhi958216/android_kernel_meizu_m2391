@@ -206,6 +206,8 @@ int slim_stream_prepare(struct slim_stream_runtime *stream,
 			struct slim_stream_config *c);
 int slim_stream_enable(struct slim_stream_runtime *stream);
 int slim_stream_disable(struct slim_stream_runtime *stream);
+int slim_stream_unprepare_disconnect_port(struct slim_stream_runtime *stream,
+					 bool disconnect, bool release);
 int slim_stream_unprepare(struct slim_stream_runtime *stream);
 int slim_stream_free(struct slim_stream_runtime *stream);
 
