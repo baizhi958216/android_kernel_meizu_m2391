@@ -99,6 +99,15 @@ gpu=qcom/opensource/graphics-kernel
 extbuild "$gpu" KGSL_PATH="$external/$gpu" KERNEL_SRC="$kernel" CONFIG_ARCH_KALAMA=y \
 	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$mm/hw_fence/Module.symvers"
 
+wlan=qcom/opensource/wlan/platform
+extbuild "$wlan" WLAN_PLATFORM_ROOT="$external/$wlan" CONFIG_CNSS_OUT_OF_TREE=y \
+	CONFIG_CNSS_GENL=m CONFIG_WCNSS_MEM_PRE_ALLOC=m CONFIG_CNSS_UTILS=m \
+	CONFIG_CNSS_QMI_SVC=m CONFIG_CNSS_PLAT_IPC_QMI_SVC=m
+bt=qcom/opensource/bt-kernel
+extbuild "$bt" BT_ROOT="$external/$bt" CONFIG_MSM_BT_POWER=m CONFIG_BTFM_SLIM=m \
+	CONFIG_SLIM_BTFM_CODEC=n CONFIG_I2C_RTC6226_QCA=m \
+	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$wlan/Module.symvers"
+
 release=$(<"$out/include/config/kernel.release")
 cat "${symvers[@]}" > "$stage/Module.symvers"
 depmod -ae -E "$stage/Module.symvers" -b "$stage" "$release" 2>"$stage/depmod.log"
