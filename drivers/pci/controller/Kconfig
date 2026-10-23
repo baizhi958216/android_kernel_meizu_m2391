@@ -3,6 +3,16 @@
 menu "PCI controller drivers"
 	depends on PCI
 
+config PCI_MSM
+	tristate "Qualcomm Kalama PCIe root controller"
+	depends on ARCH_QCOM && OF && PCI_MSI && PCIEAER && GPIOLIB
+	depends on RPMSG && QCOM_RPROC_COMMON && INTERCONNECT && REGULATOR
+	select CRC8
+	select IPC_LOGGING
+	help
+	  Drive Kalama root ports with board-supplied PHY sequences, GIC ITS
+	  interrupts, SMMU stream IDs and client-controlled WLAN enumeration.
+
 config PCI_HOST_COMMON
 	tristate
 	select PCI_ECAM
