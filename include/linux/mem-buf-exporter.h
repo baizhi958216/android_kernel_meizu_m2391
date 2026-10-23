@@ -6,6 +6,7 @@
 #ifndef _MEM_BUF_EXPORTER_H
 #define _MEM_BUF_EXPORTER_H
 
+#include <linux/mm_types.h>
 #include <linux/dma-buf.h>
 #include <linux/gunyah/gh_rm_drv.h>
 #include <soc/qcom/secure_buffer.h>
@@ -108,6 +109,10 @@ bool mem_buf_vmperm_can_cmo(struct mem_buf_vmperm *vmperm);
  * vma->vm_ops, and call mem_buf_vmperm_pin()/unpin() respectively.
  */
 bool mem_buf_vmperm_can_mmap(struct mem_buf_vmperm *vmperm, struct vm_area_struct *vma);
+
+/* Insert a revocable PFN under the VM ownership lock. */
+vm_fault_t mem_buf_vmperm_insert_pfn(struct mem_buf_vmperm *vmperm, struct vm_fault *vmf,
+				    unsigned long pfn);
 
 /*
  * Check whether the current permissions of the dmabuf allow vmap.

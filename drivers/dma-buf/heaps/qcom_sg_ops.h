@@ -29,6 +29,7 @@ struct qcom_sg_buffer {
 	int vmap_cnt;
 	void *vaddr;
 	bool uncached;
+	bool revocable_cma_mmap;
 	struct mem_buf_vmperm *vmperm;
 	struct deferred_freelist_item deferred_free;
 	void (*free)(struct qcom_sg_buffer *buffer);

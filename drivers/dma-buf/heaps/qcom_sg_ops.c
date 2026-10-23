@@ -379,6 +379,21 @@ static const struct vm_operations_struct qcom_sg_vm_ops = {
 	.close = qcom_sg_vm_ops_close,
 };
 
+static vm_fault_t qcom_cma_fault(struct vm_fault *vmf)
+{
+	struct qcom_sg_buffer *buffer = vmf->vma->vm_private_data;
+	struct scatterlist *sg = buffer->sg_table.sgl;
+
+	if (vmf->pgoff >= buffer->len >> PAGE_SHIFT)
+		return VM_FAULT_SIGBUS;
+	return mem_buf_vmperm_insert_pfn(buffer->vmperm, vmf,
+					page_to_pfn(sg_page(sg)) + vmf->pgoff);
+}
+
+static const struct vm_operations_struct qcom_cma_revocable_vm_ops = {
+	.fault = qcom_cma_fault,
+};
+
 static int qcom_sg_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 {
 	struct qcom_sg_buffer *buffer = dmabuf->priv;
@@ -395,10 +410,17 @@ static int qcom_sg_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 		return -EPERM;
 	}
 
-	vma->vm_ops = &qcom_sg_vm_ops;
-	vma->vm_private_data = buffer->vmperm;
 	if (buffer->uncached)
 		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+	if (buffer->revocable_cma_mmap && (vma->vm_flags & VM_SHARED)) {
+		vm_flags_set(vma, VM_IO | VM_PFNMAP | VM_DONTEXPAND | VM_DONTDUMP);
+		vma->vm_ops = &qcom_cma_revocable_vm_ops;
+		vma->vm_private_data = buffer;
+		mem_buf_vmperm_unpin(buffer->vmperm);
+		return 0;
+	}
+	vma->vm_ops = &qcom_sg_vm_ops;
+	vma->vm_private_data = buffer->vmperm;
 
 	for_each_sg(table->sgl, sg, table->nents, i) {
 		struct page *page = sg_page(sg);

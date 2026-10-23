@@ -16,6 +16,7 @@ struct mem_buf_vmperm {
 	u32 flags;
 	int current_vm_perms;
 	u32 mapcount;
+	bool revocable_ptes;
 	int *vmids;
 	int *perms;
 	unsigned int nr_acl_entries;
@@ -375,6 +376,28 @@ unlock:
 }
 EXPORT_SYMBOL(mem_buf_vmperm_can_mmap);
 
+vm_fault_t mem_buf_vmperm_insert_pfn(struct mem_buf_vmperm *vmperm, struct vm_fault *vmf,
+				    unsigned long pfn)
+{
+	struct vm_area_struct *vma = vmf->vma;
+	vm_fault_t ret = VM_FAULT_SIGBUS;
+	u32 required = PERM_READ;
+
+	if (vma->vm_flags & VM_WRITE)
+		required |= PERM_WRITE;
+	if (vma->vm_flags & VM_EXEC)
+		required |= PERM_EXEC;
+	mutex_lock(&vmperm->lock);
+	if (!(vmperm->flags & MEM_BUF_WRAPPER_FLAG_ERR) &&
+	    (vmperm->current_vm_perms & required) == required) {
+		vmperm->revocable_ptes = true;
+		ret = vmf_insert_pfn(vma, vmf->address, pfn);
+	}
+	mutex_unlock(&vmperm->lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(mem_buf_vmperm_insert_pfn);
+
 bool mem_buf_vmperm_can_vmap(struct mem_buf_vmperm *vmperm)
 {
 	u32 perms = PERM_READ | PERM_WRITE;
@@ -499,6 +522,13 @@ static int mem_buf_lend_internal(struct dma_buf *dmabuf,
 	if (!READ_ONCE(mem_buf_dev)) {
 		ret = -EPROBE_DEFER;
 		goto err_assign;
+	}
+	/* Block new CPU faults while removing translations and cleaning the
+	 * cache. A failed transfer will refault with the old permissions.
+	 */
+	if (vmperm->revocable_ptes) {
+		unmap_mapping_range(dmabuf->file->f_mapping, 0, 0, 1);
+		vmperm->revocable_ptes = false;
 	}
 	ret = dma_map_sgtable(mem_buf_dev, vmperm->sgt, DMA_TO_DEVICE, 0);
 	if (ret)

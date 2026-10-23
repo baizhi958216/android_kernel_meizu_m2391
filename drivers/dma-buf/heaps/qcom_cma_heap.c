@@ -112,6 +112,8 @@ static struct dma_buf *cma_heap_allocate(struct dma_heap *heap,
 	mutex_init(&helper_buffer->lock);
 	helper_buffer->len = size;
 	helper_buffer->uncached = cma_heap->uncached;
+	/* AudioReach keeps its VMA while this heap is on loan to LPASS. */
+	helper_buffer->revocable_cma_mmap = !strcmp(dma_heap_get_name(heap), "qcom,audio-ml");
 	helper_buffer->free = cma_heap_free;
 
 	if (cma_heap->is_nomap) {
