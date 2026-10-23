@@ -129,6 +129,11 @@ struct rsc_drv {
 	struct notifier_block genpd_nb;
 	atomic_t cpus_in_pm;
 	struct tcs_group tcs[TCS_TYPE_NR];
+	/* Dual-channel RSCs have a second, independently programmed TCS bank. */
+	struct tcs_group *second_tcs;
+	struct mutex channel_lock;
+	bool channel_running;
+	bool program_second;
 	DECLARE_BITMAP(tcs_in_use, MAX_TCS_NR);
 	spinlock_t lock;
 	wait_queue_head_t tcs_wait;

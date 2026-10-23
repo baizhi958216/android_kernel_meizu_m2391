@@ -22,6 +22,8 @@ int rpmh_write_batch(const struct device *dev, enum rpmh_state state,
 
 void rpmh_invalidate(const struct device *dev);
 int rpmh_write_sleep_and_wake(const struct device *dev);
+int rpmh_hw_channel_start(const struct device *voter);
+int rpmh_hw_channel_stop(const struct device *voter);
 int rpmh_mode_solver_set(const struct device *dev, bool enable);
 int rpmh_init_fast_path(const struct device *dev, struct tcs_cmd *cmds, u32 count);
 int rpmh_update_fast_path(const struct device *dev, struct tcs_cmd *cmds,

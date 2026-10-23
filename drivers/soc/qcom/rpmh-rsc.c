@@ -40,6 +40,14 @@
 #include "trace-rpmh.h"
 
 
+/* RSC v3 hardware-channel interface, relative to each DRV. */
+#define RSC_CH_COMPLETE			0x494
+#define RSC_CH_UPDATE			0x498
+#define RSC_CH_BUSY			0x49c
+#define RSC_CH_ENABLE			0x4a0
+#define RSC_CH_CLEAR_STATUS		BIT(31)
+#define RSC_CH_TCS_STRIDE		336
+
 #define RSC_DRV_ID			0
 
 #define MAJOR_VER_MASK			0xFF
@@ -197,7 +205,9 @@ static u32 rpmh_rsc_reg_offset_ver_3_0[] = {
 static inline void __iomem *
 tcs_reg_addr(const struct rsc_drv *drv, int reg, int tcs_id)
 {
-	return drv->tcs_base + drv->regs[RSC_DRV_TCS_OFFSET] * tcs_id + reg;
+	u32 stride = drv->second_tcs ? RSC_CH_TCS_STRIDE : drv->regs[RSC_DRV_TCS_OFFSET];
+
+	return drv->tcs_base + stride * tcs_id + reg;
 }
 
 static inline void __iomem *
@@ -264,14 +274,17 @@ static void write_tcs_reg_sync(const struct rsc_drv *drv, int reg, int tcs_id,
 static void tcs_invalidate(struct rsc_drv *drv, int type)
 {
 	int m;
-	struct tcs_group *tcs = &drv->tcs[type];
+	struct tcs_group *tcs = drv->program_second ? &drv->second_tcs[type] : &drv->tcs[type];
 
 	/* Caller ensures nobody else is running so no lock */
-	if (bitmap_empty(tcs->slots, MAX_TCS_SLOTS))
+	if (!drv->second_tcs && bitmap_empty(tcs->slots, MAX_TCS_SLOTS))
 		return;
 
-	for (m = tcs->offset; m < tcs->offset + tcs->num_tcs; m++)
+	for (m = tcs->offset; m < tcs->offset + tcs->num_tcs; m++) {
 		write_tcs_reg_sync(drv, drv->regs[RSC_DRV_CMD_ENABLE], m, 0);
+		if (drv->second_tcs)
+			write_tcs_reg_sync(drv, drv->regs[RSC_DRV_CMD_WAIT_FOR_CMPL], m, 0);
+	}
 
 	bitmap_zero(tcs->slots, MAX_TCS_SLOTS);
 }
@@ -327,7 +340,9 @@ static struct tcs_group *get_tcs_for_msg(struct rsc_drv *drv,
 	 * transfers have finished before we use it (maybe by running from
 	 * the last CPU in PM code).
 	 */
-	tcs = &drv->tcs[type];
+	if (drv->second_tcs && msg->state == RPMH_ACTIVE_ONLY_STATE)
+		return ERR_PTR(-EOPNOTSUPP);
+	tcs = drv->program_second ? &drv->second_tcs[type] : &drv->tcs[type];
 	if (msg->state == RPMH_ACTIVE_ONLY_STATE && !tcs->num_tcs)
 		tcs = &drv->tcs[WAKE_TCS];
 
@@ -499,7 +514,7 @@ static void __tcs_buffer_write(struct rsc_drv *drv, int tcs_id, int cmd_id,
 {
 	u32 msgid;
 	u32 cmd_msgid = CMD_MSGID_LEN | CMD_MSGID_WRITE;
-	u32 cmd_enable = 0;
+	u32 cmd_enable = 0, complete = 0;
 	struct tcs_cmd *cmd;
 	int i, j;
 
@@ -509,6 +524,8 @@ static void __tcs_buffer_write(struct rsc_drv *drv, int tcs_id, int cmd_id,
 	for (i = 0, j = cmd_id; i < msg->num_cmds; i++, j++) {
 		cmd = &msg->cmds[i];
 		cmd_enable |= BIT(j);
+		if (cmd->wait)
+			complete |= BIT(j);
 		msgid = cmd_msgid;
 		/*
 		 * Additionally, if the cmd->wait is set, make the command
@@ -522,6 +539,10 @@ static void __tcs_buffer_write(struct rsc_drv *drv, int tcs_id, int cmd_id,
 		trace_rpmh_send_msg(drv, tcs_id, msg->state, j, msgid, cmd);
 	}
 
+	if (drv->second_tcs) {
+		complete |= read_tcs_reg(drv, drv->regs[RSC_DRV_CMD_WAIT_FOR_CMPL], tcs_id);
+		write_tcs_reg(drv, drv->regs[RSC_DRV_CMD_WAIT_FOR_CMPL], tcs_id, complete);
+	}
 	cmd_enable |= read_tcs_reg(drv, drv->regs[RSC_DRV_CMD_ENABLE], tcs_id);
 	write_tcs_reg(drv, drv->regs[RSC_DRV_CMD_ENABLE], tcs_id, cmd_enable);
 }
@@ -902,12 +923,103 @@ int rpmh_mode_solver_set(const struct device *dev, bool enable)
 }
 EXPORT_SYMBOL_GPL(rpmh_mode_solver_set);
 
+/* The caller holds channel_lock and keeps the RSC interface clock on. */
+static int rpmh_program_channel(struct rsc_drv *drv, bool start)
+{
+	u32 channel = 0, status;
+	unsigned long flags;
+	int ret;
+
+	if (!start) {
+		u32 selected = readl(drv->base + RSC_CH_UPDATE);
+
+		if (selected != BIT(0) && selected != BIT(1))
+			return -EBUSY;
+		ret = readl_poll_timeout(drv->base + RSC_CH_BUSY, status,
+					 status == selected, 1, 100);
+		if (ret)
+			return ret;
+		channel = selected == BIT(0);
+	}
+
+	spin_lock_irqsave(&drv->client.cache_lock, flags);
+	drv->program_second = channel;
+	/* This bank can still contain the votes from two frames ago. */
+	drv->client.dirty = true;
+	ret = rpmh_flush_locked(&drv->client);
+	spin_unlock_irqrestore(&drv->client.cache_lock, flags);
+	if (ret)
+		return ret;
+
+	writel(RSC_CH_CLEAR_STATUS, drv->base + RSC_CH_COMPLETE);
+	if (start)
+		writel(1, drv->base + RSC_CH_ENABLE);
+	writel(BIT(channel), drv->base + RSC_CH_UPDATE);
+	ret = readl_poll_timeout(drv->base + RSC_CH_COMPLETE, status,
+				 status & BIT(2 * channel), 1, 100);
+	if (!ret)
+		writel(RSC_CH_CLEAR_STATUS, drv->base + RSC_CH_COMPLETE);
+	return ret;
+}
+
+int rpmh_hw_channel_start(const struct device *voter)
+{
+	struct rsc_drv *drv = dev_get_drvdata(voter->parent);
+	int ret;
+
+	if (!drv || !drv->second_tcs)
+		return -EOPNOTSUPP;
+	guard(mutex)(&drv->channel_lock);
+	if (drv->channel_running)
+		return -EALREADY;
+	ret = pm_runtime_resume_and_get(drv->dev);
+	if (ret < 0)
+		return ret;
+	ret = rpmh_program_channel(drv, true);
+	if (ret) {
+		writel(0, drv->base + RSC_CH_UPDATE);
+		writel(0, drv->base + RSC_CH_ENABLE);
+		pm_runtime_put(drv->dev);
+		return ret;
+	}
+	drv->channel_running = true;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(rpmh_hw_channel_start);
+
+int rpmh_hw_channel_stop(const struct device *voter)
+{
+	struct rsc_drv *drv = dev_get_drvdata(voter->parent);
+	int ret;
+
+	if (!drv || !drv->second_tcs)
+		return -EOPNOTSUPP;
+	guard(mutex)(&drv->channel_lock);
+	if (!drv->channel_running)
+		return -EINVAL;
+	ret = rpmh_program_channel(drv, false);
+	if (ret)
+		return ret;
+	writel(0, drv->base + RSC_CH_UPDATE);
+	writel(0, drv->base + RSC_CH_ENABLE);
+	drv->channel_running = false;
+	pm_runtime_put(drv->dev);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(rpmh_hw_channel_stop);
+
 int rpmh_write_sleep_and_wake(const struct device *dev)
 {
 	struct rsc_drv *drv = dev_get_drvdata(dev->parent);
 	unsigned long flags;
 	int ret;
 
+	if (drv && drv->second_tcs) {
+		guard(mutex)(&drv->channel_lock);
+		if (!drv->channel_running)
+			return -EINVAL;
+		return rpmh_program_channel(drv, false);
+	}
 	if (!drv || !drv->has_solver)
 		return -EOPNOTSUPP;
 	if (drv->iface) {
@@ -1098,7 +1210,7 @@ static int rpmh_rsc_pd_attach(struct rsc_drv *drv, struct device *dev)
 }
 
 static int rpmh_probe_tcs_config(struct device_node *dn, struct device_node *channel,
-				 struct rsc_drv *drv)
+				 struct rsc_drv *drv, struct tcs_group *groups)
 {
 	struct tcs_type_config {
 		u32 type;
@@ -1124,6 +1236,9 @@ static int rpmh_probe_tcs_config(struct device_node *dn, struct device_node *cha
 	ncpt = config & (DRV_NCPT_MASK << DRV_NCPT_SHIFT);
 	ncpt = ncpt >> DRV_NCPT_SHIFT;
 
+	if (!ncpt || ncpt > MAX_CMDS_PER_TCS)
+		return -EINVAL;
+
 	n = of_property_count_u32_elems(cfg, "qcom,tcs-config");
 	if (n != 2 * (TCS_TYPE_NR + !!channel))
 		return -EINVAL;
@@ -1145,7 +1260,7 @@ static int rpmh_probe_tcs_config(struct device_node *dn, struct device_node *cha
 	}
 
 	for (i = 0; i < TCS_TYPE_NR; i++) {
-		tcs = &drv->tcs[tcs_cfg[i].type];
+		tcs = &groups[tcs_cfg[i].type];
 		if (tcs->drv)
 			return -EINVAL;
 		tcs->drv = drv;
@@ -1153,15 +1268,18 @@ static int rpmh_probe_tcs_config(struct device_node *dn, struct device_node *cha
 		tcs->num_tcs = tcs_cfg[i].n;
 		tcs->ncpt = ncpt;
 
+		if (drv->second_tcs && tcs->num_tcs !=
+		    (tcs->type == SLEEP_TCS || tcs->type == WAKE_TCS))
+			return -EINVAL;
 		if (!tcs->num_tcs || tcs->type == CONTROL_TCS)
 			continue;
 
 		if (st + tcs->num_tcs > max_tcs ||
-		    st + tcs->num_tcs >= BITS_PER_BYTE * sizeof(tcs->mask))
+		    drv->num_tcs + st + tcs->num_tcs >= BITS_PER_BYTE * sizeof(tcs->mask))
 			return -EINVAL;
 
-		tcs->mask = ((1 << tcs->num_tcs) - 1) << st;
-		tcs->offset = st;
+		tcs->offset = drv->num_tcs + st;
+		tcs->mask = ((1 << tcs->num_tcs) - 1) << tcs->offset;
 		st += tcs->num_tcs;
 	}
 
@@ -1176,12 +1294,12 @@ static int rpmh_probe_tcs_config(struct device_node *dn, struct device_node *cha
 			return -EINVAL;
 		ret = of_property_read_u32_index(cfg, "qcom,tcs-config",
 						 2 * TCS_TYPE_NR + 1, &fast_count);
-		if (ret || fast_count > 1 || st + fast_count > max_tcs)
+		if (ret || fast_count > !drv->second_tcs || st + fast_count > max_tcs)
 			return -EINVAL;
 		drv->fast_cmd_slots = fast_count ? ncpt : 0;
 	}
 
-	drv->num_tcs = st;
+	drv->num_tcs += st;
 
 	return 0;
 }
@@ -1226,68 +1344,31 @@ static DEFINE_RUNTIME_DEV_PM_OPS(rpmh_rsc_pm_ops, rpmh_rsc_runtime_suspend,
 
 DEFINE_FREE(rpmh_put_probe_vote, struct device *, if (_T) pm_runtime_put_sync(_T));
 
-static int rpmh_rsc_probe(struct platform_device *pdev)
+static int rpmh_rsc_probe_drv(struct platform_device *pdev, struct device_node *nested,
+			      struct rsc_drv *drv, bool display, bool camera)
 {
 	struct device_node *dn = pdev->dev.of_node;
-	struct device_node *nested __free(device_node) = NULL;
 	struct device_node *channel __free(device_node) = NULL;
+	struct device_node *second __free(device_node) = NULL;
 	struct device *client_parent = &pdev->dev;
-	struct device *probe_vote __free(rpmh_put_probe_vote) = NULL;
-	bool display = of_property_match_string(dn, "label", "disp_rsc") >= 0;
-	struct rsc_drv *drv;
-	char drv_id[10] = {0};
-	int ret, irq;
-	u32 solver_config;
-	u32 rsc_id;
+	char drv_id[10];
+	u32 solver_config, rsc_id;
+	int irq, ret;
 
-	/*
-	 * Even though RPMh doesn't directly use cmd-db, all of its children
-	 * do. To avoid adding this check to our children we'll do it now.
-	 */
-	ret = cmd_db_ready();
-	if (ret)
-		return dev_err_probe(&pdev->dev, ret,
-				     "Command DB not available\n");
-
-	drv = devm_kzalloc(&pdev->dev, sizeof(*drv), GFP_KERNEL);
-	if (!drv)
-		return -ENOMEM;
-
-	drv->dev = &pdev->dev;
-	platform_set_drvdata(pdev, drv);
-	if (of_property_present(dn, "qcom,drv-count")) {
-		u32 count;
-
-		if (of_property_present(dn, "qcom,hw-channel"))
-			return -EOPNOTSUPP;
-		if (!display && of_property_match_string(dn, "label", "apps_rsc") < 0)
-			return -EOPNOTSUPP;
-		if (of_property_read_u32(dn, "qcom,drv-count", &count) ||
-		    count != (display ? 1 : 3) || of_get_available_child_count(dn) != 1)
-			return -EINVAL;
-		if (display) {
-			drv->iface = devm_clk_get(&pdev->dev, NULL);
-			if (IS_ERR(drv->iface))
-				return dev_err_probe(&pdev->dev, PTR_ERR(drv->iface), "RSC bus clock\n");
-			ret = devm_pm_runtime_enable(&pdev->dev);
-			if (ret)
-				return ret;
-			ret = pm_runtime_resume_and_get(&pdev->dev);
-			if (ret < 0)
-				return ret;
-			probe_vote = &pdev->dev;
-		}
-		nested = of_get_next_available_child(dn, NULL);
-		if (!of_node_name_eq(nested, "drv"))
-			return -EINVAL;
+	if (nested) {
 		for_each_available_child_of_node_scoped(nested, child) {
+			const char *unit = kbasename(child->full_name);
+
 			if (!of_node_name_eq(child, "channel"))
 				continue;
-			if (channel)
+			if (!strcmp(unit, "channel@0") && !channel)
+				channel = of_node_get(child);
+			else if (camera && !strcmp(unit, "channel@1") && !second)
+				second = of_node_get(child);
+			else
 				return -EINVAL;
-			channel = of_node_get(child);
 		}
-		if (!channel)
+		if (!channel || (camera && !second))
 			return -EINVAL;
 	}
 
@@ -1295,7 +1376,7 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	if (nested && drv->id != (display ? 0 : 2))
+	if (nested && !camera && drv->id != (display ? 0 : 2))
 		return -EINVAL;
 
 	drv->name = of_get_property(dn, "label", NULL);
@@ -1318,9 +1399,24 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	else
 		drv->regs = rpmh_rsc_reg_offset_ver_2_7;
 
-	ret = rpmh_probe_tcs_config(nested ?: dn, channel, drv);
+	if (camera) {
+		if (drv->ver.major != 3)
+			return -ENODEV;
+		drv->second_tcs = devm_kcalloc(&pdev->dev, TCS_TYPE_NR,
+					       sizeof(*drv->second_tcs), GFP_KERNEL);
+		if (!drv->second_tcs)
+			return -ENOMEM;
+		mutex_init(&drv->channel_lock);
+	}
+
+	ret = rpmh_probe_tcs_config(nested ?: dn, channel, drv, drv->tcs);
 	if (ret)
 		return ret;
+	if (camera) {
+		ret = rpmh_probe_tcs_config(nested, second, drv, drv->second_tcs);
+		if (ret)
+			return ret;
+	}
 
 	spin_lock_init(&drv->lock);
 	init_waitqueue_head(&drv->tcs_wait);
@@ -1352,7 +1448,7 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	drv->has_solver = solver_config;
 	if (display && !drv->has_solver)
 		return dev_err_probe(&pdev->dev, -ENODEV, "display solver unavailable\n");
-	if (!solver_config || (nested && pdev->dev.pm_domain)) {
+	if (!camera && (!solver_config || (nested && pdev->dev.pm_domain))) {
 		if (pdev->dev.pm_domain) {
 			ret = rpmh_rsc_pd_attach(drv, &pdev->dev);
 			if (!ret)
@@ -1389,6 +1485,72 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	if (nested)
 		return of_platform_populate(nested, NULL, NULL, client_parent);
 	return devm_of_platform_populate(client_parent);
+}
+
+static int rpmh_rsc_probe(struct platform_device *pdev)
+{
+	struct device_node *dn = pdev->dev.of_node;
+	struct device *probe_vote __free(rpmh_put_probe_vote) = NULL;
+	bool camera = of_property_present(dn, "qcom,hw-channel");
+	bool display = of_property_match_string(dn, "label", "disp_rsc") >= 0;
+	struct rsc_drv *drvs;
+	unsigned long seen = 0;
+	u32 count = 1;
+	int ret;
+
+	ret = cmd_db_ready();
+	if (ret)
+		return dev_err_probe(&pdev->dev, ret, "Command DB not available\n");
+
+	if (of_property_present(dn, "qcom,drv-count")) {
+		if (of_property_read_u32(dn, "qcom,drv-count", &count) ||
+		    count != (display ? 1 : 3) ||
+		    of_get_available_child_count(dn) != (camera ? count : 1))
+			return -EINVAL;
+		if (camera) {
+			if (of_property_match_string(dn, "label", "cam_rsc") < 0)
+				return -EOPNOTSUPP;
+		} else if (!display && of_property_match_string(dn, "label", "apps_rsc") < 0) {
+			return -EOPNOTSUPP;
+		}
+	} else if (camera) {
+		return -EINVAL;
+	}
+
+	drvs = devm_kcalloc(&pdev->dev, count, sizeof(*drvs), GFP_KERNEL);
+	if (!drvs)
+		return -ENOMEM;
+	platform_set_drvdata(pdev, drvs);
+	drvs[0].dev = &pdev->dev;
+	if (display || camera) {
+		drvs[0].iface = devm_clk_get(&pdev->dev, NULL);
+		if (IS_ERR(drvs[0].iface))
+			return dev_err_probe(&pdev->dev, PTR_ERR(drvs[0].iface), "RSC bus clock\n");
+		ret = devm_pm_runtime_enable(&pdev->dev);
+		if (ret)
+			return ret;
+		ret = pm_runtime_resume_and_get(&pdev->dev);
+		if (ret < 0)
+			return ret;
+		probe_vote = &pdev->dev;
+	}
+
+	if (!of_property_present(dn, "qcom,drv-count"))
+		return rpmh_rsc_probe_drv(pdev, NULL, drvs, false, false);
+
+	for_each_available_child_of_node_scoped(dn, child) {
+		u32 id;
+
+		if (!of_node_name_eq(child, "drv") ||
+		    of_property_read_u32(child, "qcom,drv-id", &id) ||
+		    id >= count || test_and_set_bit(id, &seen))
+			return -EINVAL;
+		/* Single-DRV bindings keep the root as their controller. */
+		ret = rpmh_rsc_probe_drv(pdev, child, &drvs[camera ? id : 0], display, camera);
+		if (ret)
+			return ret;
+	}
+	return 0;
 }
 
 static const struct of_device_id rpmh_drv_match[] = {
