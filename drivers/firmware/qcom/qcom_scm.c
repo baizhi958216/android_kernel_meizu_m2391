@@ -1750,6 +1750,38 @@ int qcom_scm_iommu_set_pt_format(u32 sec_id, u32 ctx_num, u32 pt_fmt)
 }
 EXPORT_SYMBOL_GPL(qcom_scm_iommu_set_pt_format);
 
+int qcom_scm_camera_protect_phy_lanes(bool protect, u64 regmask)
+{
+	const struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_CAMERA,
+		.cmd = QCOM_SCM_CAMERA_PROTECT_PHY_LANES,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.arginfo = QCOM_SCM_ARGS(2),
+		.args = { protect, regmask },
+	};
+
+	if (!qcom_scm_is_available())
+		return -EPROBE_DEFER;
+	return qcom_scm_call(__scm->dev, &desc, NULL);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_camera_protect_phy_lanes);
+
+int qcom_scm_smmu_notify_secure_lut(u64 dev_id, bool secure)
+{
+	const struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_SMMU_PROGRAM,
+		.cmd = QCOM_SCM_SMMU_CONFIG_ERRATA1,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.arginfo = QCOM_SCM_ARGS(2),
+		.args = { dev_id, secure },
+	};
+
+	if (!qcom_scm_is_available())
+		return -EPROBE_DEFER;
+	return qcom_scm_call(__scm->dev, &desc, NULL);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_smmu_notify_secure_lut);
+
 int qcom_scm_qsmmu500_wait_safe_toggle(bool en)
 {
 	struct qcom_scm_desc desc = {
