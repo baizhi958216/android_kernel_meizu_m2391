@@ -688,22 +688,39 @@ static int iommu_dma_init_domain(struct iommu_domain *domain, struct device *dev
 	base_pfn = max_t(unsigned long, base_pfn,
 			 domain->geometry.aperture_start >> order);
 
-	/* The DSP puts its session ID in the high word of the IOVA.
-	 * Firmware reserves the low part of the remaining 32-bit window.
+	/* Kalama firmware partitions each DMA context bank into an ordinary
+	 * DMA window and private IOVAs managed by the DSP or camera driver.
 	 */
-	if (of_device_is_compatible(dev->of_node, "qcom,msm-fastrpc-compute-cb")) {
-		u32 pool[2];
-		u64 end;
+	if (of_device_is_compatible(dev->of_node, "qcom,msm-fastrpc-compute-cb") ||
+	    (of_device_is_compatible(dev->of_node, "qcom,msm-cam-smmu-cb") &&
+	     of_property_present(dev->of_node, "qcom,iommu-dma-addr-pool"))) {
+		u64 base, length, end;
 
-		ret = of_property_read_u32_array(dev->of_node, "qcom,iommu-dma-addr-pool",
-						 pool, ARRAY_SIZE(pool));
-		if (ret || !pool[1])
+		if (of_device_is_compatible(dev->of_node, "qcom,msm-cam-smmu-cb")) {
+			u64 pool[2];
+
+			ret = of_property_read_u64_array(dev->of_node, "qcom,iommu-dma-addr-pool",
+							pool, ARRAY_SIZE(pool));
+			if (ret)
+				return ret;
+			base = pool[0];
+			length = pool[1];
+		} else {
+			u32 pool[2];
+
+			ret = of_property_read_u32_array(dev->of_node, "qcom,iommu-dma-addr-pool",
+							pool, ARRAY_SIZE(pool));
+			if (ret || (u64)pool[0] + pool[1] > BIT_ULL(32))
+				return -EINVAL;
+			base = pool[0];
+			length = pool[1];
+		}
+
+		if (!length || check_add_overflow(base, length - 1, &end) ||
+		    !IS_ALIGNED(base | length, 1UL << order) ||
+		    (base >> order) > ULONG_MAX)
 			return -EINVAL;
-		end = (u64)pool[0] + pool[1] - 1;
-		if (end > U32_MAX || !IS_ALIGNED(pool[0], 1UL << order) ||
-		    !IS_ALIGNED(end + 1, 1UL << order))
-			return -EINVAL;
-		base_pfn = max(base_pfn, (unsigned long)pool[0] >> order);
+		base_pfn = max(base_pfn, (unsigned long)(base >> order));
 		dev->bus_dma_limit = min_not_zero(dev->bus_dma_limit, end);
 		if (base_pfn > (min(dev->bus_dma_limit, domain->geometry.aperture_end) >> order))
 			return -EINVAL;
