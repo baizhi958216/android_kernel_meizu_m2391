@@ -443,33 +443,19 @@ struct icc_path *devm_of_icc_get(struct device *dev, const char *name)
 }
 EXPORT_SYMBOL_GPL(devm_of_icc_get);
 
-/**
- * of_icc_get_by_index() - get a path handle from a DT node based on index
- * @dev: device pointer for the consumer device
- * @idx: interconnect path index
- *
- * This function will search for a path between two endpoints and return an
- * icc_path handle on success. Use icc_put() to release constraints when they
- * are not needed anymore.
- * If the interconnect API is disabled, NULL is returned and the consumer
- * drivers will still build. Drivers are free to handle this specifically,
- * but they don't have to.
- *
- * Return: icc_path pointer on success or ERR_PTR() on error. NULL is returned
- * when the API is disabled or the "interconnects" DT property is missing.
+/* The request belongs to dev even if its DT bandwidth table is in a child
+ * node without a platform device of its own.
  */
-struct icc_path *of_icc_get_by_index(struct device *dev, int idx)
+struct icc_path *of_icc_get_from_node(struct device *dev, struct device_node *np, int idx)
 {
 	struct icc_path *path;
 	struct icc_node_data *src_data, *dst_data;
-	struct device_node *np;
 	struct of_phandle_args src_args, dst_args;
 	int ret;
 
-	if (!dev || !dev->of_node)
+	if (!dev || !np || idx < 0)
 		return ERR_PTR(-ENODEV);
 
-	np = dev->of_node;
 
 	/*
 	 * When the consumer DT node do not have "interconnects" property
@@ -489,24 +475,26 @@ struct icc_path *of_icc_get_by_index(struct device *dev, int idx)
 	if (ret)
 		return ERR_PTR(ret);
 
-	of_node_put(src_args.np);
 
 	ret = of_parse_phandle_with_args(np, "interconnects",
 					 "#interconnect-cells", idx * 2 + 1,
 					 &dst_args);
-	if (ret)
+	if (ret) {
+		of_node_put(src_args.np);
 		return ERR_PTR(ret);
-
-	of_node_put(dst_args.np);
+	}
 
 	src_data = of_icc_get_from_provider(&src_args);
+	of_node_put(src_args.np);
 
 	if (IS_ERR(src_data)) {
+		of_node_put(dst_args.np);
 		dev_err_probe(dev, PTR_ERR(src_data), "error finding src node\n");
 		return ERR_CAST(src_data);
 	}
 
 	dst_data = of_icc_get_from_provider(&dst_args);
+	of_node_put(dst_args.np);
 
 	if (IS_ERR(dst_data)) {
 		dev_err_probe(dev, PTR_ERR(dst_data), "error finding dst node\n");
@@ -528,7 +516,7 @@ struct icc_path *of_icc_get_by_index(struct device *dev, int idx)
 	path->name = kasprintf(GFP_KERNEL, "%s-%s",
 			       src_data->node->name, dst_data->node->name);
 	if (!path->name) {
-		kfree(path);
+		icc_put(path);
 		path = ERR_PTR(-ENOMEM);
 	}
 
@@ -536,6 +524,27 @@ free_icc_data:
 	kfree(src_data);
 	kfree(dst_data);
 	return path;
+}
+EXPORT_SYMBOL_GPL(of_icc_get_from_node);
+
+/**
+ * of_icc_get_by_index() - get a path handle from a DT node based on index
+ * @dev: device pointer for the consumer device
+ * @idx: interconnect path index
+ *
+ * This function will search for a path between two endpoints and return an
+ * icc_path handle on success. Use icc_put() to release constraints when they
+ * are not needed anymore.
+ * If the interconnect API is disabled, NULL is returned and the consumer
+ * drivers will still build. Drivers are free to handle this specifically,
+ * but they don't have to.
+ *
+ * Return: icc_path pointer on success or ERR_PTR() on error. NULL is returned
+ * when the API is disabled or the "interconnects" DT property is missing.
+ */
+struct icc_path *of_icc_get_by_index(struct device *dev, int idx)
+{
+	return of_icc_get_from_node(dev, dev ? dev->of_node : NULL, idx);
 }
 EXPORT_SYMBOL_GPL(of_icc_get_by_index);
 
