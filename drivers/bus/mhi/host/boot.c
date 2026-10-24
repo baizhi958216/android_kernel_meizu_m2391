@@ -539,6 +539,9 @@ void mhi_fw_load_handler(struct mhi_controller *mhi_cntrl)
 	}
 
 	ret = request_firmware(&firmware, fw_name, dev);
+	if (ret == -ENOENT && mhi_cntrl->ee != MHI_EE_EDL &&
+	    mhi_cntrl->fallback_fw_image && *mhi_cntrl->fallback_fw_image)
+		ret = request_firmware(&firmware, mhi_cntrl->fallback_fw_image, dev);
 	if (ret) {
 		dev_err(dev, "Error loading firmware: %d\n", ret);
 		goto error_fw_load;
@@ -554,6 +557,13 @@ void mhi_fw_load_handler(struct mhi_controller *mhi_cntrl)
 	fw_sz = firmware->size;
 
 skip_req_fw:
+	if (mhi_cntrl->fbc_download && mhi_cntrl->ee != MHI_EE_EDL &&
+	    mhi_cntrl->tme_supported_image && fw_sz <= mhi_cntrl->sbl_size) {
+		dev_err(dev, "Firmware has no payload following the SBL\n");
+		release_firmware(firmware);
+		goto error_fw_load;
+	}
+	size = min(size, fw_sz);
 	fw_load_type = mhi_fw_load_type_get(mhi_cntrl);
 	if (fw_load_type == MHI_FW_LOAD_BHIE)
 		ret = mhi_load_image_bhie(mhi_cntrl, fw_data, size);
@@ -584,6 +594,10 @@ skip_req_fw:
 	 * device transitioning into MHI READY state
 	 */
 	if (fw_load_type == MHI_FW_LOAD_FBC) {
+		if (mhi_cntrl->tme_supported_image) {
+			fw_data += mhi_cntrl->sbl_size;
+			fw_sz -= mhi_cntrl->sbl_size;
+		}
 		ret = mhi_alloc_bhie_table(mhi_cntrl, &mhi_cntrl->fbc_image, fw_sz);
 		if (ret) {
 			release_firmware(firmware);

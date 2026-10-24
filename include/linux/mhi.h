@@ -358,6 +358,8 @@ struct mhi_controller_config {
  * @buffer_len: Bounce buffer length
  * @index: Index of the MHI controller instance
  * @bounce_buf: Use of bounce buffer
+ * @tme_supported_image: BHIe payload starts after the fixed-size signed SBL
+ * @fallback_fw_image: alternate firmware path if the primary file is absent
  * @fbc_download: MHI host needs to do complete image transfer (optional)
  * @wake_set: Device wakeup set flag
  * @irq_flags: irq flags passed to request_irq (optional)
@@ -443,6 +445,8 @@ struct mhi_controller {
 	size_t buffer_len;
 	int index;
 	bool bounce_buf;
+	const char *fallback_fw_image;
+	bool tme_supported_image;
 	bool fbc_download;
 	bool wake_set;
 	unsigned long irq_flags;
@@ -719,6 +723,14 @@ enum mhi_state mhi_get_mhi_state(struct mhi_controller *mhi_cntrl);
  * @mhi_cntrl: MHI controller
  */
 void mhi_soc_reset(struct mhi_controller *mhi_cntrl);
+
+/**
+ * mhi_device_get - request a device wake vote without waiting for M0
+ * @mhi_dev: device requesting wake
+ *
+ * The caller balances the vote with mhi_device_put().
+ */
+void mhi_device_get(struct mhi_device *mhi_dev);
 
 /**
  * mhi_device_get_sync - Disable device low power mode. Synchronously
