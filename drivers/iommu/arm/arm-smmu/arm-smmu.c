@@ -1307,6 +1307,37 @@ static struct arm_smmu_domain *kalama_gpu_domain(struct iommu_domain *domain)
 	return d;
 }
 
+/* Camera fault callbacks read the syndrome before the threaded IRQ clears FSR. */
+int qcom_iommu_get_fault_ids(struct iommu_domain *domain, struct qcom_iommu_fault_ids *ids)
+{
+	struct arm_smmu_domain *d;
+	struct arm_smmu_device *smmu;
+	u32 syndrome;
+	int ret;
+
+	if (!domain || !ids || domain->ops != arm_smmu_ops.default_domain_ops)
+		return -EINVAL;
+	d = to_smmu_domain(domain);
+	smmu = d->smmu;
+	if (!smmu || !of_device_is_compatible(smmu->dev->of_node, "qcom,qsmmu-v500"))
+		return -EOPNOTSUPP;
+	ret = arm_smmu_rpm_get(smmu);
+	if (ret < 0)
+		return ret;
+	if (!(arm_smmu_cb_read(smmu, d->cfg.cbndx, ARM_SMMU_CB_FSR) & ARM_SMMU_CB_FSR_FAULT)) {
+		ret = -ENODATA;
+	} else {
+		syndrome = arm_smmu_cb_read(smmu, d->cfg.cbndx, ARM_SMMU_CB_FSYNR1);
+		ids->bid = FIELD_GET(GENMASK(15, 13), syndrome);
+		ids->pid = FIELD_GET(GENMASK(12, 8), syndrome);
+		ids->mid = FIELD_GET(GENMASK(7, 0), syndrome);
+		ret = 0;
+	}
+	arm_smmu_rpm_put(smmu);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(qcom_iommu_get_fault_ids);
+
 int qcom_iommu_get_context_bank_nr(struct iommu_domain *domain)
 {
 	struct arm_smmu_domain *d = kalama_gpu_domain(domain);

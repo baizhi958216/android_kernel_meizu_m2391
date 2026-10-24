@@ -24,6 +24,13 @@ enum sid_switch_direction {
 	SID_RELEASE,
 };
 
+struct qcom_iommu_fault_ids {
+	u32 bid;
+	u32 pid;
+	u32 mid;
+};
+
+int qcom_iommu_get_fault_ids(struct iommu_domain *domain, struct qcom_iommu_fault_ids *ids);
 int qcom_iommu_get_context_bank_nr(struct iommu_domain *domain);
 int qcom_iommu_get_asid_nr(struct iommu_domain *domain);
 int qcom_iommu_sid_switch(struct device *dev, enum sid_switch_direction dir);
