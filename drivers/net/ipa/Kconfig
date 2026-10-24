@@ -21,3 +21,10 @@ config QCOM_IPA
 	  of QCOM_Q6V5_COMMON (Y or M).
 
 	  If unsure, say N.
+
+config IPA3
+	tristate "Qualcomm Android IPA client framework"
+	depends on ARCH_QCOM && NET
+	help
+	  Publish the Qualcomm IPA client interfaces used by the Android modem,
+	  RMNET, USB tethering and WLAN drivers on Kalama.
