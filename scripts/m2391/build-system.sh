@@ -110,6 +110,10 @@ extbuild "$bt" BT_ROOT="$external/$bt" CONFIG_MSM_BT_POWER=m CONFIG_BTFM_SLIM=m 
 	CONFIG_SLIM_BTFM_CODEC=n CONFIG_I2C_RTC6226_QCA=m \
 	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$wlan/Module.symvers"
 
+rmnet=qcom/opensource/datarmnet/core
+extbuild "$rmnet" RMNET_CORE_ROOT="$external/$rmnet" RMNET_CORE_INC_DIR="$external/$rmnet" \
+	CONFIG_ARCH_KALAMA=y
+
 release=$(<"$out/include/config/kernel.release")
 cat "${symvers[@]}" > "$stage/Module.symvers"
 depmod -ae -E "$stage/Module.symvers" -b "$stage" "$release" 2>"$stage/depmod.log"
