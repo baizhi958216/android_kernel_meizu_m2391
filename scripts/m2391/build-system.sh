@@ -111,6 +111,16 @@ extbuild "$wlan" WLAN_PLATFORM_ROOT="$external/$wlan" CONFIG_CNSS_OUT_OF_TREE=y 
 	CONFIG_CNSS_QMI_SVC=m CONFIG_CNSS_PLAT_IPC_QMI_SVC=m \
 	CONFIG_CNSS2=m CONFIG_CNSS2_QMI=y CONFIG_CNSS_HW_SECURE_DISABLE=y \
 	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$secure/smcinvoke/Module.symvers"
+wifi=qcom/opensource/wlan
+cld="$wifi/qcacld-3.0"
+extbuild "$cld" WLAN_PLATFORM_ROOT="$external/$wlan" WLAN_ROOT="$external/$cld" \
+	WLAN_COMMON_ROOT=cmn WLAN_COMMON_INC="$external/$wifi/qca-wifi-host-cmn" \
+	WLAN_FW_API="$external/$wifi/fw-api" WLAN_PROFILE=kiwi_v2 DYNAMIC_SINGLE_CHIP=kiwi_v2 \
+	DEVNAME=kiwi_v2 WLAN_CTRL_NAME=wlan CONFIG_QCA_CLD_WLAN=m CONFIG_BUS_AUTO_SUSPEND=y \
+	CONFIG_ARCH_KALAMA=y CONFIG_CNSS_OUT_OF_TREE=y CONFIG_CNSS2=m CONFIG_CNSS2_QMI=y \
+	CONFIG_CNSS_UTILS=m CONFIG_CNSS_GENL=m CONFIG_WCNSS_MEM_PRE_ALLOC=m \
+	CONFIG_CNSS_QMI_SVC=m CONFIG_CNSS_PLAT_IPC_QMI_SVC=m CONFIG_CNSS_HW_SECURE_DISABLE=y \
+	BOARD_PLATFORM=kalama MODNAME=kiwi_v2 KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$wlan/Module.symvers"
 bt=qcom/opensource/bt-kernel
 extbuild "$bt" BT_ROOT="$external/$bt" CONFIG_MSM_BT_POWER=m CONFIG_BTFM_SLIM=m \
 	CONFIG_SLIM_BTFM_CODEC=n CONFIG_I2C_RTC6226_QCA=m \
@@ -121,6 +131,12 @@ extbuild "$rmnet" RMNET_CORE_ROOT="$external/$rmnet" RMNET_CORE_INC_DIR="$extern
 	CONFIG_ARCH_KALAMA=y
 
 release=$(<"$out/include/config/kernel.release")
+# Flyme's WLAN loader opens this filename. The module advertises kiwi_v2 internally.
+updates="$stage/lib/modules/$release/updates"
+mv "$updates/kiwi_v2.ko" "$updates/qca_cld3_kiwi_v2.ko"
+for order in "$updates"/modules.order.*; do
+	sed -i 's@/kiwi_v2\.ko$@/qca_cld3_kiwi_v2.ko@' "$order"
+done
 cat "${symvers[@]}" > "$stage/Module.symvers"
 depmod -ae -E "$stage/Module.symvers" -b "$stage" "$release" 2>"$stage/depmod.log"
 if [[ -s "$stage/depmod.log" ]]; then
