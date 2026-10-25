@@ -40,6 +40,9 @@ struct dma_heap_attachment {
 	struct sg_table *table;
 	struct list_head list;
 	bool mapped;
+	bool cached;
+	enum dma_data_direction dir;
+	unsigned long attrs;
 };
 
 extern struct mem_buf_dma_buf_ops qcom_sg_buf_ops;

@@ -88,6 +88,14 @@ static int qcom_sg_attach(struct dma_buf *dmabuf,
 	return 0;
 }
 
+/* A retained translation pins its VM permissions for the entire DMA lifetime. */
+static void qcom_sg_drop_cached(struct qcom_sg_buffer *buffer, struct dma_heap_attachment *a)
+{
+	dma_unmap_sgtable(a->dev, a->table, a->dir, a->attrs | DMA_ATTR_SKIP_CPU_SYNC);
+	mem_buf_vmperm_unpin(buffer->vmperm);
+	a->cached = false;
+}
+
 static void qcom_sg_detach(struct dma_buf *dmabuf,
 			   struct dma_buf_attachment *attachment)
 {
@@ -95,6 +103,8 @@ static void qcom_sg_detach(struct dma_buf *dmabuf,
 	struct dma_heap_attachment *a = attachment->priv;
 
 	mutex_lock(&buffer->lock);
+	if (a->cached)
+		qcom_sg_drop_cached(buffer, a);
 	list_del(&a->list);
 	mutex_unlock(&buffer->lock);
 
@@ -110,7 +120,7 @@ static struct sg_table *qcom_sg_map_dma_buf(struct dma_buf_attachment *attachmen
 	struct sg_table *table = a->table;
 	struct qcom_sg_buffer *buffer;
 	struct mem_buf_vmperm *vmperm;
-	unsigned long attrs = attachment->dma_map_attrs;
+	unsigned long attrs = attachment->dma_map_attrs & ~QCOM_DMA_ATTR_DELAYED_UNMAP;
 	int ret;
 
 	buffer = attachment->dmabuf->priv;
@@ -119,23 +129,37 @@ static struct sg_table *qcom_sg_map_dma_buf(struct dma_buf_attachment *attachmen
 	/* Prevent map/unmap during begin/end_cpu_access */
 	mutex_lock(&buffer->lock);
 
-	/* Ensure VM permissions are constant while the buffer is mapped */
+	if (a->mapped) {
+		mutex_unlock(&buffer->lock);
+		return ERR_PTR(-EBUSY);
+	}
+
+	if (a->cached) {
+		unsigned long requested = attrs;
+
+		if (buffer->uncached || !mem_buf_vmperm_can_cmo(vmperm))
+			requested |= DMA_ATTR_SKIP_CPU_SYNC;
+		if (a->dir == direction && a->attrs == requested) {
+			if (!(requested & DMA_ATTR_SKIP_CPU_SYNC))
+				dma_sync_sgtable_for_device(a->dev, table, direction);
+			a->cached = false;
+			a->mapped = true;
+			mutex_unlock(&buffer->lock);
+			return table;
+		}
+		qcom_sg_drop_cached(buffer, a);
+	}
+
 	mem_buf_vmperm_pin(vmperm);
 	if (buffer->uncached || !mem_buf_vmperm_can_cmo(vmperm))
 		attrs |= DMA_ATTR_SKIP_CPU_SYNC;
-
-	if (!a->mapped) {
-		ret = dma_map_sgtable(attachment->dev, table, direction, attrs);
-	} else {
-		dev_err(attachment->dev, "Error: Dma-buf is already mapped!\n");
-		ret = -EBUSY;
-	}
-
+	ret = dma_map_sgtable(attachment->dev, table, direction, attrs);
 	if (ret) {
 		table = ERR_PTR(ret);
 		goto err_map_sgtable;
 	}
-
+	a->attrs = attrs;
+	a->dir = direction;
 	a->mapped = true;
 	mutex_unlock(&buffer->lock);
 	return table;
@@ -153,7 +177,6 @@ static void qcom_sg_unmap_dma_buf(struct dma_buf_attachment *attachment,
 	struct dma_heap_attachment *a = attachment->priv;
 	struct qcom_sg_buffer *buffer;
 	struct mem_buf_vmperm *vmperm;
-	unsigned long attrs = attachment->dma_map_attrs;
 
 	buffer = attachment->dmabuf->priv;
 	vmperm = buffer->vmperm;
@@ -161,12 +184,15 @@ static void qcom_sg_unmap_dma_buf(struct dma_buf_attachment *attachment,
 	/* Prevent map/unmap during begin/end_cpu_access */
 	mutex_lock(&buffer->lock);
 
-	if (buffer->uncached || !mem_buf_vmperm_can_cmo(vmperm))
-		attrs |= DMA_ATTR_SKIP_CPU_SYNC;
-
 	a->mapped = false;
-	dma_unmap_sgtable(attachment->dev, table, direction, attrs);
-	mem_buf_vmperm_unpin(vmperm);
+	if (attachment->dma_map_attrs & QCOM_DMA_ATTR_DELAYED_UNMAP) {
+		if (!(a->attrs & DMA_ATTR_SKIP_CPU_SYNC))
+			dma_sync_sgtable_for_cpu(a->dev, table, direction);
+		a->cached = true;
+	} else {
+		dma_unmap_sgtable(attachment->dev, table, direction, a->attrs);
+		mem_buf_vmperm_unpin(vmperm);
+	}
 	mutex_unlock(&buffer->lock);
 }
 

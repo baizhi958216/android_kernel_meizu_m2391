@@ -13,6 +13,9 @@
 #include <linux/qcom_dma_heap_dt_constants.h>
 #include <linux/err.h>
 
+/* Keep an idle DMA mapping reusable until the importer detaches. */
+#define QCOM_DMA_ATTR_DELAYED_UNMAP	BIT(17)
+
 /* Heap flags */
 #define QCOM_DMA_HEAP_FLAG_CACHED	BIT(1)
 
