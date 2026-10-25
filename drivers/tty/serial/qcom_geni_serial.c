@@ -911,9 +911,9 @@ static void qcom_geni_serial_handle_rx_dma(struct uart_port *uport, bool drop)
 	port->rx_dma_addr = 0;
 
 	rx_in = readl(uport->membase + SE_DMA_RX_LEN_IN);
-	if (!rx_in) {
-		dev_warn(uport->dev, "serial engine reports 0 RX bytes in!\n");
-		return;
+	if (!rx_in || rx_in > DMA_RX_BUF_SIZE) {
+		dev_warn_ratelimited(uport->dev, "invalid DMA RX length %u\n", rx_in);
+		drop = true;
 	}
 
 	if (!drop)
@@ -1148,7 +1148,8 @@ static int setup_fifos(struct qcom_geni_serial_port *port)
 	uport->fifosize =
 		(port->tx_fifo_depth * port->tx_fifo_width) / BITS_PER_BYTE;
 
-	if (port->rx_buf && (old_rx_fifo_depth != port->rx_fifo_depth) && port->rx_fifo_depth) {
+	if (port->dev_data->mode == GENI_SE_FIFO && port->rx_buf &&
+	    old_rx_fifo_depth != port->rx_fifo_depth && port->rx_fifo_depth) {
 		/*
 		 * Use krealloc rather than krealloc_array because rx_buf is
 		 * accessed as 1 byte entries as well as 4 byte entries so it's
