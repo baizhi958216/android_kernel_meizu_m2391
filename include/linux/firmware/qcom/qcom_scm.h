@@ -106,6 +106,8 @@ int qcom_scm_assign_mem_regions(const struct qcom_scm_mem_region *regions,
 				unsigned int nr_regions, u64 srcvm,
 				const struct qcom_scm_vmperm *newvm,
 				unsigned int dest_cnt);
+int qcom_scm_get_sec_dump_state(u32 *state);
+int qcom_scm_mem_protect_region_id(phys_addr_t addr, size_t size);
 int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz, u64 *src,
 			const struct qcom_scm_vmperm *newvm,
 			unsigned int dest_cnt);

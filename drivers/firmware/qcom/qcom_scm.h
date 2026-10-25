@@ -100,6 +100,9 @@ int qcom_scm_shm_bridge_enable(struct device *scm_dev);
 
 #define QCOM_SCM_PIL_PROTECT_MEM	0x0c
 #define QCOM_SCM_PIL_CLEAR_PROTECT_MEM	0x0d
+#define QCOM_SCM_SVC_UTIL		0x03
+#define QCOM_SCM_UTIL_GET_SEC_DUMP_STATE	0x10
+
 #define QCOM_SCM_SVC_PIL		0x02
 #define QCOM_SCM_PIL_PAS_INIT_IMAGE	0x01
 #define QCOM_SCM_PIL_PAS_MEM_SETUP	0x02
@@ -121,6 +124,7 @@ int qcom_scm_shm_bridge_enable(struct device *scm_dev);
 #define QCOM_SCM_MP_IOMMU_SECURE_PTBL_INIT	0x04
 #define QCOM_SCM_MP_IOMMU_SET_CP_POOL_SIZE	0x05
 #define QCOM_SCM_MP_VIDEO_VAR			0x08
+#define QCOM_SCM_MP_MEM_PROTECT_REGION_ID	0x10
 #define QCOM_SCM_MP_ASSIGN			0x16
 #define QCOM_SCM_MP_SD_CTRL			0x18
 #define QCOM_SCM_MP_CP_SMMU_APERTURE_ID		0x1b

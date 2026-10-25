@@ -1238,6 +1238,45 @@ int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz, u64 *srcvm,
 }
 EXPORT_SYMBOL_GPL(qcom_scm_assign_mem);
 
+int qcom_scm_get_sec_dump_state(u32 *state)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_UTIL,
+		.cmd = QCOM_SCM_UTIL_GET_SEC_DUMP_STATE,
+		.owner = ARM_SMCCC_OWNER_SIP,
+	};
+	struct qcom_scm_res res;
+	int ret;
+
+	if (!state)
+		return -EINVAL;
+	if (!qcom_scm_is_available())
+		return -EPROBE_DEFER;
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	if (!ret)
+		*state = res.result[0];
+	return ret;
+}
+EXPORT_SYMBOL_GPL(qcom_scm_get_sec_dump_state);
+
+int qcom_scm_mem_protect_region_id(phys_addr_t addr, size_t size)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_MP,
+		.cmd = QCOM_SCM_MP_MEM_PROTECT_REGION_ID,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.arginfo = QCOM_SCM_ARGS(2),
+		.args = { addr, size },
+	};
+
+	if (!qcom_scm_is_available())
+		return -EPROBE_DEFER;
+	if (!size || addr > PHYS_ADDR_MAX - (size - 1))
+		return -EINVAL;
+	return qcom_scm_call(__scm->dev, &desc, NULL);
+}
+EXPORT_SYMBOL_GPL(qcom_scm_mem_protect_region_id);
+
 /**
  * qcom_scm_ocmem_lock_available() - is OCMEM lock/unlock interface available
  */
