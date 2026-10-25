@@ -99,6 +99,12 @@ gpu=qcom/opensource/graphics-kernel
 extbuild "$gpu" KGSL_PATH="$external/$gpu" KERNEL_SRC="$kernel" CONFIG_ARCH_KALAMA=y \
 	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$mm/hw_fence/Module.symvers"
 
+audio=qcom/opensource/audio-kernel
+audio_symbols=("$out/m2391-external/$mm/msm_ext_display/Module.symvers"
+	       "$out/m2391-external/meizu/power-charger/Module.symvers")
+extbuild "$audio" AUDIO_ROOT="$external/$audio" MODNAME=audio_dlkm BOARD_PLATFORM=kalama \
+	CONFIG_ARCH_KALAMA=y KBUILD_EXTRA_SYMBOLS="${audio_symbols[*]}"
+
 wlan=qcom/opensource/wlan/platform
 extbuild "$wlan" WLAN_PLATFORM_ROOT="$external/$wlan" CONFIG_CNSS_OUT_OF_TREE=y \
 	CONFIG_CNSS_GENL=m CONFIG_WCNSS_MEM_PRE_ALLOC=m CONFIG_CNSS_UTILS=m \
