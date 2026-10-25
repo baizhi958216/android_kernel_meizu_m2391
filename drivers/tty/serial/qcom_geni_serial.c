@@ -16,6 +16,7 @@
 #include <linux/of.h>
 #include <linux/pm_opp.h>
 #include <linux/platform_device.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/pm_runtime.h>
 #include <linux/pm_wakeirq.h>
 #include <linux/soc/qcom/geni-se.h>
@@ -104,6 +105,7 @@ static DEFINE_IDA(port_ida);
 
 struct qcom_geni_device_data {
 	bool console;
+	bool vendor_hs;
 	enum geni_se_xfer_mode mode;
 };
 
@@ -137,6 +139,8 @@ struct qcom_geni_serial_port {
 	unsigned int tx_remaining;
 	unsigned int tx_queued;
 	int wakeup_irq;
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *active_pins;
 	bool rx_tx_swap;
 	bool cts_rts_swap;
 
@@ -252,6 +256,13 @@ static const char *qcom_geni_serial_get_type(struct uart_port *uport)
 	return "MSM";
 }
 
+static void qcom_geni_serial_free_line(void *data)
+{
+	struct qcom_geni_serial_port *port = data;
+
+	ida_free(&port_ida, port->uport.line);
+}
+
 static struct qcom_geni_serial_port *get_port_from_line(int line, bool console, struct device *dev)
 {
 	struct qcom_geni_serial_port *port;
@@ -276,13 +287,17 @@ static struct qcom_geni_serial_port *get_port_from_line(int line, bool console, 
 			return ERR_PTR(-ENXIO);
 
 		port = devm_kzalloc(dev, sizeof(*port), GFP_KERNEL);
-		if (!port)
+		if (!port) {
+			ida_free(&port_ida, line);
+			return ERR_PTR(-ENOMEM);
+		}
+		port->uport.line = line;
+		if (devm_add_action_or_reset(dev, qcom_geni_serial_free_line, port))
 			return ERR_PTR(-ENOMEM);
 
 		port->uport.iotype = UPIO_MEM;
 		port->uport.ops = &qcom_geni_uart_pops;
 		port->uport.flags = UPF_BOOT_AUTOCONF;
-		port->uport.line = line;
 	}
 	return port;
 }
@@ -1583,6 +1598,19 @@ static int geni_serial_resources_on(struct uart_port *uport)
 		return ret;
 	}
 
+	if (port->active_pins) {
+		ret = pinctrl_select_state(port->pinctrl, port->active_pins);
+		if (ret) {
+			geni_se_resources_off(&port->se);
+			geni_icc_disable(&port->se);
+			return ret;
+		}
+
+		/* Restore the QUP-to-pad outputs after the wrapper lost power. */
+		writel(GENMASK(6, 0), uport->membase + GENI_OUTPUT_CTRL);
+		udelay(10);
+	}
+
 	if (port->clk_rate)
 		dev_pm_opp_set_rate(uport->dev, port->clk_rate);
 
@@ -1606,28 +1634,43 @@ static int geni_serial_resources_off(struct uart_port *uport)
 
 static int geni_serial_resource_init(struct qcom_geni_serial_port *port)
 {
+	const char *clkname = port->dev_data->vendor_hs ? "se-clk" : "se";
 	int ret;
 
-	port->se.clk = devm_clk_get(port->se.dev, "se");
+	if (port->dev_data->vendor_hs) {
+		port->pinctrl = devm_pinctrl_get(port->se.dev);
+		if (IS_ERR(port->pinctrl))
+			return PTR_ERR(port->pinctrl);
+		port->active_pins = pinctrl_lookup_state(port->pinctrl, "active");
+		if (IS_ERR(port->active_pins))
+			return PTR_ERR(port->active_pins);
+	}
+
+	port->se.clk = devm_clk_get(port->se.dev, clkname);
 	if (IS_ERR(port->se.clk)) {
 		ret = PTR_ERR(port->se.clk);
 		dev_err(port->se.dev, "Err getting SE Core clk %d\n", ret);
 		return ret;
 	}
 
-	ret = geni_icc_get(&port->se, NULL);
+	ret = geni_icc_get(&port->se, port->dev_data->vendor_hs ? "qup-memory" : NULL);
 	if (ret)
 		return ret;
 
 	port->se.icc_paths[GENI_TO_CORE].avg_bw = GENI_DEFAULT_BW;
 	port->se.icc_paths[CPU_TO_GENI].avg_bw = GENI_DEFAULT_BW;
 
+	if (port->dev_data->vendor_hs) {
+		/* The serial engine DMA master shares a 19.2 MHz, 32-bit bus. */
+		port->se.icc_paths[GENI_TO_DDR].avg_bw = Bps_to_icc(19200000 * 4);
+	}
+
 	/* Set BW for register access */
 	ret = geni_icc_set_bw(&port->se);
 	if (ret)
 		return ret;
 
-	ret = devm_pm_opp_set_clkname(port->se.dev, "se");
+	ret = devm_pm_opp_set_clkname(port->se.dev, clkname);
 	if (ret)
 		return ret;
 
@@ -1790,8 +1833,11 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 	uport->irq = irq;
 	uport->has_sysrq = IS_ENABLED(CONFIG_SERIAL_QCOM_GENI_CONSOLE);
 
-	if (!data->console)
+	if (!data->console) {
 		port->wakeup_irq = platform_get_irq_optional(pdev, 1);
+		if (port->wakeup_irq == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+	}
 
 	if (of_property_read_bool(pdev->dev.of_node, "rx-tx-swap"))
 		port->rx_tx_swap = true;
@@ -1825,7 +1871,6 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 						port->wakeup_irq);
 		if (ret) {
 			device_init_wakeup(&pdev->dev, false);
-			ida_free(&port_ida, uport->line);
 			uart_remove_one_port(drv, uport);
 			return ret;
 		}
@@ -1837,12 +1882,10 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 static void qcom_geni_serial_remove(struct platform_device *pdev)
 {
 	struct qcom_geni_serial_port *port = platform_get_drvdata(pdev);
-	struct uart_port *uport = &port->uport;
 	struct uart_driver *drv = port->private_data.drv;
 
 	dev_pm_clear_wake_irq(&pdev->dev);
 	device_init_wakeup(&pdev->dev, false);
-	ida_free(&port_ida, uport->line);
 	uart_remove_one_port(drv, &port->uport);
 }
 
@@ -1888,6 +1931,11 @@ static const struct qcom_geni_device_data qcom_geni_uart_data = {
 	.mode = GENI_SE_DMA,
 };
 
+static const struct qcom_geni_device_data qcom_geni_vendor_hs_data = {
+	.vendor_hs = true,
+	.mode = GENI_SE_DMA,
+};
+
 static const struct dev_pm_ops qcom_geni_serial_pm_ops = {
 	SYSTEM_SLEEP_PM_OPS(qcom_geni_serial_suspend, qcom_geni_serial_resume)
 };
@@ -1900,6 +1948,10 @@ static const struct of_device_id qcom_geni_serial_match_table[] = {
 	{
 		.compatible = "qcom,geni-uart",
 		.data = &qcom_geni_uart_data,
+	},
+	{
+		.compatible = "qcom,msm-geni-serial-hs",
+		.data = &qcom_geni_vendor_hs_data,
 	},
 	{}
 };
