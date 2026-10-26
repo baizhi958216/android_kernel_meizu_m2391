@@ -48,6 +48,7 @@ tof_symbols=("$out/m2391-external/meizu/system/Module.symvers"
              "$out/m2391-external/meizu/tof-ai11ba/Module.symvers")
 extbuild meizu/tof-vl53l1 KBUILD_EXTRA_SYMBOLS="${tof_symbols[*]}"
 extbuild meizu/v4l2loopback
+extbuild meizu/pwm-ir
 extbuild meizu/audio-dummy
 extbuild meizu/cs35l45
 extbuild meizu/cirrus-calibration KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/storage/Module.symvers"
@@ -104,6 +105,18 @@ audio_symbols=("$out/m2391-external/$mm/msm_ext_display/Module.symvers"
 	       "$out/m2391-external/meizu/power-charger/Module.symvers")
 extbuild "$audio" AUDIO_ROOT="$external/$audio" MODNAME=audio_dlkm BOARD_PLATFORM=kalama \
 	CONFIG_ARCH_KALAMA=y KBUILD_EXTRA_SYMBOLS="${audio_symbols[*]}"
+
+ipa=qcom/opensource/dataipa
+extbuild "$ipa" DATAIPA_ROOT="$external/$ipa" CONFIG_ARCH_KALAMA=y CONFIG_IPA3=m \
+	CONFIG_IPA3_MHI_PRIME_MANAGER=n
+
+camera=qcom/opensource/camera-kernel
+camera_symbols=("$out/m2391-external/qcom/opensource/mmrm-driver/Module.symvers"
+		"$out/m2391-external/meizu/system/Module.symvers"
+		"$out/m2391-external/meizu/storage/Module.symvers")
+extbuild "$camera" CAMERA_KERNEL_ROOT="$external/$camera" KERNEL_ROOT="$kernel" \
+	KERNEL_SRC="$kernel" CONFIG_SPECTRA_CAMERA=m BOARD_PLATFORM=kalama MODNAME=camera \
+	KBUILD_EXTRA_SYMBOLS="${camera_symbols[*]}"
 
 wlan=qcom/opensource/wlan/platform
 extbuild "$wlan" WLAN_PLATFORM_ROOT="$external/$wlan" CONFIG_CNSS_OUT_OF_TREE=y \
