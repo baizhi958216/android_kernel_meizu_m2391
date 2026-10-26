@@ -139,7 +139,7 @@ static int mhi_device_info_show(struct device *dev, void *data)
 
 	seq_printf((struct seq_file *)data, "%s: type: %s dev_wake: %u",
 		   mhi_dev->name, mhi_dev->dev_type ? "Controller" : "Transfer",
-		   mhi_dev->dev_wake);
+		   atomic_read(&mhi_dev->dev_wake));
 
 	/* for transfer device types only */
 	if (mhi_dev->dev_type == MHI_DEVICE_XFER)
@@ -240,7 +240,7 @@ static int mhi_debugfs_device_wake_show(struct seq_file *m, void *d)
 	}
 
 	seq_printf(m,
-		   "Wake count: %d\n%s\n", mhi_dev->dev_wake,
+		   "Wake count: %d\n%s\n", atomic_read(&mhi_dev->dev_wake),
 		   "Usage: echo get/put > device_wake to vote/unvote for M0");
 
 	return 0;

@@ -409,6 +409,9 @@ struct mhi_controller {
 	rwlock_t pm_lock;
 	u32 timeout_ms;
 	u32 ready_timeout_ms;
+	u32 m2_timeout_ms;
+	u32 saved_pm_state;
+	enum mhi_state saved_dev_state;
 	u32 pm_state;
 	u32 db_access;
 	enum mhi_ee_type ee;
@@ -477,7 +480,7 @@ struct mhi_device {
 	enum mhi_device_type dev_type;
 	int ul_chan_id;
 	int dl_chan_id;
-	u32 dev_wake;
+	atomic_t dev_wake;
 };
 
 /**

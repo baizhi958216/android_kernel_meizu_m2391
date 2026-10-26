@@ -1260,7 +1260,7 @@ struct mhi_device *mhi_alloc_device(struct mhi_controller *mhi_cntrl)
 	}
 
 	mhi_dev->mhi_cntrl = mhi_cntrl;
-	mhi_dev->dev_wake = 0;
+	atomic_set(&mhi_dev->dev_wake, 0);
 
 	return mhi_dev;
 }
@@ -1405,7 +1405,7 @@ static int mhi_driver_remove(struct device *dev)
 		mutex_unlock(&mhi_chan->mutex);
 	}
 
-	while (mhi_dev->dev_wake)
+	while (atomic_read(&mhi_dev->dev_wake))
 		mhi_device_put(mhi_dev);
 
 	return 0;

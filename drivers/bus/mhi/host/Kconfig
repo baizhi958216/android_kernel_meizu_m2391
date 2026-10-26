@@ -13,6 +13,13 @@ config MHI_BUS
 	  and communicate with modem devices over a high speed peripheral
 	  bus or shared memory.
 
+config MHI_BUS_MISC
+	bool "Qualcomm MHI host extensions"
+	depends on MHI_BUS
+	help
+	  Support PCIe low-power link handoff and remote channel management
+	  for Qualcomm wireless controllers.
+
 config MHI_BUS_DEBUG
 	bool "Debugfs support for the MHI bus"
 	depends on MHI_BUS && DEBUG_FS
