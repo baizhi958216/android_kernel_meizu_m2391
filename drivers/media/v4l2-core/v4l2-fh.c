@@ -45,7 +45,8 @@ void v4l2_fh_add(struct v4l2_fh *fh, struct file *filp)
 {
 	unsigned long flags;
 
-	filp->private_data = fh;
+	if (filp)
+		filp->private_data = fh;
 
 	v4l2_prio_open(fh->vdev->prio, &fh->prio);
 	spin_lock_irqsave(&fh->vdev->fh_lock, flags);
@@ -76,7 +77,8 @@ void v4l2_fh_del(struct v4l2_fh *fh, struct file *filp)
 	spin_unlock_irqrestore(&fh->vdev->fh_lock, flags);
 	v4l2_prio_close(fh->vdev->prio, fh->prio);
 
-	filp->private_data = NULL;
+	if (filp)
+		filp->private_data = NULL;
 }
 EXPORT_SYMBOL_GPL(v4l2_fh_del);
 

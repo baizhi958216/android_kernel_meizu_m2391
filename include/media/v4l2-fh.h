@@ -87,9 +87,9 @@ void v4l2_fh_init(struct v4l2_fh *fh, struct video_device *vdev);
  * v4l2_fh_add - Add the fh to the list of file handles on a video_device.
  *
  * @fh: pointer to &struct v4l2_fh
- * @filp: pointer to &struct file associated with @fh
+ * @filp: pointer to &struct file associated with @fh, or NULL for kernel sessions
  *
- * The function sets filp->private_data to point to @fh.
+ * When @filp is supplied, the function sets filp->private_data to point to @fh.
  *
  * .. note::
  *    The @fh file handle must be initialised first.
@@ -114,9 +114,9 @@ int v4l2_fh_open(struct file *filp);
  * v4l2_fh_del - Remove file handle from the list of file handles.
  *
  * @fh: pointer to &struct v4l2_fh
- * @filp: pointer to &struct file associated with @fh
+ * @filp: pointer to &struct file associated with @fh, or NULL for kernel sessions
  *
- * The function resets filp->private_data to NULL.
+ * When @filp is supplied, the function resets filp->private_data to NULL.
  *
  * .. note::
  *    Must be called in v4l2_file_operations->release\(\) handler if the driver
