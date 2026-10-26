@@ -18763,6 +18763,7 @@
 			cvp_cnoc {
 				compatible = "qcom,msm-cvp,bus";
 				label = "cvp-cnoc";
+				interconnects = <&gem_noc 0x02 &config_noc 0x227>;
 				qcom,bus-master = <0x02>;
 				qcom,bus-slave = <0x227>;
 				qcom,bus-governor = "performance";
@@ -18772,6 +18773,7 @@
 			cvp_bus_ddr {
 				compatible = "qcom,msm-cvp,bus";
 				label = "cvp-ddr";
+				interconnects = <&mmss_noc 0x1f &mc_virt 0x200>;
 				qcom,bus-master = <0x1f>;
 				qcom,bus-slave = <0x200>;
 				qcom,bus-governor = "performance";
