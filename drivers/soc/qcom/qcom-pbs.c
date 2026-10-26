@@ -132,6 +132,15 @@ int qcom_pbs_trigger_event(struct pbs_dev *pbs, u8 bitmap)
 }
 EXPORT_SYMBOL_GPL(qcom_pbs_trigger_event);
 
+/* Single-event clients execute the triggered sequence without a scratch bitmap. */
+int qcom_pbs_trigger_single_event(struct pbs_dev *pbs)
+{
+	guard(mutex)(&pbs->lock);
+	return regmap_update_bits(pbs->regmap, pbs->base + PBS_CLIENT_TRIG_CTL,
+				  PBS_CLIENT_SW_TRIG_BIT, PBS_CLIENT_SW_TRIG_BIT);
+}
+EXPORT_SYMBOL_GPL(qcom_pbs_trigger_single_event);
+
 /**
  * get_pbs_client_device() - Get the PBS device used by client
  * @dev: Client device
@@ -148,6 +157,8 @@ struct pbs_dev *get_pbs_client_device(struct device *dev)
 
 	struct device_node *pbs_dev_node __free(device_node) = of_parse_phandle(dev->of_node,
 										"qcom,pbs", 0);
+	if (!pbs_dev_node)
+		pbs_dev_node = of_parse_phandle(dev->of_node, "qcom,pbs-client", 0);
 	if (!pbs_dev_node) {
 		dev_err(dev, "Missing qcom,pbs property\n");
 		return ERR_PTR(-ENODEV);
@@ -211,6 +222,7 @@ static int qcom_pbs_probe(struct platform_device *pdev)
 
 static const struct of_device_id qcom_pbs_match_table[] = {
 	{ .compatible = "qcom,pbs" },
+	{ .compatible = "qcom,qpnp-pbs" },
 	{}
 };
 MODULE_DEVICE_TABLE(of, qcom_pbs_match_table);
