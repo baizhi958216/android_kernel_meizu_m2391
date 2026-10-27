@@ -853,6 +853,17 @@ int mhi_process_ctrl_ev_ring(struct mhi_controller *mhi_cntrl,
 
 		trace_mhi_ctrl_event(mhi_cntrl, local_rp);
 
+		if (mhi_event->data_type == MHI_ER_BW_SCALE) {
+			/* Multiple outstanding requests supersede each other. */
+			if (type == MHI_PKT_TYPE_BW_REQ_EVENT && mhi_cntrl->bw_db) {
+				mhi_event->bw_request.target_link_speed = MHI_TRE_GET_EV_LINKSPEED(local_rp);
+				mhi_event->bw_request.target_link_width = MHI_TRE_GET_EV_LINKWIDTH(local_rp);
+				mhi_event->bw_seq = FIELD_GET(GENMASK(15, 8), MHI_TRE_GET_DWORD(local_rp, 0));
+				schedule_work(&mhi_event->bw_work);
+			}
+			goto recycle;
+		}
+
 		switch (type) {
 		case MHI_PKT_TYPE_BW_REQ_EVENT:
 		{
@@ -966,6 +977,7 @@ int mhi_process_ctrl_ev_ring(struct mhi_controller *mhi_cntrl,
 			break;
 		}
 
+recycle:
 		mhi_recycle_ev_ring_element(mhi_cntrl, ev_ring);
 		local_rp = ev_ring->rp;
 

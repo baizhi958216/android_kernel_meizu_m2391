@@ -553,6 +553,7 @@ int mhi_init_mmio(struct mhi_controller *mhi_cntrl)
 	/* Setup wake db */
 	mhi_cntrl->wake_db = base + val + (8 * MHI_DEV_WAKE_DB);
 	mhi_cntrl->wake_set = false;
+	mhi_bw_setup(mhi_cntrl, val);
 
 	/* Setup channel db address for each channel in tre_ring */
 	mhi_chan = mhi_cntrl->mhi_chan;
@@ -745,6 +746,11 @@ static int parse_ev_cfg(struct mhi_controller *mhi_cntrl,
 		case MHI_ER_DATA:
 			mhi_event->process_event = mhi_process_data_event_ring;
 			break;
+#ifdef CONFIG_MHI_BUS_MISC
+		case MHI_ER_BW_SCALE:
+			INIT_WORK(&mhi_event->bw_work, mhi_bw_work);
+			fallthrough;
+#endif
 		case MHI_ER_CTRL:
 			mhi_event->process_event = mhi_process_ctrl_ev_ring;
 			break;

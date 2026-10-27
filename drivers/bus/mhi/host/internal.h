@@ -250,6 +250,9 @@ struct mhi_event {
 	struct mhi_ring ring;
 	struct db_cfg db_cfg;
 	struct tasklet_struct task;
+	struct work_struct bw_work;
+	struct mhi_link_info bw_request;
+	u8 bw_seq;
 	spinlock_t lock;
 	int (*process_event)(struct mhi_controller *mhi_cntrl,
 			     struct mhi_event *mhi_event,
@@ -335,6 +338,15 @@ const char *to_mhi_pm_state_str(u32 state);
 int mhi_queue_state_transition(struct mhi_controller *mhi_cntrl,
 			       enum dev_st_transition state);
 void mhi_pm_st_worker(struct work_struct *work);
+#ifdef CONFIG_MHI_BUS_MISC
+void mhi_bw_work(struct work_struct *work);
+void mhi_bw_setup(struct mhi_controller *ctrl, u32 channel_db);
+void mhi_bw_send_response(struct mhi_controller *ctrl);
+#else
+static inline void mhi_bw_setup(struct mhi_controller *ctrl, u32 channel_db) {}
+static inline void mhi_bw_send_response(struct mhi_controller *ctrl) {}
+#endif
+
 void mhi_pm_sys_err_handler(struct mhi_controller *mhi_cntrl);
 int mhi_ready_state_transition(struct mhi_controller *mhi_cntrl);
 int mhi_pm_m0_transition(struct mhi_controller *mhi_cntrl);

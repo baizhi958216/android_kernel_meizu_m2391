@@ -182,11 +182,13 @@ enum mhi_ch_ee_mask {
 /**
  * enum mhi_er_data_type - Event ring data types
  * @MHI_ER_DATA: Only client data over this ring
+ * @MHI_ER_BW_SCALE: Firmware PCIe bandwidth requests
  * @MHI_ER_CTRL: MHI control data and client data
  */
 enum mhi_er_data_type {
 	MHI_ER_DATA,
 	MHI_ER_CTRL,
+	MHI_ER_BW_SCALE,
 };
 
 /**
@@ -424,6 +426,10 @@ struct mhi_controller {
 	spinlock_t transition_lock;
 	spinlock_t wlock;
 	struct mhi_link_info mhi_link_info;
+	void __iomem *bw_db;
+	int (*bw_scale)(struct mhi_controller *ctrl, struct mhi_link_info *request);
+	u32 bw_response;
+	bool bw_response_pending;
 	struct work_struct st_worker;
 	struct workqueue_struct *hiprio_wq;
 	wait_queue_head_t state_event;

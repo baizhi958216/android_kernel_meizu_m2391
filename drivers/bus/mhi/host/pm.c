@@ -269,6 +269,8 @@ int mhi_pm_m0_transition(struct mhi_controller *mhi_cntrl)
 	write_lock_irq(&mhi_cntrl->pm_lock);
 	mhi_cntrl->dev_state = MHI_STATE_M0;
 	cur_state = mhi_tryset_pm_state(mhi_cntrl, MHI_PM_M0);
+	if (cur_state == MHI_PM_M0)
+		mhi_bw_send_response(mhi_cntrl);
 	write_unlock_irq(&mhi_cntrl->pm_lock);
 	if (unlikely(cur_state != MHI_PM_M0)) {
 		dev_err(dev, "Unable to transition to M0 state\n");
@@ -525,6 +527,8 @@ skip_mhi_reset:
 			continue;
 		disable_irq(mhi_cntrl->irq[mhi_event->irq]);
 		tasklet_kill(&mhi_event->task);
+		if (mhi_event->data_type == MHI_ER_BW_SCALE)
+			cancel_work_sync(&mhi_event->bw_work);
 	}
 
 	/* Release lock and wait for all pending threads to complete */
@@ -690,6 +694,8 @@ static void mhi_pm_sys_error_transition(struct mhi_controller *mhi_cntrl)
 		if (mhi_event->offload_ev)
 			continue;
 		tasklet_kill(&mhi_event->task);
+		if (mhi_event->data_type == MHI_ER_BW_SCALE)
+			cancel_work_sync(&mhi_event->bw_work);
 	}
 
 	/* Release lock and wait for all pending threads to complete */

@@ -402,3 +402,85 @@ void mhi_dump_sfr(struct mhi_controller *ctrl)
 	kfree(reason);
 }
 EXPORT_SYMBOL_GPL(mhi_dump_sfr);
+
+#define MHI_MISC_CAPABILITIES	0x24
+#define MHI_CAP_BW_SCALE	3
+#define MHI_BW_DB		126
+#define MHI_BW_NACK		0xf
+
+void mhi_controller_set_bw_scale_cb(struct mhi_controller *ctrl,
+				    int (*cb)(struct mhi_controller *, struct mhi_link_info *))
+{
+	ctrl->bw_scale = cb;
+}
+EXPORT_SYMBOL_GPL(mhi_controller_set_bw_scale_cb);
+
+void mhi_bw_setup(struct mhi_controller *ctrl, u32 channel_db)
+{
+	u32 cap, offset, ring, limit = min_t(size_t, SZ_4K, ctrl->reg_len);
+	DECLARE_BITMAP(visited, SZ_4K / sizeof(u32)) = {};
+
+	ctrl->bw_db = NULL;
+	ctrl->bw_response_pending = false;
+	if (!ctrl->bw_scale)
+		return;
+	for (ring = 0; ring < ctrl->total_ev_rings; ring++)
+		if (ctrl->mhi_event[ring].data_type == MHI_ER_BW_SCALE)
+			break;
+	if (ring == ctrl->total_ev_rings || ring > 31)
+		return;
+	if (mhi_read_reg(ctrl, ctrl->regs, MHI_MISC_CAPABILITIES, &offset))
+		return;
+	while (offset && IS_ALIGNED(offset, sizeof(u32)) && limit >= 8 && offset <= limit - 8) {
+		if (__test_and_set_bit(offset / sizeof(u32), visited) ||
+		    mhi_read_reg(ctrl, ctrl->regs, offset, &cap))
+			return;
+		if (FIELD_GET(GENMASK(31, 24), cap) == MHI_CAP_BW_SCALE) {
+			ctrl->bw_db = ctrl->regs + channel_db + 8 * MHI_BW_DB;
+			mhi_write_reg(ctrl, ctrl->regs, offset + 4,
+				      FIELD_PREP(GENMASK(31, 25), MHI_BW_DB) | BIT(24) |
+				      FIELD_PREP(GENMASK(23, 19), ring));
+			return;
+		}
+		offset = FIELD_GET(GENMASK(23, 12), cap);
+	}
+}
+
+void mhi_bw_work(struct work_struct *work)
+{
+	struct mhi_event *event = container_of(work, struct mhi_event, bw_work);
+	struct mhi_controller *ctrl = event->mhi_cntrl;
+	struct mhi_link_info request;
+	u32 response;
+	int ret;
+
+	spin_lock_bh(&event->lock);
+	request = event->bw_request;
+	response = event->bw_seq;
+	spin_unlock_bh(&event->lock);
+	if (!ctrl->bw_db || !MHI_IN_MISSION_MODE(READ_ONCE(ctrl->ee)))
+		return;
+	ret = mhi_device_get_sync(ctrl->mhi_dev);
+	if (ret)
+		return;
+	ret = ctrl->bw_scale(ctrl, &request);
+	write_lock_irq(&ctrl->pm_lock);
+	if (ret)
+		response |= FIELD_PREP(GENMASK(11, 8), MHI_BW_NACK);
+	else
+		ctrl->mhi_link_info = request;
+	ctrl->bw_response = response;
+	ctrl->bw_response_pending = true;
+	mhi_bw_send_response(ctrl);
+	write_unlock_irq(&ctrl->pm_lock);
+	mhi_device_put(ctrl->mhi_dev);
+}
+
+/* Called with the controller PM write lock held. */
+void mhi_bw_send_response(struct mhi_controller *ctrl)
+{
+	if (ctrl->bw_response_pending && MHI_DB_ACCESS_VALID(ctrl)) {
+		mhi_write_reg(ctrl, ctrl->bw_db, 0, ctrl->bw_response);
+		ctrl->bw_response_pending = false;
+	}
+}

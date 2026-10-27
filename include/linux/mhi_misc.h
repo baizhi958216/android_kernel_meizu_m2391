@@ -24,4 +24,7 @@ void mhi_debug_reg_dump(struct mhi_controller *ctrl);
 void mhi_dump_sfr(struct mhi_controller *ctrl);
 int mhi_force_reset(struct mhi_controller *ctrl);
 
+void mhi_controller_set_bw_scale_cb(struct mhi_controller *ctrl,
+				    int (*cb)(struct mhi_controller *, struct mhi_link_info *));
+
 #endif
