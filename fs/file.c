@@ -1135,6 +1135,8 @@ struct file *fget_task(struct task_struct *task, unsigned int fd)
 	return file;
 }
 
+EXPORT_SYMBOL_GPL(fget_task);
+
 struct file *fget_task_next(struct task_struct *task, unsigned int *ret_fd)
 {
 	/* Must be called with rcu_read_lock held */
