@@ -19,4 +19,9 @@ int mhi_get_event_ring_db_base(struct mhi_device *dev, phys_addr_t *addr);
 int mhi_device_configure(struct mhi_device *dev, enum dma_data_direction dir,
 			 struct mhi_buf *cfg, int count);
 
+bool mhi_scan_rddm_cookie(struct mhi_controller *ctrl, u32 cookie);
+void mhi_debug_reg_dump(struct mhi_controller *ctrl);
+void mhi_dump_sfr(struct mhi_controller *ctrl);
+int mhi_force_reset(struct mhi_controller *ctrl);
+
 #endif

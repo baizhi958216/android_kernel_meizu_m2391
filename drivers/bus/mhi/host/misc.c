@@ -270,3 +270,135 @@ int mhi_device_configure(struct mhi_device *dev, enum dma_data_direction dir,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mhi_device_configure);
+
+bool mhi_scan_rddm_cookie(struct mhi_controller *ctrl, u32 cookie)
+{
+	u32 val;
+	int ret = -EIO;
+
+	if (!ctrl->rddm_image || !ctrl->bhi || !cookie)
+		return false;
+	read_lock_bh(&ctrl->pm_lock);
+	if (MHI_REG_ACCESS_VALID(ctrl->pm_state))
+		ret = mhi_read_reg(ctrl, ctrl->bhi, BHI_ERRDBG2, &val);
+	read_unlock_bh(&ctrl->pm_lock);
+	return !ret && val == cookie;
+}
+EXPORT_SYMBOL_GPL(mhi_scan_rddm_cookie);
+
+void mhi_debug_reg_dump(struct mhi_controller *ctrl)
+{
+	struct device *dev = &ctrl->mhi_dev->dev;
+	const struct {
+		const char *name;
+		void __iomem *base;
+		u32 offset;
+	} regs[] = {
+		{ "BHI_ERRDBG1", ctrl->bhi, BHI_ERRDBG1 },
+		{ "BHI_ERRDBG2", ctrl->bhi, BHI_ERRDBG2 },
+		{ "BHI_ERRDBG3", ctrl->bhi, BHI_ERRDBG3 },
+		{ "BHI_ERRCODE", ctrl->bhi, BHI_ERRCODE },
+		{ "BHI_EXECENV", ctrl->bhi, BHI_EXECENV },
+		{ "BHI_STATUS", ctrl->bhi, BHI_STATUS },
+		{ "MHICTRL", ctrl->regs, MHICTRL },
+		{ "MHISTATUS", ctrl->regs, MHISTATUS },
+		{ "WAKE_DB", ctrl->wake_db, 0 },
+		{ "BHIE_TXVECDB", ctrl->bhie, BHIE_TXVECDB_OFFS },
+		{ "BHIE_TXVECSTATUS", ctrl->bhie, BHIE_TXVECSTATUS_OFFS },
+		{ "BHIE_RXVECDB", ctrl->bhie, BHIE_RXVECDB_OFFS },
+		{ "BHIE_RXVECSTATUS", ctrl->bhie, BHIE_RXVECSTATUS_OFFS },
+	};
+	u32 val;
+	int i;
+
+	dev_err(dev, "PM %s, MHI %s, EE %s\n", to_mhi_pm_state_str(ctrl->pm_state),
+		mhi_state_str(ctrl->dev_state), TO_MHI_EXEC_STR(ctrl->ee));
+	read_lock_bh(&ctrl->pm_lock);
+	if (MHI_REG_ACCESS_VALID(ctrl->pm_state))
+		for (i = 0; i < ARRAY_SIZE(regs); i++)
+			if (regs[i].base && !mhi_read_reg(ctrl, regs[i].base, regs[i].offset, &val))
+				dev_err(dev, "%s %#x\n", regs[i].name, val);
+	read_unlock_bh(&ctrl->pm_lock);
+}
+EXPORT_SYMBOL_GPL(mhi_debug_reg_dump);
+
+int mhi_force_reset(struct mhi_controller *ctrl)
+{
+	if (!ctrl->rddm_image || !ctrl->bhie)
+		return -ENODEV;
+	mhi_report_error(ctrl);
+	mhi_soc_reset(ctrl);
+	return mhi_poll_reg_field(ctrl, ctrl->bhie, BHIE_RXVECSTATUS_OFFS,
+				  BHIE_RXVECSTATUS_STATUS_BMSK, BHIE_RXVECSTATUS_STATUS_XFER_COMPL,
+				  5000, ctrl->timeout_ms);
+}
+EXPORT_SYMBOL_GPL(mhi_force_reset);
+
+struct rddm_file {
+	__le64 base;
+	__le64 phys;
+	__le64 size;
+	char description[20];
+	char name[20];
+};
+
+struct rddm_table {
+	__le32 version;
+	__le32 size;
+	struct rddm_file files[8];
+};
+
+void mhi_dump_sfr(struct mhi_controller *ctrl)
+{
+	const struct image_info *image = ctrl->rddm_image;
+	const struct rddm_table *table;
+	unsigned int n, i, count;
+	size_t size, copied;
+	u64 offset, file_size;
+	char *reason;
+
+	if (!image || image->entries < 2 || !image->mhi_buf[0].buf ||
+	    image->mhi_buf[0].len < offsetof(struct rddm_table, files))
+		return;
+	table = image->mhi_buf[0].buf;
+	offset = le32_to_cpu(table->size);
+	if (offset < offsetof(struct rddm_table, files) ||
+	    offset > min(sizeof(*table), image->mhi_buf[0].len))
+		return;
+	count = (offset - offsetof(struct rddm_table, files)) / sizeof(*table->files);
+	for (n = 0; n < count; n++) {
+		file_size = le64_to_cpu(table->files[n].size);
+		if (!strncmp(table->files[n].name, "Q6-SFR.bin", sizeof(table->files[n].name)))
+			break;
+		if (check_add_overflow(offset, file_size, &offset))
+			return;
+	}
+	if (n == count || !file_size)
+		return;
+
+	size = min_t(u64, file_size, SZ_4K);
+	reason = kmalloc(size + 1, GFP_ATOMIC);
+	if (!reason)
+		return;
+	copied = 0;
+	/* Last allocation holds the BHIe vector table, outside the dump file. */
+	for (i = 0; i < image->entries - 1 && copied < size; i++) {
+		const struct mhi_buf *seg = &image->mhi_buf[i];
+		size_t take;
+
+		if (offset >= seg->len) {
+			offset -= seg->len;
+			continue;
+		}
+		take = min_t(size_t, size - copied, seg->len - offset);
+		memcpy(reason + copied, seg->buf + offset, take);
+		copied += take;
+		offset = 0;
+	}
+	if (copied == size) {
+		reason[copied] = '\0';
+		dev_err(&ctrl->mhi_dev->dev, "Subsystem failure reason: %s\n", reason);
+	}
+	kfree(reason);
+}
+EXPORT_SYMBOL_GPL(mhi_dump_sfr);
