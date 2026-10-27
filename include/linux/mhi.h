@@ -389,6 +389,7 @@ struct mhi_controller {
 	size_t sbl_size;
 	size_t seg_len;
 	size_t reg_len;
+	phys_addr_t phys_base;
 	struct image_info *fbc_image;
 	struct image_info *rddm_image;
 	struct mhi_chan *mhi_chan;
@@ -480,6 +481,7 @@ struct mhi_device {
 	enum mhi_device_type dev_type;
 	int ul_chan_id;
 	int dl_chan_id;
+	int dl_event_id;
 	atomic_t dev_wake;
 };
 

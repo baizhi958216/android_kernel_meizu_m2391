@@ -8,6 +8,7 @@
 #include <linux/iopoll.h>
 #include <linux/mhi_misc.h>
 #include <linux/module.h>
+#include <linux/pci.h>
 #include "internal.h"
 
 static void mhi_notify_lpm(struct mhi_controller *ctrl, enum mhi_callback reason)
@@ -163,3 +164,109 @@ int mhi_report_error(struct mhi_controller *ctrl)
 	return device_for_each_child(&ctrl->mhi_dev->dev, NULL, mhi_notify_fatal);
 }
 EXPORT_SYMBOL_GPL(mhi_report_error);
+
+void mhi_controller_set_base(struct mhi_controller *ctrl, phys_addr_t base)
+{
+	WRITE_ONCE(ctrl->phys_base, base);
+}
+EXPORT_SYMBOL_GPL(mhi_controller_set_base);
+
+int mhi_controller_get_base(struct mhi_controller *ctrl, phys_addr_t *base)
+{
+	*base = READ_ONCE(ctrl->phys_base);
+	return *base ? 0 : -ENODEV;
+}
+EXPORT_SYMBOL_GPL(mhi_controller_get_base);
+
+u32 mhi_controller_get_numeric_id(struct mhi_controller *ctrl)
+{
+	struct pci_dev *pdev;
+
+	if (!dev_is_pci(ctrl->cntrl_dev))
+		return 0;
+	pdev = to_pci_dev(ctrl->cntrl_dev);
+	return (u32)pdev->device << 16 | (pci_domain_nr(pdev->bus) & 0xf) << 12 |
+	       pdev->bus->number << 4 | (PCI_SLOT(pdev->devfn) & 0xf);
+}
+EXPORT_SYMBOL_GPL(mhi_controller_get_numeric_id);
+
+static int mhi_get_db_base(struct mhi_device *dev, u32 reg, phys_addr_t *addr)
+{
+	struct mhi_controller *ctrl = dev->mhi_cntrl;
+	phys_addr_t base;
+	u32 offset;
+	int ret;
+
+	ret = mhi_controller_get_base(ctrl, &base);
+	if (ret)
+		return ret;
+	read_lock_bh(&ctrl->pm_lock);
+	if (!MHI_REG_ACCESS_VALID(ctrl->pm_state))
+		ret = -EIO;
+	else
+		ret = mhi_read_reg(ctrl, ctrl->regs, reg, &offset);
+	read_unlock_bh(&ctrl->pm_lock);
+	if (ret)
+		return ret;
+	if (offset >= ctrl->reg_len || check_add_overflow(base, offset, addr))
+		return -ERANGE;
+	return 0;
+}
+
+int mhi_get_channel_db_base(struct mhi_device *dev, phys_addr_t *addr)
+{
+	return mhi_get_db_base(dev, CHDBOFF, addr);
+}
+EXPORT_SYMBOL_GPL(mhi_get_channel_db_base);
+
+int mhi_get_event_ring_db_base(struct mhi_device *dev, phys_addr_t *addr)
+{
+	return mhi_get_db_base(dev, ERDBOFF, addr);
+}
+EXPORT_SYMBOL_GPL(mhi_get_event_ring_db_base);
+
+int mhi_device_configure(struct mhi_device *dev, enum dma_data_direction dir,
+			 struct mhi_buf *cfg, int count)
+{
+	struct mhi_controller *ctrl = dev->mhi_cntrl;
+	struct mhi_chan *chan;
+	struct mhi_chan_ctxt *ch = NULL;
+	struct mhi_event_ctxt *er = NULL;
+	int i;
+
+	switch (dir) {
+	case DMA_TO_DEVICE:
+		chan = dev->ul_chan;
+		break;
+	case DMA_FROM_DEVICE:
+	case DMA_BIDIRECTIONAL:
+	case DMA_NONE:
+		chan = dev->dl_chan;
+		break;
+	default:
+		return -EINVAL;
+	}
+	if (!chan || !chan->offload_ch || !ctrl->mhi_ctxt || !cfg || count <= 0)
+		return -EINVAL;
+	for (i = 0; i < count; i++) {
+		if (!cfg[i].buf || !cfg[i].name)
+			return -EINVAL;
+		if (!strcmp(cfg[i].name, "ECA") && cfg[i].len == sizeof(*er))
+			er = cfg[i].buf;
+		else if (!strcmp(cfg[i].name, "CCA") && cfg[i].len == sizeof(*ch))
+			ch = cfg[i].buf;
+		else
+			return -EINVAL;
+	}
+
+	mutex_lock(&chan->mutex);
+	if (er)
+		memcpy(&ctrl->mhi_ctxt->er_ctxt[chan->er_index], er, sizeof(*er));
+	if (ch)
+		memcpy(&ctrl->mhi_ctxt->chan_ctxt[chan->chan], ch, sizeof(*ch));
+	/* A later channel start publishes the two coherent contexts to the peer. */
+	dma_wmb();
+	mutex_unlock(&chan->mutex);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(mhi_device_configure);
