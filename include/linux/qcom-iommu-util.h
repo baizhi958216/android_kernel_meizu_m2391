@@ -30,6 +30,7 @@ struct qcom_iommu_fault_ids {
 	u32 mid;
 };
 
+int qcom_iommu_dma_enable_best_fit(struct device *dev);
 int qcom_iommu_get_fault_ids(struct iommu_domain *domain, struct qcom_iommu_fault_ids *ids);
 int qcom_iommu_get_context_bank_nr(struct iommu_domain *domain);
 int qcom_iommu_get_asid_nr(struct iommu_domain *domain);

@@ -793,6 +793,17 @@ static int dma_info_to_prot(enum dma_data_direction dir, bool coherent,
 	}
 }
 
+int qcom_iommu_dma_enable_best_fit(struct device *dev)
+{
+	struct iommu_domain *domain = iommu_get_domain_for_dev(dev);
+
+	if (!domain || domain->cookie_type != IOMMU_COOKIE_DMA_IOVA || !domain->iova_cookie)
+		return -EINVAL;
+	WRITE_ONCE(domain->iova_cookie->iovad.best_fit, true);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(qcom_iommu_dma_enable_best_fit);
+
 static dma_addr_t iommu_dma_alloc_iova(struct iommu_domain *domain,
 		size_t size, u64 dma_limit, struct device *dev)
 {

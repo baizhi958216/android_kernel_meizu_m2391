@@ -28,6 +28,7 @@ struct iova_rcache;
 /* holds all the iova translations for a domain */
 struct iova_domain {
 	spinlock_t	iova_rbtree_lock; /* Lock to protect update of rbtree */
+	bool		best_fit;	/* Prefer the smallest usable gap */
 	struct rb_root	rbroot;		/* iova domain rbtree root */
 	struct rb_node	*cached_node;	/* Save last alloced node */
 	struct rb_node	*cached32_node; /* Save last 32-bit alloced node */

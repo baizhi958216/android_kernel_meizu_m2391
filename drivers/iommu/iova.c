@@ -47,6 +47,7 @@ init_iova_domain(struct iova_domain *iovad, unsigned long granule,
 	BUG_ON((granule > PAGE_SIZE) || !is_power_of_2(granule));
 
 	spin_lock_init(&iovad->iova_rbtree_lock);
+	iovad->best_fit = false;
 	iovad->rbroot = RB_ROOT;
 	iovad->cached_node = &iovad->anchor.node;
 	iovad->cached32_node = &iovad->anchor.node;
@@ -163,6 +164,44 @@ iova_insert_rbtree(struct rb_root *root, struct iova *iova,
 	rb_insert_color(&iova->node, root);
 }
 
+/* Small codec apertures can exhaust their large contiguous gaps long before
+ * running out of pages. Search under the same lock used to insert the range.
+ */
+static int iova_insert_best_fit(struct iova_domain *iovad, unsigned long size,
+				unsigned long limit, unsigned long mask, struct iova *new)
+{
+	struct rb_node *upper = &iovad->anchor.node, *lower, *parent = NULL;
+	unsigned long best_gap = ULONG_MAX, best_pfn = 0;
+
+	lockdep_assert_held(&iovad->iova_rbtree_lock);
+	do {
+		unsigned long end = min(limit, to_iova(upper)->pfn_lo);
+		unsigned long start, pfn;
+
+		lower = rb_prev(upper);
+		start = lower ? max(iovad->start_pfn, to_iova(lower)->pfn_hi + 1) :
+			iovad->start_pfn;
+		if (end > start && size <= end - start) {
+			pfn = (end - size) & mask;
+			if (pfn >= start && (!parent || end - start < best_gap)) {
+				parent = upper;
+				best_pfn = pfn;
+				best_gap = end - start;
+				if (best_gap == size)
+					break;
+			}
+		}
+		upper = lower;
+	} while (upper);
+	if (!parent)
+		return -ENOMEM;
+	new->pfn_lo = best_pfn;
+	new->pfn_hi = best_pfn + size - 1;
+	iova_insert_rbtree(&iovad->rbroot, new, parent);
+	__cached_rbnode_insert_update(iovad, new);
+	return 0;
+}
+
 static int __alloc_and_insert_iova_range(struct iova_domain *iovad,
 		unsigned long size, unsigned long limit_pfn,
 			struct iova *new, bool size_aligned)
@@ -183,6 +222,12 @@ static int __alloc_and_insert_iova_range(struct iova_domain *iovad,
 
 	/* Walk the tree backwards */
 	spin_lock_irqsave(&iovad->iova_rbtree_lock, flags);
+	if (READ_ONCE(iovad->best_fit)) {
+		int ret = iova_insert_best_fit(iovad, size, limit_pfn, align_mask, new);
+
+		spin_unlock_irqrestore(&iovad->iova_rbtree_lock, flags);
+		return ret;
+	}
 	if (limit_pfn <= iovad->dma_32bit_pfn &&
 			size >= iovad->max32_alloc_size)
 		goto iova32_full;
