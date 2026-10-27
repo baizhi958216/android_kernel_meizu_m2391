@@ -81,6 +81,21 @@ secure=qcom/opensource/securemsm-kernel
 extbuild "$secure/smcinvoke"
 extbuild "$secure/hdcp" KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$secure/smcinvoke/Module.symvers"
 
+extbuild meizu/boot-mode
+input_symbols=("$out/m2391-external/meizu/boot-mode/Module.symvers"
+               "$out/m2391-external/meizu/system/Module.symvers"
+               "$out/m2391-external/meizu/storage/Module.symvers")
+for path in meizu/haptic-hv meizu/pressure-f71 meizu/pressure-m68; do
+	extbuild "$path" KBUILD_EXTRA_SYMBOLS="${input_symbols[*]}"
+done
+extbuild meizu/aks-adc
+extbuild meizu/aks-joystick
+extbuild nxp/opensource/uwb
+extbuild st/opensource/st54se-gpio
+for path in nxp/opensource/driver st/opensource/nfc; do
+	extbuild "$path" KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$secure/smcinvoke/Module.symvers"
+done
+
 mm=qcom/opensource/mm-drivers
 extbuild "$mm/msm_ext_display" MSM_EXT_DISPLAY_ROOT="$external/$mm/"
 extbuild "$mm/sync_fence" SYNC_FENCE_ROOT="$external/$mm/"
