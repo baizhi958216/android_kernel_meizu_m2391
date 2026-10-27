@@ -61,6 +61,11 @@ get_netdev_rx_queue_index(struct netdev_rx_queue *queue)
 	return index;
 }
 
+#ifdef CONFIG_RPS
+int netdev_rx_queue_enable_rps_cpu(struct netdev_rx_queue *queue, unsigned int cpu);
+int netdev_rx_queue_move_rps_cpu(struct netdev_rx_queue *queue, unsigned int cpu);
+#endif
+
 int netdev_rx_queue_restart(struct net_device *dev, unsigned int rxq);
 
 #endif

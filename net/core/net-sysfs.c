@@ -974,11 +974,14 @@ static ssize_t show_rps_map(struct netdev_rx_queue *queue, char *buf)
 	return len < PAGE_SIZE ? len : -EINVAL;
 }
 
-static int netdev_rx_queue_set_rps_mask(struct netdev_rx_queue *queue,
-					cpumask_var_t mask)
+static DEFINE_SPINLOCK(rps_map_lock);
+
+static int netdev_rx_queue_install_rps_mask(struct netdev_rx_queue *queue,
+					const struct cpumask *mask, bool only_if_empty)
 {
 	static DEFINE_MUTEX(rps_map_mutex);
 	struct rps_map *old_map, *map;
+	unsigned long flags;
 	int cpu, i;
 
 	map = kzalloc(max_t(unsigned int,
@@ -999,9 +1002,17 @@ static int netdev_rx_queue_set_rps_mask(struct netdev_rx_queue *queue,
 	}
 
 	mutex_lock(&rps_map_mutex);
+	spin_lock_irqsave(&rps_map_lock, flags);
 	old_map = rcu_dereference_protected(queue->rps_map,
-					    mutex_is_locked(&rps_map_mutex));
+					    lockdep_is_held(&rps_map_lock));
+	if (only_if_empty && old_map) {
+		spin_unlock_irqrestore(&rps_map_lock, flags);
+		mutex_unlock(&rps_map_mutex);
+		kfree(map);
+		return 0;
+	}
 	rcu_assign_pointer(queue->rps_map, map);
+	spin_unlock_irqrestore(&rps_map_lock, flags);
 
 	if (map)
 		static_branch_inc(&rps_needed);
@@ -1014,6 +1025,60 @@ static int netdev_rx_queue_set_rps_mask(struct netdev_rx_queue *queue,
 		kfree_rcu(old_map, rcu);
 	return 0;
 }
+
+static int netdev_rx_queue_set_rps_mask(struct netdev_rx_queue *queue,
+					cpumask_var_t mask)
+{
+	return netdev_rx_queue_install_rps_mask(queue, mask, false);
+}
+
+/* Called in process context when a driver's receive path comes online. */
+int netdev_rx_queue_enable_rps_cpu(struct netdev_rx_queue *queue, unsigned int cpu)
+{
+	if (cpu >= nr_cpu_ids || !cpu_online(cpu))
+		return -EINVAL;
+	return netdev_rx_queue_install_rps_mask(queue, cpumask_of(cpu), true);
+}
+EXPORT_SYMBOL_GPL(netdev_rx_queue_enable_rps_cpu);
+
+/*
+ * Move an already active queue in softirq context. Both maps are nonempty,
+ * so no static-key update (which can sleep) is needed. A concurrent sysfs
+ * disable is authoritative until the queue is explicitly enabled again.
+ */
+int netdev_rx_queue_move_rps_cpu(struct netdev_rx_queue *queue, unsigned int cpu)
+{
+	struct rps_map *map, *old_map;
+	unsigned long flags;
+	int ret = 0;
+
+	if (cpu >= nr_cpu_ids || !cpu_online(cpu))
+		return -EINVAL;
+
+	spin_lock_irqsave(&rps_map_lock, flags);
+	old_map = rcu_dereference_protected(queue->rps_map,
+					    lockdep_is_held(&rps_map_lock));
+	if (!old_map) {
+		ret = -ENOENT;
+		goto unlock;
+	}
+	if (old_map->len == 1 && old_map->cpus[0] == cpu)
+		goto unlock;
+
+	map = kzalloc(max_t(size_t, RPS_MAP_SIZE(1), L1_CACHE_BYTES), GFP_ATOMIC);
+	if (!map) {
+		ret = -ENOMEM;
+		goto unlock;
+	}
+	map->len = 1;
+	map->cpus[0] = cpu;
+	rcu_assign_pointer(queue->rps_map, map);
+	kfree_rcu(old_map, rcu);
+unlock:
+	spin_unlock_irqrestore(&rps_map_lock, flags);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(netdev_rx_queue_move_rps_cpu);
 
 int rps_cpumask_housekeeping(struct cpumask *mask)
 {
