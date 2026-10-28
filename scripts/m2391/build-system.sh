@@ -168,6 +168,12 @@ rmnet=qcom/opensource/datarmnet/core
 extbuild "$rmnet" RMNET_CORE_ROOT="$external/$rmnet" RMNET_CORE_INC_DIR="$external/$rmnet" \
 	CONFIG_ARCH_KALAMA=y
 
+for feature in aps offload perf perf_tether sch shs wlan; do
+	extbuild "qcom/opensource/datarmnet-ext/$feature" CONFIG_ARCH_KALAMA=y \
+		RMNET_CORE_INC_DIR="$external/$rmnet" \
+		KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$rmnet/Module.symvers"
+done
+
 release=$(<"$out/include/config/kernel.release")
 # Flyme's WLAN loader opens this filename. The module advertises kiwi_v2 internally.
 updates="$stage/lib/modules/$release/updates"
