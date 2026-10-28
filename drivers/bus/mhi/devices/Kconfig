@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0
+config MHI_SATELLITE
+	tristate "Qualcomm MHI satellite channel manager"
+	depends on MHI_BUS && MHI_BUS_MISC && RPMSG && PCI
+	help
+	  Share offloaded MHI event and channel contexts with the audio DSP
+	  over GLINK to allow low-power WLAN operation on Kalama.
