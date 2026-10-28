@@ -5,3 +5,16 @@ config QTI_QMI_SENSOR_V2
 	help
 	  Discover modem thermal sensors over QRTR, read temperature indications
 	  and program high and low thresholds in the remote sensor service.
+
+config QTI_BCL_PMIC5
+	tristate "Qualcomm PMIC5 battery current limiting monitor"
+	depends on SPMI && THERMAL_OF
+	help
+	  Read instantaneous battery voltage and current and expose PMIC hardware
+	  limit comparators to the thermal policy.
+
+config QTI_BCL_SOC_DRIVER
+	tristate "Qualcomm battery state-of-charge depletion sensor"
+	depends on POWER_SUPPLY && THERMAL_OF
+	help
+	  Update the depletion thermal zone when the battery supply changes.

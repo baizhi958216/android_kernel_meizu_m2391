@@ -1,3 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-only
 obj-$(CONFIG_QTI_QMI_SENSOR_V2) += qti_qmi_sensor_v2.o
 qti_qmi_sensor_v2-y := qmi_sensors_v2.o thermal_sensor_service_v02.o
+obj-$(CONFIG_QTI_BCL_PMIC5) += bcl_pmic5.o
+obj-$(CONFIG_QTI_BCL_SOC_DRIVER) += bcl_soc.o
