@@ -49,3 +49,5 @@ config QCOM_LMH
 	  input from temperature and current sensors.  On many newer Qualcomm SoCs
 	  LMh is configured in the firmware and this feature need not be enabled.
 	  However, on certain SoCs like sdm845 LMh has to be configured from kernel.
+
+source "drivers/thermal/qcom/Kconfig.m2391-sensors"

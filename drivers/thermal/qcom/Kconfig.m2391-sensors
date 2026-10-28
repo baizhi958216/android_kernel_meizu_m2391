@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config QTI_QMI_SENSOR_V2
+	tristate "Qualcomm remote thermal sensor service v2"
+	depends on QCOM_QMI_HELPERS && THERMAL_OF && NET
+	help
+	  Discover modem thermal sensors over QRTR, read temperature indications
+	  and program high and low thresholds in the remote sensor service.
