@@ -51,3 +51,15 @@ config QCOM_LMH
 	  However, on certain SoCs like sdm845 LMh has to be configured from kernel.
 
 source "drivers/thermal/qcom/Kconfig.m2391-sensors"
+
+config MEIZU_THERMAL_BOOST
+	tristate "Meizu thermal boost control"
+	depends on CPU_FREQ && PROC_FS
+
+config QTI_CPUFREQ_CDEV
+	tristate "Qualcomm CPU cluster frequency cooling"
+	depends on CPU_FREQ && OF && (MEIZU_THERMAL_BOOST || !MEIZU_THERMAL_BOOST)
+
+config QTI_CPU_VOLTAGE_COOLING_DEVICE
+	tristate "Qualcomm shared CPU rail cooling"
+	depends on CPU_FREQ && PM_OPP && OF
