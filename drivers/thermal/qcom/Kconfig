@@ -63,3 +63,7 @@ config QTI_CPUFREQ_CDEV
 config QTI_CPU_VOLTAGE_COOLING_DEVICE
 	tristate "Qualcomm shared CPU rail cooling"
 	depends on CPU_FREQ && PM_OPP && OF
+
+config QTI_QMI_COOLING_DEVICE
+	tristate "Qualcomm thermal mitigation service"
+	depends on QCOM_QMI_HELPERS && NET && OF

@@ -11,3 +11,5 @@ include $(srctree)/drivers/thermal/qcom/Makefile.m2391-sensors
 obj-$(CONFIG_MEIZU_THERMAL_BOOST) += mz_thermal_boost.o
 obj-$(CONFIG_QTI_CPUFREQ_CDEV) += qti_cpufreq_cdev.o
 obj-$(CONFIG_QTI_CPU_VOLTAGE_COOLING_DEVICE) += cpu_voltage_cooling.o
+obj-$(CONFIG_QTI_QMI_COOLING_DEVICE) += qti_qmi_cdev.o
+qti_qmi_cdev-y := qmi_cooling.o thermal_mitigation_device_service_v01.o
