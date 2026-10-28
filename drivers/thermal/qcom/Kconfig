@@ -10,6 +10,13 @@ config QCOM_TSENS
 	  Also able to set threshold temperature for both hot and cold and update
 	  when a threshold is reached.
 
+config QCOM_SPMI_ADC_TM5_GEN3
+	tristate "Qualcomm PMIC5 Gen3 thermal monitor"
+	depends on QCOM_SPMI_ADC5_GEN3
+	help
+	  Program high and low threshold events on the Gen3 SDAM sequencer
+	  and expose thermistors through the thermal framework.
+
 config QCOM_SPMI_ADC_TM5
 	tristate "Qualcomm SPMI PMIC Thermal Monitor ADC5"
 	depends on OF && SPMI && IIO

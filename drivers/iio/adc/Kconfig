@@ -1299,6 +1299,15 @@ config QCOM_SPMI_VADC
 	  To compile this driver as a module, choose M here: the module will
 	  be called qcom-spmi-vadc.
 
+config QCOM_SPMI_ADC5_GEN3
+	tristate "Qualcomm PMIC5 Gen3 ADC"
+	depends on OF && SPMI
+	select QCOM_VADC_COMMON
+	select AUXILIARY_BUS
+	help
+	  Convert voltage and temperature channels using the PMIC5 Gen3 SDAM
+	  sequencer. A separate thermal driver shares the threshold interrupts.
+
 config QCOM_SPMI_ADC5
 	tristate "Qualcomm Technologies Inc. SPMI PMIC5 ADC"
 	depends on SPMI
