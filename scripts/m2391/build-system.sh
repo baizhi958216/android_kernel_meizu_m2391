@@ -66,6 +66,8 @@ charger_symbols=("$out/m2391-external/meizu/power-notify/Module.symvers"
 		 "$out/m2391-external/meizu/power-thermal/Module.symvers"
 		 "${power_symbols[@]}")
 extbuild meizu/power-charger KBUILD_EXTRA_SYMBOLS="${charger_symbols[*]}"
+extbuild qcom/opensource/pmic-haptics \
+	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/power-charger/Module.symvers"
 touch=qcom/opensource/touch-drivers
 touch_symbols=("$out/m2391-external/meizu/system/Module.symvers"
 	      "$out/m2391-external/$touch/mz_gesture/Module.symvers"
@@ -132,6 +134,14 @@ camera_symbols=("$out/m2391-external/qcom/opensource/mmrm-driver/Module.symvers"
 extbuild "$camera" CAMERA_KERNEL_ROOT="$external/$camera" KERNEL_ROOT="$kernel" \
 	KERNEL_SRC="$kernel" CONFIG_SPECTRA_CAMERA=m BOARD_PLATFORM=kalama MODNAME=camera \
 	KBUILD_EXTRA_SYMBOLS="${camera_symbols[*]}"
+
+media_symbols="$out/m2391-external/qcom/opensource/mmrm-driver/Module.symvers"
+video=qcom/opensource/video-driver
+extbuild "$video" VIDEO_ROOT="$external/$video" CONFIG_ARCH_KALAMA=y \
+	BOARD_PLATFORM=kalama KBUILD_EXTRA_SYMBOLS="$media_symbols"
+eva=qcom/opensource/eva-kernel
+extbuild "$eva" EVA_ROOT="$external/$eva" CONFIG_ARCH_KALAMA=y \
+	BOARD_PLATFORM=kalama KBUILD_EXTRA_SYMBOLS="$media_symbols"
 
 wlan=qcom/opensource/wlan/platform
 extbuild "$wlan" WLAN_PLATFORM_ROOT="$external/$wlan" CONFIG_CNSS_OUT_OF_TREE=y \
