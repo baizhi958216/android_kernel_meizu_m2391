@@ -213,6 +213,17 @@ config QCOM_Q6V5_MSS
 	  subsystem based on Hexagon V5. The TrustZone based system is
 	  handled by QCOM_Q6V5_PAS driver.
 
+config QCOM_SPSS
+	tristate "Qualcomm Secure Processor Subsystem"
+	depends on ARCH_QCOM && OF && RPMSG_QCOM_GLINK_SMEM && QCOM_AOSS_QMP
+	select QCOM_SCM
+	depends on QCOM_SYSMON || QCOM_SYSMON=n
+	select QCOM_MDT_LOADER
+	select QCOM_RPROC_COMMON
+	help
+	  Authenticate or attach the SM8550 secure processor and connect its
+	  shared-memory GLINK channels.
+
 config QCOM_Q6V5_PAS
 	tristate "Qualcomm Peripheral Authentication Service support"
 	depends on OF && ARCH_QCOM
