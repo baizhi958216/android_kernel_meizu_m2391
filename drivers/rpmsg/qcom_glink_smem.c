@@ -217,6 +217,112 @@ static void qcom_glink_smem_release(struct device *dev)
 	kfree(smem);
 }
 
+static int glink_smem_init_pipes(struct device *dev, u32 remote_pid,
+				 struct glink_smem_pipe *tx_pipe,
+				 struct glink_smem_pipe *rx_pipe)
+{
+	__le32 *descs;
+	size_t size;
+	int ret;
+
+	ret = qcom_smem_alloc(remote_pid,
+			      SMEM_GLINK_NATIVE_XPRT_DESCRIPTOR, 32);
+	if (ret && ret != -EEXIST) {
+		dev_err(dev, "failed to allocate glink descriptors\n");
+		return ret;
+	}
+
+	descs = qcom_smem_get(remote_pid,
+			      SMEM_GLINK_NATIVE_XPRT_DESCRIPTOR, &size);
+	if (IS_ERR(descs)) {
+		dev_err(dev, "failed to acquire xprt descriptor\n");
+		ret = PTR_ERR(descs);
+		return ret;
+	}
+
+	if (size != 32) {
+		dev_err(dev, "glink descriptor of invalid size\n");
+		ret = -EINVAL;
+		return ret;
+	}
+
+	tx_pipe->tail = &descs[0];
+	tx_pipe->head = &descs[1];
+	rx_pipe->tail = &descs[2];
+	rx_pipe->head = &descs[3];
+
+	ret = qcom_smem_alloc(remote_pid, SMEM_GLINK_NATIVE_XPRT_FIFO_0,
+			      SZ_16K);
+	if (ret && ret != -EEXIST) {
+		dev_err(dev, "failed to allocate TX fifo\n");
+		return ret;
+	}
+
+	tx_pipe->fifo = qcom_smem_get(remote_pid, SMEM_GLINK_NATIVE_XPRT_FIFO_0,
+				      &tx_pipe->native.length);
+	if (IS_ERR(tx_pipe->fifo)) {
+		dev_err(dev, "failed to acquire TX fifo\n");
+		ret = PTR_ERR(tx_pipe->fifo);
+		return ret;
+	}
+
+	return 0;
+}
+
+/* SPSS firmware consumes one descriptor and two adjacent 2K FIFOs from
+ * SMEM item 478. Its mailbox registers advertise the physical location.
+ */
+static int glink_spss_init_pipes(struct device *dev, u32 remote_pid,
+				 struct glink_smem_pipe *tx,
+				 struct glink_smem_pipe *rx)
+{
+	struct glink_spss_descriptor {
+		__le32 tx_tail, tx_head, tx_size;
+		__le32 rx_tail, rx_head, rx_size;
+		u8 tx_fifo[SZ_2K], rx_fifo[SZ_2K];
+	} *desc;
+	void __iomem *addr_reg, *size_reg;
+	size_t size;
+	int ret;
+
+	addr_reg = of_iomap(dev->of_node, of_property_match_string(dev->of_node,
+				"reg-names", "qcom,spss-addr"));
+	if (!addr_reg)
+		return -ENXIO;
+	size_reg = of_iomap(dev->of_node, of_property_match_string(dev->of_node,
+				"reg-names", "qcom,spss-size"));
+	if (!size_reg) {
+		ret = -ENXIO;
+		goto unmap_addr;
+	}
+	ret = qcom_smem_alloc(remote_pid, SMEM_GLINK_NATIVE_XPRT_DESCRIPTOR, sizeof(*desc));
+	if (ret && ret != -EEXIST)
+		goto unmap_size;
+	desc = qcom_smem_get(remote_pid, SMEM_GLINK_NATIVE_XPRT_DESCRIPTOR, &size);
+	if (IS_ERR(desc) || size != sizeof(*desc)) {
+		ret = IS_ERR(desc) ? PTR_ERR(desc) : -EINVAL;
+		goto unmap_size;
+	}
+	tx->tail = &desc->tx_tail;
+	tx->head = &desc->tx_head;
+	rx->tail = &desc->rx_tail;
+	rx->head = &desc->rx_head;
+	tx->fifo = desc->tx_fifo;
+	rx->fifo = desc->rx_fifo;
+	tx->native.length = rx->native.length = SZ_2K;
+	desc->tx_size = desc->rx_size = cpu_to_le32(SZ_2K);
+	*tx->head = *rx->tail = 0;
+	wmb();
+	writeq(qcom_smem_virt_to_phys(desc), addr_reg);
+	writel(sizeof(*desc), size_reg);
+	ret = 0;
+unmap_size:
+	iounmap(size_reg);
+unmap_addr:
+	iounmap(addr_reg);
+	return ret;
+}
+
 struct qcom_glink_smem *qcom_glink_smem_register(struct device *parent,
 						 struct device_node *node)
 {
@@ -226,8 +332,6 @@ struct qcom_glink_smem *qcom_glink_smem_register(struct device *parent,
 	struct qcom_glink *glink;
 	struct device *dev;
 	u32 remote_pid;
-	__le32 *descs;
-	size_t size;
 	int ret;
 
 	smem = kzalloc(sizeof(*smem), GFP_KERNEL);
@@ -263,46 +367,12 @@ struct qcom_glink_smem *qcom_glink_smem_register(struct device *parent,
 		goto err_put_dev;
 	}
 
-	ret = qcom_smem_alloc(remote_pid,
-			      SMEM_GLINK_NATIVE_XPRT_DESCRIPTOR, 32);
-	if (ret && ret != -EEXIST) {
-		dev_err(dev, "failed to allocate glink descriptors\n");
+	if (of_property_match_string(node, "reg-names", "qcom,spss-addr") >= 0)
+		ret = glink_spss_init_pipes(dev, remote_pid, tx_pipe, rx_pipe);
+	else
+		ret = glink_smem_init_pipes(dev, remote_pid, tx_pipe, rx_pipe);
+	if (ret)
 		goto err_put_dev;
-	}
-
-	descs = qcom_smem_get(remote_pid,
-			      SMEM_GLINK_NATIVE_XPRT_DESCRIPTOR, &size);
-	if (IS_ERR(descs)) {
-		dev_err(dev, "failed to acquire xprt descriptor\n");
-		ret = PTR_ERR(descs);
-		goto err_put_dev;
-	}
-
-	if (size != 32) {
-		dev_err(dev, "glink descriptor of invalid size\n");
-		ret = -EINVAL;
-		goto err_put_dev;
-	}
-
-	tx_pipe->tail = &descs[0];
-	tx_pipe->head = &descs[1];
-	rx_pipe->tail = &descs[2];
-	rx_pipe->head = &descs[3];
-
-	ret = qcom_smem_alloc(remote_pid, SMEM_GLINK_NATIVE_XPRT_FIFO_0,
-			      SZ_16K);
-	if (ret && ret != -EEXIST) {
-		dev_err(dev, "failed to allocate TX fifo\n");
-		goto err_put_dev;
-	}
-
-	tx_pipe->fifo = qcom_smem_get(remote_pid, SMEM_GLINK_NATIVE_XPRT_FIFO_0,
-				      &tx_pipe->native.length);
-	if (IS_ERR(tx_pipe->fifo)) {
-		dev_err(dev, "failed to acquire TX fifo\n");
-		ret = PTR_ERR(tx_pipe->fifo);
-		goto err_put_dev;
-	}
 
 	smem->irq = of_irq_get(smem->dev.of_node, 0);
 	ret = devm_request_irq(&smem->dev, smem->irq, qcom_glink_smem_intr,
