@@ -171,6 +171,22 @@ config QCOM_RPMH
 	  of hardware components aggregate requests for these resources and
 	  help apply the aggregated state on the resource.
 
+config MEIZU_DEVICE_INFO
+	tristate "Meizu bootloader board identity"
+	depends on OF && PROC_FS
+
+config MSM_SPCOM
+	tristate "Qualcomm secure processor RPMSG character devices"
+	depends on QCOM_SPSS && RPMSG && DMA_SHARED_BUFFER && IPC_LOGGING
+
+config MSM_SPSS_UTILS
+	tristate "Qualcomm secure processor provisioning interface"
+	depends on QCOM_SPSS
+
+config QSEE_IPC_IRQ_BRIDGE
+	tristate "QSEE IPC interrupt bridge"
+	depends on OF && QCOM_RPROC_COMMON && IPC_LOGGING
+
 config QCOM_SMEM
 	tristate "Qualcomm Shared Memory Manager (SMEM)"
 	depends on ARCH_QCOM || COMPILE_TEST
