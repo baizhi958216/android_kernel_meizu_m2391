@@ -16,6 +16,7 @@
 #include <linux/module.h>
 #include <linux/thermal.h>
 #include <linux/types.h>
+#include <linux/workqueue.h>
 #include <linux/unaligned.h>
 
 #include "../thermal_hwmon.h"
@@ -40,6 +41,7 @@ struct adc_tm5_gen3_channel_props {
 	struct adc5_channel_common_prop common_props;
 	struct adc_tm5_gen3_chip *chip;
 	struct thermal_zone_device *tzd;
+	struct work_struct notify_work;
 	unsigned int sdam_index;
 	unsigned int timer;
 	unsigned int tm_chan_index;
@@ -73,38 +75,22 @@ static int get_sdam_from_irq(struct adc_tm5_gen3_chip *adc_tm5, int irq)
 	return -ENOENT;
 }
 
-static irqreturn_t adctm5_gen3_isr(int irq, void *dev_id)
+static void adc_tm5_notify(struct work_struct *work)
 {
-	struct adc_tm5_gen3_chip *adc_tm5 = dev_id;
-	int ret, sdam_num;
-	u8 tm_status[2];
-	u8 status, val;
+	struct adc_tm5_gen3_channel_props *prop =
+		container_of(work, struct adc_tm5_gen3_channel_props, notify_work);
 
-	sdam_num = get_sdam_from_irq(adc_tm5, irq);
-	if (sdam_num < 0)
-		return IRQ_NONE;
+	/* Updating a zone may start an immediate conversion on the same IRQ. */
+	thermal_zone_device_update(prop->tzd, THERMAL_TRIP_VIOLATED);
+}
 
-	ret = adc5_gen3_read(adc_tm5->dev_data, sdam_num, ADC5_GEN3_STATUS1,
-			     &status, sizeof(status));
-	if (ret)
-		return IRQ_NONE;
+static void adc_tm5_cancel_notifications(void *data)
+{
+	struct adc_tm5_gen3_chip *chip = data;
+	int i;
 
-	if (status & ADC5_GEN3_STATUS1_CONV_FAULT) {
-		val = ADC5_GEN3_CONV_ERR_CLR_REQ;
-		adc5_gen3_status_clear(adc_tm5->dev_data, sdam_num,
-				       ADC5_GEN3_CONV_ERR_CLR, &val, 1);
-		return IRQ_HANDLED;
-	}
-
-	ret = adc5_gen3_read(adc_tm5->dev_data, sdam_num, ADC5_GEN3_TM_HIGH_STS,
-			     tm_status, sizeof(tm_status));
-	if (ret)
-		return IRQ_NONE;
-
-	if (tm_status[0] || tm_status[1])
-		return IRQ_WAKE_THREAD;
-
-	return IRQ_NONE;
+	for (i = 0; i < chip->nchannels; i++)
+		cancel_work_sync(&chip->chan_props[i].notify_work);
 }
 
 static irqreturn_t adctm5_gen3_isr_thread(int irq, void *dev_id)
@@ -118,11 +104,25 @@ static irqreturn_t adctm5_gen3_isr_thread(int irq, void *dev_id)
 		return IRQ_NONE;
 
 	scoped_guard(adc5_gen3, adc_tm5) {
+		u8 status, val;
 		int ret;
 
+		/* The conversion driver handles faults on shared SDAM0. */
+		if (sdam_index) {
+			ret = adc5_gen3_read(adc_tm5->dev_data, sdam_index,
+					     ADC5_GEN3_STATUS1, &status, sizeof(status));
+			if (ret)
+				return IRQ_NONE;
+			if (status & ADC5_GEN3_STATUS1_CONV_FAULT) {
+				val = ADC5_GEN3_CONV_ERR_CLR_REQ;
+				adc5_gen3_status_clear(adc_tm5->dev_data, sdam_index,
+					ADC5_GEN3_CONV_ERR_CLR, &val, sizeof(val));
+				return IRQ_HANDLED;
+			}
+		}
 		ret = adc5_gen3_read(adc_tm5->dev_data, sdam_index, ADC5_GEN3_TM_HIGH_STS,
 				     tm_status, sizeof(tm_status));
-		if (ret)
+		if (ret || (!tm_status[0] && !tm_status[1]))
 			return IRQ_NONE;
 
 		ret = adc5_gen3_status_clear(adc_tm5->dev_data, sdam_index,
@@ -140,13 +140,13 @@ static irqreturn_t adctm5_gen3_isr_thread(int irq, void *dev_id)
 		if (!chan_prop->tzd || chan_prop->sdam_index != sdam_index)
 			continue;
 
-		upper_set = ((tm_status[0] & BIT(offset)) && chan_prop->high_thr_en);
-		lower_set = ((tm_status[1] & BIT(offset)) && chan_prop->low_thr_en);
+		upper_set = ((tm_status[0] & BIT(offset)) && READ_ONCE(chan_prop->high_thr_en));
+		lower_set = ((tm_status[1] & BIT(offset)) && READ_ONCE(chan_prop->low_thr_en));
 
 		if (!(upper_set || lower_set))
 			continue;
 
-		thermal_zone_device_update(chan_prop->tzd, THERMAL_TRIP_VIOLATED);
+		schedule_work(&chan_prop->notify_work);
 	}
 
 	return IRQ_HANDLED;
@@ -375,6 +375,7 @@ static int adc_tm5_probe(struct auxiliary_device *aux_dev,
 		adc_tm5->chan_props[i].sdam_index = tm_count / 8;
 		adc_tm5->chan_props[i].tm_chan_index = tm_count % 8;
 		adc_tm5->chan_props[i].chip = adc_tm5;
+		INIT_WORK(&adc_tm5->chan_props[i].notify_work, adc_tm5_notify);
 	}
 
 	/*
@@ -387,6 +388,10 @@ static int adc_tm5_probe(struct auxiliary_device *aux_dev,
 		return ret;
 
 	ret = adc_tm5_register_tzd(adc_tm5);
+	if (ret)
+		return ret;
+
+	ret = devm_add_action_or_reset(dev, adc_tm5_cancel_notifications, adc_tm5);
 	if (ret)
 		return ret;
 
@@ -404,7 +409,7 @@ static int adc_tm5_probe(struct auxiliary_device *aux_dev,
 
 		ret = devm_request_threaded_irq(dev,
 						adc_tm5->dev_data->base[i].irq,
-						adctm5_gen3_isr,
+						NULL,
 						adctm5_gen3_isr_thread,
 						irq_flags,
 						adc_tm5->dev_data->base[i].irq_name,

@@ -53,6 +53,8 @@ struct adc5_channel_prop {
  * @complete: ADC result notification after interrupt is received.
  * @lock: ADC lock for access to the peripheral, to prevent concurrent
  *	requests from multiple clients.
+ * @conversion_lock: serializes immediate ADC samples until their EOC.
+ * @conversion_error: last sequencer error delivered by the shared IRQ.
  * @data: software configuration data.
  * @n_tm_channels: number of ADC channels used for TM measurements.
  */
@@ -64,6 +66,8 @@ struct adc5_chip {
 	struct iio_chan_spec *iio_chans;
 	struct completion complete;
 	struct mutex lock;
+	struct mutex conversion_lock;
+	int conversion_error;
 	const struct adc5_data *data;
 	unsigned int n_tm_channels;
 };
@@ -157,6 +161,7 @@ static int adc5_gen3_configure(struct adc5_chip *adc,
 			    prop->hw_settle_time_us);
 
 	reinit_completion(&adc->complete);
+	adc->conversion_error = 0;
 
 	ret = adc5_gen3_write(&adc->dev_data, ADC5_GEN3_VADC_SDAM, ADC5_GEN3_SID,
 			      buf, sizeof(buf));
@@ -248,15 +253,14 @@ static int adc5_gen3_do_conversion(struct adc5_chip *adc,
 	int ret;
 	u8 val;
 
-	guard(mutex)(&adc->lock);
-	ret = adc5_gen3_poll_wait_hs(&adc->dev_data, ADC5_GEN3_VADC_SDAM);
-	if (ret)
-		return ret;
-
-	ret = adc5_gen3_configure(adc, prop);
-	if (ret) {
-		dev_err(adc->dev, "ADC configure failed with %d\n", ret);
-		return ret;
+	guard(mutex)(&adc->conversion_lock);
+	scoped_guard(mutex, &adc->lock) {
+		ret = adc5_gen3_poll_wait_hs(&adc->dev_data, ADC5_GEN3_VADC_SDAM);
+		if (ret)
+			return ret;
+		ret = adc5_gen3_configure(adc, prop);
+		if (ret)
+			return ret;
 	}
 
 	/* No support for polling mode at present */
@@ -267,6 +271,10 @@ static int adc5_gen3_do_conversion(struct adc5_chip *adc,
 			prop->label);
 		return -ETIMEDOUT;
 	}
+
+	guard(mutex)(&adc->lock);
+	if (adc->conversion_error)
+		return adc->conversion_error;
 
 	ret = adc5_gen3_read_voltage_data(adc, data_volt);
 	if (ret)
@@ -284,6 +292,7 @@ static irqreturn_t adc5_gen3_isr(int irq, void *dev_id)
 	u8 status, eoc_status, val;
 	int ret;
 
+	guard(mutex)(&adc->lock);
 	ret = adc5_gen3_read(&adc->dev_data, ADC5_GEN3_VADC_SDAM,
 			     ADC5_GEN3_STATUS1, &status, sizeof(status));
 	if (ret) {
@@ -305,6 +314,8 @@ static irqreturn_t adc5_gen3_isr(int irq, void *dev_id)
 		val = ADC5_GEN3_CONV_ERR_CLR_REQ;
 		adc5_gen3_status_clear(&adc->dev_data, ADC5_GEN3_VADC_SDAM,
 				       ADC5_GEN3_CONV_ERR_CLR, &val, 1);
+		adc->conversion_error = -EIO;
+		complete(&adc->complete);
 		return IRQ_HANDLED;
 	}
 
@@ -763,6 +774,9 @@ static int adc5_gen3_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, indio_dev);
 	init_completion(&adc->complete);
+	ret = devm_mutex_init(dev, &adc->conversion_lock);
+	if (ret)
+		return ret;
 	ret = devm_mutex_init(dev, &adc->lock);
 	if (ret)
 		return ret;
