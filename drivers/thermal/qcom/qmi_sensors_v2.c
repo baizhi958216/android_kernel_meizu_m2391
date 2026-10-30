@@ -96,6 +96,7 @@ static void qmi_ts_update_temperature(struct qmi_ts_instance *ts,
 		uint8_t notify)
 {
 	struct qmi_sensor *qmi_sens;
+	bool first;
 
 	list_for_each_entry(qmi_sens, &ts->ts_sensor_list,
 					ts_node) {
@@ -104,7 +105,7 @@ static void qmi_ts_update_temperature(struct qmi_ts_instance *ts,
 			QMI_TS_SENSOR_ID_LENGTH_MAX_V02)))
 			continue;
 
-		bool first = READ_ONCE(qmi_sens->last_reading) == THERMAL_TEMP_INVALID;
+		first = READ_ONCE(qmi_sens->last_reading) == THERMAL_TEMP_INVALID;
 
 		WRITE_ONCE(qmi_sens->last_reading, ind_msg->temp);
 
@@ -329,10 +330,7 @@ static int verify_sensor_and_register(struct qmi_ts_instance *ts)
 		goto reg_exit;
 	}
 
-	sensor_list_itr = (tot_resp.total_num_sensors /
-				QMI_TS_SENSOR_LIST_MAX_V02 +
-			(tot_resp.total_num_sensors %
-				QMI_TS_SENSOR_LIST_MAX_V02 ? 1 : 0));
+	sensor_list_itr = DIV_ROUND_UP_ULL(tot_resp.total_num_sensors, QMI_TS_SENSOR_LIST_MAX_V02);
 
 	pr_debug("Total QMI sensors cnt:%d list iteration cnt:%d inst_id:%d\n",
 		tot_resp.total_num_sensors, sensor_list_itr, ts->inst_id);
@@ -354,7 +352,8 @@ static int verify_sensor_and_register(struct qmi_ts_instance *ts)
 			goto reg_exit;
 		}
 
-		if (list_resp->sensor_list_len > ARRAY_SIZE(list_resp->sensor_list)) {
+		if (!list_resp->sensor_list_len ||
+		    list_resp->sensor_list_len > ARRAY_SIZE(list_resp->sensor_list)) {
 			ret = -EPROTO;
 			goto reg_exit;
 		}
@@ -565,7 +564,9 @@ static int qmi_sens_device_probe(struct platform_device *pdev)
 	int ret = 0, idx = 0;
 	struct qmi_ts_instance *ts;
 
-	struct qmi_ts_driver *drv = devm_kzalloc(dev, sizeof(*drv), GFP_KERNEL);
+	struct qmi_ts_driver *drv;
+
+	drv = devm_kzalloc(dev, sizeof(*drv), GFP_KERNEL);
 
 	if (!drv)
 		return -ENOMEM;
@@ -586,7 +587,6 @@ static int qmi_sens_device_probe(struct platform_device *pdev)
 		if (ret < 0) {
 			dev_err(dev, "QMI[0x%x] handle init failed. err:%d\n",
 					ts->inst_id, ret);
-			
 			goto probe_err;
 		}
 		drv->active++;
@@ -634,4 +634,5 @@ static struct platform_driver qmi_sens_device_driver = {
 };
 
 module_platform_driver(qmi_sens_device_driver);
+MODULE_DESCRIPTION("Qualcomm remote temperature sensor service v2");
 MODULE_LICENSE("GPL v2");
