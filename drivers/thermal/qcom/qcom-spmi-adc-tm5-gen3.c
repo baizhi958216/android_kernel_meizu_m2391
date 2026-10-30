@@ -207,6 +207,24 @@ static int adc_tm5_gen3_disable_channel(struct adc_tm5_gen3_channel_props *prop)
 			       ADC5_GEN3_CONV_REQ, &val, sizeof(val));
 }
 
+/* Round a quantized trip toward the side which actually violates it. */
+static int adc_tm5_gen3_threshold_code(struct adc_tm5_gen3_channel_props *prop,
+				       int temp, bool upper_trip, u16 *code)
+{
+	int measured, ret;
+
+	*code = qcom_adc_tm5_gen2_temp_res_scale(temp);
+	ret = adc5_gen3_therm_code_to_temp(prop->chip->dev, &prop->common_props,
+					 *code, &measured);
+	if (ret)
+		return ret;
+	if (upper_trip && measured < temp && *code)
+		(*code)--;
+	if (!upper_trip && measured > temp && *code < RATIO_MAX_ADC7 - 1)
+		(*code)++;
+	return 0;
+}
+
 static int adc_tm5_gen3_configure(struct adc_tm5_gen3_channel_props *prop,
 				  int low_temp, int high_temp)
 {
@@ -252,7 +270,9 @@ static int adc_tm5_gen3_configure(struct adc_tm5_gen3_channel_props *prop,
 	/* High temperature corresponds to low voltage threshold */
 	prop->low_thr_en = (high_temp != INT_MAX);
 	if (prop->low_thr_en) {
-		adc_code = qcom_adc_tm5_gen2_temp_res_scale(high_temp);
+		ret = adc_tm5_gen3_threshold_code(prop, high_temp, true, &adc_code);
+		if (ret)
+			return ret;
 		put_unaligned_le16(adc_code, &buf[8]);
 		buf[7] |= ADC5_GEN3_LOW_THR_INT_EN;
 	}
@@ -260,7 +280,9 @@ static int adc_tm5_gen3_configure(struct adc_tm5_gen3_channel_props *prop,
 	/* Low temperature corresponds to high voltage threshold */
 	prop->high_thr_en = (low_temp != -INT_MAX);
 	if (prop->high_thr_en) {
-		adc_code = qcom_adc_tm5_gen2_temp_res_scale(low_temp);
+		ret = adc_tm5_gen3_threshold_code(prop, low_temp, false, &adc_code);
+		if (ret)
+			return ret;
 		put_unaligned_le16(adc_code, &buf[10]);
 		buf[7] |= ADC5_GEN3_HIGH_THR_INT_EN;
 	}
