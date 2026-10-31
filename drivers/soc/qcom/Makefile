@@ -55,3 +55,4 @@ obj-$(CONFIG_QCOM_SECURE_BUFFER) += secure_buffer.o
 obj-y += mem_buf/
 obj-$(CONFIG_MSM_PERFORMANCE) += msm_performance.o
 obj-y += dcvs/
+obj-$(CONFIG_SPS) += sps/

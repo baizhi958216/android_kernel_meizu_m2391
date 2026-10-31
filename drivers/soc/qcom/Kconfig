@@ -4,6 +4,17 @@
 #
 menu "Qualcomm SoC drivers"
 
+config SPS
+	tristate "Qualcomm NDP BAM Smart Peripheral Switch"
+	depends on ARCH_QCOM && OF
+	select GENERIC_ALLOCATOR
+	help
+	  Provide descriptor rings, completion events and pipe management for
+	  Qualcomm peripherals attached to a no-data-path Bus Access Manager.
+
+config SPS_SUPPORT_NDP_BAM
+	def_bool SPS != n
+
 config QCOM_AOSS_QMP
 	tristate "Qualcomm AOSS Driver"
 	depends on ARCH_QCOM || COMPILE_TEST
