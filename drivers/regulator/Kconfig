@@ -25,6 +25,10 @@ menuconfig REGULATOR
 
 if REGULATOR
 
+config REGULATOR_QTI_OCP_NOTIFIER
+	tristate "Qualcomm PMIC overcurrent notifier"
+	depends on OF && NVMEM && IPC_LOGGING
+
 config REGULATOR_DEBUG
 	bool "Regulator debug support"
 	help
