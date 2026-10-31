@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: Apache-2.0
+TARGET_KERNEL_SOURCE := kernel/meizu/m2391
+TARGET_KERNEL_CONFIG := gki_defconfig m2391.config
+TARGET_KERNEL_VERSION := 6.18
+TARGET_NO_KERNEL_OVERRIDE := true
+M2391_KERNEL_BUILD_OUT = $(OUT_DIR)/target/product/$(TARGET_DEVICE)/obj/KERNEL_OBJ
+M2391_ANDROID_OUT = $(M2391_KERNEL_BUILD_OUT)/android
+TARGET_PREBUILT_KERNEL = $(M2391_ANDROID_OUT)/Image
+BOARD_KERNEL_IMAGE_NAME := Image
+
+BOARD_KERNEL_BASE := 0x00000000
+BOARD_KERNEL_CMDLINE := video=vfb:640x400,bpp=32,memsize=3072000 nosoftlockup \
+    page_poison=1 sysrq_always_enabled firmware_class.path=/vendor/firmware bootconfig
+BOARD_BOOTCONFIG := androidboot.hardware=qcom androidboot.memcg=1 \
+    androidboot.usbcontroller=a600000.dwc3
+BOARD_MKBOOTIMG_ARGS += --header_version 4 --kernel_offset 0x00008000 \
+    --ramdisk_offset 0x01000000 --tags_offset 0x00000100 --dtb_offset 0x01f00000
+BOARD_INCLUDE_DTB_IN_BOOTIMG := true
+BOARD_KERNEL_SEPARATED_DTBO := true
+BOARD_DTBO_CFG := $(TARGET_KERNEL_SOURCE)/arch/arm64/boot/dts/meizu/dtbo.cfg
+BOARD_PREBUILT_DTBOIMAGE = $(M2391_ANDROID_OUT)/dtbo.img
+
+# build/make resolves each of these input paths while OUT is still empty.
+include $(TARGET_KERNEL_SOURCE)/scripts/m2391/android-modules.mk
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES = $(addprefix $(M2391_ANDROID_OUT)/modules/,$(M2391_ANDROID_RAMDISK_MODULES))
+BOARD_VENDOR_KERNEL_MODULES = $(addprefix $(M2391_ANDROID_OUT)/modules/,$(M2391_ANDROID_VENDOR_MODULES))
+BOARD_SYSTEM_KERNEL_MODULES = $(addprefix $(M2391_ANDROID_OUT)/modules/,$(M2391_ANDROID_SYSTEM_MODULES))
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD := $(M2391_ANDROID_RAMDISK_LOAD)
+BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD := $(M2391_ANDROID_RECOVERY_LOAD)
+BOARD_VENDOR_KERNEL_MODULES_LOAD := $(M2391_ANDROID_VENDOR_LOAD)
+BOARD_SYSTEM_KERNEL_MODULES_LOAD := false
+BOARD_DO_NOT_STRIP_VENDOR_MODULES := true
+BOARD_DO_NOT_STRIP_VENDOR_RAMDISK_MODULES := true
+BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := $(DEVICE_PATH)/configs/modules/modules.blocklist.vendor_dlkm
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES_BLOCKLIST_FILE := $(DEVICE_PATH)/configs/modules/modules.blocklist.vendor_ramdisk
