@@ -106,6 +106,11 @@ int qcom_scm_assign_mem_regions(const struct qcom_scm_mem_region *regions,
 				unsigned int nr_regions, u64 srcvm,
 				const struct qcom_scm_vmperm *newvm,
 				unsigned int dest_cnt);
+int qcom_scm_get_tz_feat_id_version(u64 feature, u64 *version);
+int qcom_scm_register_qsee_log_buf(phys_addr_t buf, size_t len);
+int qcom_scm_query_encrypted_log_feature(u64 *enabled);
+int qcom_scm_request_encrypted_log(phys_addr_t buf, size_t len, u32 log_id,
+				   bool full_supported, bool full_enabled);
 int qcom_scm_get_sec_dump_state(u32 *state);
 int qcom_scm_mem_protect_region_id(phys_addr_t addr, size_t size);
 int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz, u64 *src,

@@ -1238,6 +1238,107 @@ int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz, u64 *srcvm,
 }
 EXPORT_SYMBOL_GPL(qcom_scm_assign_mem);
 
+int qcom_scm_get_tz_feat_id_version(u64 feature, u64 *version)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_INFO,
+		.cmd = QCOM_SCM_INFO_GET_FEAT_VERSION_CMD,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.arginfo = QCOM_SCM_ARGS(1),
+		.args[0] = feature,
+	};
+	struct qcom_scm_res res;
+	int ret;
+
+	if (!__scm)
+		return -EPROBE_DEFER;
+	if (!version)
+		return -EINVAL;
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	if (!ret)
+		*version = res.result[0];
+	return ret;
+}
+EXPORT_SYMBOL_GPL(qcom_scm_get_tz_feat_id_version);
+
+int qcom_scm_register_qsee_log_buf(phys_addr_t buf, size_t len)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_QSEELOG,
+		.cmd = QCOM_SCM_QSEELOG_REGISTER,
+		.owner = ARM_SMCCC_OWNER_TRUSTED_OS,
+		.args[0] = buf,
+		.args[1] = len,
+		.arginfo = QCOM_SCM_ARGS(2, QCOM_SCM_RW),
+	};
+	struct qcom_scm_res res;
+
+	if (!__scm)
+		return -EPROBE_DEFER;
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+
+	return ret ?: res.result[0];
+}
+EXPORT_SYMBOL_GPL(qcom_scm_register_qsee_log_buf);
+
+int qcom_scm_query_encrypted_log_feature(u64 *enabled)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_QSEELOG,
+		.cmd = QCOM_SCM_QUERY_ENCR_LOG_FEAT_ID,
+		.owner = ARM_SMCCC_OWNER_TRUSTED_OS
+	};
+	struct qcom_scm_res res;
+
+	if (!__scm)
+		return -EPROBE_DEFER;
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	if (!ret && enabled)
+		*enabled = res.result[0];
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(qcom_scm_query_encrypted_log_feature);
+
+int qcom_scm_request_encrypted_log(phys_addr_t buf,
+				   size_t len,
+				   uint32_t log_id,
+				   bool is_full_tz_logs_supported,
+				   bool is_full_tz_logs_enabled)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_QSEELOG,
+		.cmd = QCOM_SCM_REQUEST_ENCR_LOG_ID,
+		.owner = ARM_SMCCC_OWNER_TRUSTED_OS,
+		.args[0] = buf,
+		.args[1] = len,
+		.args[2] = log_id
+	};
+	struct qcom_scm_res res;
+
+	if (is_full_tz_logs_supported) {
+		if (is_full_tz_logs_enabled) {
+			/* requesting full logs */
+			desc.args[3] = 1;
+		} else {
+			/* requesting incremental logs */
+			desc.args[3] = 0;
+		}
+		desc.arginfo = QCOM_SCM_ARGS(4, QCOM_SCM_RW);
+	} else {
+		desc.arginfo = QCOM_SCM_ARGS(3, QCOM_SCM_RW);
+	}
+	if (!__scm)
+		return -EPROBE_DEFER;
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+
+	return ret ?: res.result[0];
+}
+EXPORT_SYMBOL_GPL(qcom_scm_request_encrypted_log);
+
 int qcom_scm_get_sec_dump_state(u32 *state)
 {
 	struct qcom_scm_desc desc = {

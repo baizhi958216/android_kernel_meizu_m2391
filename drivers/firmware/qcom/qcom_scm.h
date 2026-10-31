@@ -115,6 +115,12 @@ int qcom_scm_shm_bridge_enable(struct device *scm_dev);
 #define QCOM_SCM_IO_READ		0x01
 #define QCOM_SCM_IO_WRITE		0x02
 
+#define QCOM_SCM_INFO_GET_FEAT_VERSION_CMD	0x03
+#define QCOM_SCM_SVC_QSEELOG			0x01
+#define QCOM_SCM_QSEELOG_REGISTER		0x06
+#define QCOM_SCM_QUERY_ENCR_LOG_FEAT_ID		0x0b
+#define QCOM_SCM_REQUEST_ENCR_LOG_ID		0x0c
+
 #define QCOM_SCM_SVC_INFO		0x06
 #define QCOM_SCM_INFO_IS_CALL_AVAIL	0x01
 
