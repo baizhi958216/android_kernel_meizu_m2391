@@ -89,6 +89,12 @@
 #define ADC5_GEN3_VIN_DIV16_MUX			0x12
 #define ADC5_GEN3_VPH_PWR			0x8e
 #define ADC5_GEN3_VBAT_SNS_QBG			0x8f
+#define ADC5_GEN3_AMUX3_THM			0x06
+#define ADC5_GEN3_CHG_TEMP			0x10
+#define ADC5_GEN3_IIN_FB			0x17
+#define ADC5_GEN3_IIN_SMB			0x19
+#define ADC5_GEN3_ICHG_SMB			0x1b
+#define ADC5_GEN3_ICHG_FB			0xa1
 /* 100k pull-up channels */
 #define ADC5_GEN3_AMUX1_THM_100K_PU		0x44
 #define ADC5_GEN3_AMUX2_THM_100K_PU		0x45

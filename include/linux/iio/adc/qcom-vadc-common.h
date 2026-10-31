@@ -105,6 +105,10 @@ struct vadc_linear_graph {
  *	charger temperature.
  * SCALE_HW_CALIB_PM5_SMB_TEMP: Returns result in millidegrees for PMIC5
  *	SMB1390 temperature.
+ * @SCALE_HW_CALIB_PM7_CHG_TEMP: PM7 charger temperature in millidegrees.
+ * @SCALE_HW_CALIB_PM7_SMB_TEMP: SMB139x die temperature in millidegrees.
+ * @SCALE_HW_CALIB_CUR: Signed current converted through the ADC reference.
+ * @SCALE_HW_CALIB_CUR_RAW: Signed current with a raw-code gain factor.
  */
 enum vadc_scale_fn_type {
 	SCALE_DEFAULT = 0,
@@ -120,6 +124,10 @@ enum vadc_scale_fn_type {
 	SCALE_HW_CALIB_PMIC_THERM_PM7,
 	SCALE_HW_CALIB_PM5_CHG_TEMP,
 	SCALE_HW_CALIB_PM5_SMB_TEMP,
+	SCALE_HW_CALIB_PM7_CHG_TEMP,
+	SCALE_HW_CALIB_PM7_SMB_TEMP,
+	SCALE_HW_CALIB_CUR,
+	SCALE_HW_CALIB_CUR_RAW,
 	SCALE_HW_CALIB_INVALID,
 };
 
