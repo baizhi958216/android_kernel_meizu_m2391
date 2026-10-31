@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0
 
 # LED Core
+obj-$(CONFIG_LEDS_QTI_TRI_LED) += leds-qti-tri-led.o
+obj-$(CONFIG_LEDS_QTI_FLASH) += leds-qti-flash.o
 obj-$(CONFIG_NEW_LEDS)			+= led-core.o
 obj-$(CONFIG_LEDS_CLASS)		+= led-class.o
 obj-$(CONFIG_LEDS_CLASS_FLASH)		+= led-class-flash.o

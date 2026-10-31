@@ -20,6 +20,15 @@ menuconfig NEW_LEDS
 
 if NEW_LEDS
 
+config LEDS_QTI_TRI_LED
+	tristate "PM8550 tri-color indicator"
+	depends on LEDS_CLASS && PWM_QTI_LPG
+
+config LEDS_QTI_FLASH
+	tristate "PM8550 camera flash and torch"
+	depends on LEDS_CLASS_FLASH && MFD_SPMI_PMIC && POWER_SUPPLY && IIO
+	select LEDS_TRIGGERS
+
 config LEDS_CLASS
 	tristate "LED Class Support"
 	help
