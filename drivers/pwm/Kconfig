@@ -29,6 +29,10 @@ menuconfig PWM
 
 if PWM
 
+config PWM_QTI_LPG
+	tristate "Qualcomm PMIC LPG PWM channels"
+	depends on OF && MFD_SPMI_PMIC && NVMEM && QCOM_PBS
+
 config PWM_DEBUG
 	bool "PWM lowlevel drivers additional checks and debug messages"
 	depends on DEBUG_KERNEL
