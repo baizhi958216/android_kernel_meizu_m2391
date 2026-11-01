@@ -82,6 +82,8 @@ extbuild qcom/opensource/mmrm-driver MMRM_ROOT="$external/qcom/opensource/mmrm-d
 secure=qcom/opensource/securemsm-kernel
 extbuild "$secure/smcinvoke"
 extbuild "$secure/qrng"
+extbuild "$secure/crypto-qti"
+extbuild "$secure/tz_log"
 extbuild meizu/rpmb-control KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/storage/Module.symvers"
 extbuild "$secure/hdcp" KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$secure/smcinvoke/Module.symvers"
 
