@@ -393,6 +393,10 @@ config USB_F_DIAG
 	tristate "Qualcomm USB diagnostic channel"
 	depends on USB_CONFIGFS
 
+config USB_F_AUDIO_SRC
+	tristate "Android accessory audio source"
+	depends on USB_CONFIGFS && SND_PCM
+
 config USB_CONFIGFS_F_FS
 	bool "Function filesystem (FunctionFS)"
 	depends on USB_CONFIGFS
