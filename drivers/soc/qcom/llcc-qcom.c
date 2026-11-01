@@ -3923,12 +3923,19 @@ static int llcc_update_act_ctrl(u32 sid,
 		return ret;
 
 	if (drv_data->version >= LLCC_VERSION_4_1_0_0) {
-		regmap = drv_data->bcast_and_regmap ?: drv_data->bcast_regmap;
-		ret = regmap_read_poll_timeout(regmap, status_reg,
-				      slice_status, (slice_status & ACT_COMPLETE),
-				      0, LLCC_STATUS_READ_DELAY);
-		if (ret)
-			return ret;
+		unsigned int i, count = drv_data->bcast_and_regmap ? 1 : drv_data->num_banks;
+
+		/* A broadcast OR read can report completion when just one bank
+		 * finished. Check each bank if there is no broadcast AND window.
+		 */
+		for (i = 0; i < count; i++) {
+			regmap = drv_data->bcast_and_regmap ?: drv_data->regmaps[i];
+			ret = regmap_read_poll_timeout(regmap, status_reg, slice_status,
+						       slice_status & ACT_COMPLETE,
+						       0, LLCC_STATUS_READ_DELAY);
+			if (ret)
+				return ret;
+		}
 	}
 
 	ret = regmap_read_poll_timeout(drv_data->bcast_regmap, status_reg,
@@ -4523,6 +4530,26 @@ static int qcom_llcc_probe(struct platform_device *pdev)
 
 	llcc_cfg = cfg->sct_data;
 	sz = cfg->size;
+	if (of_device_is_compatible(dev->of_node, "qcom,kalama-llcc")) {
+		struct llcc_slice_config *slices;
+
+		/* The Kalama island firmware requires exclusive ways for
+		 * ISLAND1 and ISLAND4 across AP power collapse.
+		 */
+		slices = devm_kmemdup(dev, llcc_cfg, array_size(sz, sizeof(*slices)), GFP_KERNEL);
+		if (!slices) {
+			ret = -ENOMEM;
+			goto err;
+		}
+		for (i = 0; i < sz; i++) {
+			if (slices[i].usecase_id == LLCC_ISLAND1 ||
+			    slices[i].usecase_id == LLCC_ISLAND4) {
+				slices[i].res_ways = slices[i].bonus_ways;
+				slices[i].bonus_ways = 0;
+			}
+		}
+		llcc_cfg = slices;
+	}
 
 	for (i = 0; i < sz; i++)
 		if (llcc_cfg[i].slice_id > drv_data->max_slices)
@@ -4588,6 +4615,7 @@ static const struct of_device_id qcom_llcc_of_match[] = {
 	{ .compatible = "qcom,sm8350-llcc", .data = &sm8350_cfgs },
 	{ .compatible = "qcom,sm8450-llcc", .data = &sm8450_cfgs },
 	{ .compatible = "qcom,sm8550-llcc", .data = &sm8550_cfgs },
+	{ .compatible = "qcom,kalama-llcc", .data = &sm8550_cfgs },
 	{ .compatible = "qcom,sm8650-llcc", .data = &sm8650_cfgs },
 	{ .compatible = "qcom,sm8750-llcc", .data = &sm8750_cfgs },
 	{ .compatible = "qcom,x1e80100-llcc", .data = &x1e80100_cfgs },
