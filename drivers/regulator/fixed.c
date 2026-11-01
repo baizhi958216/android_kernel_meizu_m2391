@@ -22,6 +22,7 @@
 #include <linux/pm_opp.h>
 #include <linux/reboot.h>
 #include <linux/regulator/driver.h>
+#include <linux/regulator/consumer.h>
 #include <linux/regulator/fixed.h>
 #include <linux/gpio/consumer.h>
 #include <linux/slab.h>
@@ -36,6 +37,7 @@
 struct fixed_voltage_data {
 	struct regulator_desc desc;
 	struct regulator_dev *dev;
+	struct regulator *boot_proxy;
 
 	struct clk *enable_clock;
 	unsigned int enable_counter;
@@ -219,6 +221,22 @@ static const struct regulator_ops fixed_voltage_domain_ops = {
 	.is_enabled = reg_is_enabled,
 };
 
+static void reg_fixed_drop_boot_vote(void *data)
+{
+	struct fixed_voltage_data *drvdata = data;
+
+	regulator_disable(drvdata->boot_proxy);
+	drvdata->boot_proxy = NULL;
+}
+
+static void reg_fixed_sync_state(struct device *dev)
+{
+	struct fixed_voltage_data *drvdata = dev_get_drvdata(dev);
+
+	if (drvdata->boot_proxy)
+		devm_release_action(dev, reg_fixed_drop_boot_vote, drvdata);
+}
+
 static int reg_fixed_voltage_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -340,6 +358,21 @@ static int reg_fixed_voltage_probe(struct platform_device *pdev)
 	dev_dbg(&pdev->dev, "%s supplying %duV\n", drvdata->desc.name,
 		drvdata->desc.fixed_uV);
 
+	/* Keep the bootloader's rail enabled until the panel consumers bind. */
+	if (of_device_is_compatible(dev->of_node, "qti-regulator-fixed") &&
+	    of_property_read_bool(dev->of_node, "qcom,proxy-consumer-enable")) {
+		drvdata->boot_proxy = devm_regulator_get(dev, "proxy");
+		if (IS_ERR(drvdata->boot_proxy))
+			return dev_err_probe(dev, PTR_ERR(drvdata->boot_proxy),
+					     "failed to get boot proxy\n");
+		ret = regulator_enable(drvdata->boot_proxy);
+		if (ret)
+			return dev_err_probe(dev, ret, "failed to enable boot proxy\n");
+		ret = devm_add_action_or_reset(dev, reg_fixed_drop_boot_vote, drvdata);
+		if (ret)
+			return ret;
+	}
+
 	ret = reg_fixed_get_irqs(dev, drvdata);
 	if (ret)
 		return ret;
@@ -361,6 +394,10 @@ static const struct fixed_dev_type fixed_domain_data = {
 };
 
 static const struct of_device_id fixed_of_match[] = {
+	{
+		.compatible = "qti-regulator-fixed",
+		.data = &fixed_voltage_data,
+	},
 	{
 		.compatible = "regulator-fixed",
 		.data = &fixed_voltage_data,
@@ -384,6 +421,7 @@ static struct platform_driver regulator_fixed_voltage_driver = {
 	.driver		= {
 		.name		= "reg-fixed-voltage",
 		.probe_type	= PROBE_PREFER_ASYNCHRONOUS,
+		.sync_state	= reg_fixed_sync_state,
 		.of_match_table = of_match_ptr(fixed_of_match),
 	},
 };

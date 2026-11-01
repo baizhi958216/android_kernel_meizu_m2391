@@ -297,6 +297,8 @@ static void of_gpio_set_polarity_by_property(const struct device_node *np,
 		 * be actively ignored.
 		 */
 #if IS_ENABLED(CONFIG_REGULATOR_FIXED_VOLTAGE)
+		{ "qti-regulator-fixed", "gpios",      "enable-active-high" },
+		{ "qti-regulator-fixed", "gpio",       "enable-active-high" },
 		{ "regulator-fixed",   "gpios",        "enable-active-high" },
 		{ "regulator-fixed",   "gpio",         "enable-active-high" },
 		{ "reg-fixed-voltage", "gpios",        "enable-active-high" },
