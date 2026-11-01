@@ -60,3 +60,5 @@ usb_f_acc-y			:= android_f_accessory.o
 obj-$(CONFIG_ANDROID_USB_F_ACC)	+= usb_f_acc.o
 usb_f_ccid-y := f_ccid.o
 obj-$(CONFIG_USB_F_CCID) += usb_f_ccid.o
+usb_f_cdev-y := f_cdev.o
+obj-$(CONFIG_USB_F_CDEV) += usb_f_cdev.o
