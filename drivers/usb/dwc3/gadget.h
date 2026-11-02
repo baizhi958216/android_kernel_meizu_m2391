@@ -118,6 +118,7 @@ int dwc3_gadget_ep0_queue(struct usb_ep *ep, struct usb_request *request,
 		gfp_t gfp_flags);
 int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value, int protocol);
 void dwc3_ep0_send_delayed_status(struct dwc3 *dwc);
+extern const struct usb_ep_ops dwc3_gadget_ep_ops;
 void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force, bool interrupt);
 int dwc3_gadget_start_config(struct dwc3 *dwc, unsigned int resource_index);
 

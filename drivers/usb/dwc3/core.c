@@ -39,6 +39,7 @@
 #include <trace/hooks/dwc3.h>
 
 #include "core.h"
+#include "gadget-gsi.h"
 #include "gadget.h"
 #include "glue.h"
 #include "io.h"
@@ -551,12 +552,18 @@ static int dwc3_alloc_event_buffers(struct dwc3 *dwc, unsigned int length)
 {
 	struct dwc3_event_buffer *evt;
 	unsigned int hw_mode;
+	int ret;
 
 	hw_mode = DWC3_GHWPARAMS0_MODE(dwc->hwparams.hwparams0);
 	if (hw_mode == DWC3_GHWPARAMS0_MODE_HOST) {
 		dwc->ev_buf = NULL;
 		return 0;
 	}
+
+	ret = dwc3_gsi_alloc_events(dwc, length);
+
+	if (ret)
+		return ret;
 
 	evt = dwc3_alloc_one_event_buffer(dwc, length);
 	if (IS_ERR(evt)) {
@@ -594,6 +601,7 @@ int dwc3_event_buffers_setup(struct dwc3 *dwc)
 	/* Clear any stale event */
 	reg = dwc3_readl(dwc, DWC3_GEVNTCOUNT(0));
 	dwc3_writel(dwc, DWC3_GEVNTCOUNT(0), reg);
+	dwc3_gsi_set_events(dwc, true);
 	return 0;
 }
 
@@ -611,6 +619,8 @@ void dwc3_event_buffers_cleanup(struct dwc3 *dwc)
 	reg = dwc3_readl(dwc, DWC3_DSTS);
 	if (!(reg & DWC3_DSTS_DEVCTRLHLT))
 		return;
+
+	dwc3_gsi_set_events(dwc, false);
 
 	evt = dwc->ev_buf;
 

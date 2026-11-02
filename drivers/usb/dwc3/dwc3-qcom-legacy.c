@@ -763,6 +763,11 @@ static int dwc3_qcom_of_register_core(struct platform_device *pdev)
 	struct device		*dev = &pdev->dev;
 	int			ret;
 
+	struct of_dev_auxdata auxdata[] = {
+		{ .compatible = "snps,dwc3", .platform_data = &qcom->qscratch_base },
+		{}
+	};
+
 	struct device_node *dwc3_np __free(device_node) = of_get_compatible_child(np,
 										  "snps,dwc3");
 	if (!dwc3_np) {
@@ -770,7 +775,7 @@ static int dwc3_qcom_of_register_core(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	ret = of_platform_populate(np, NULL, NULL, dev);
+	ret = of_platform_populate(np, NULL, qcom->kalama ? auxdata : NULL, dev);
 	if (ret) {
 		dev_err(dev, "failed to register dwc3 core - %d\n", ret);
 		return ret;

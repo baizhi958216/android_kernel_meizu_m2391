@@ -5,6 +5,7 @@ CFLAGS_trace.o				:= -I$(src)
 obj-$(CONFIG_USB_DWC3)			+= dwc3.o
 
 dwc3-y					:= core.o
+dwc3-$(CONFIG_USB_DWC3_QCOM_GSI)	+= gadget-gsi.o
 
 ifneq ($(CONFIG_TRACING),)
 	dwc3-y				+= trace.o

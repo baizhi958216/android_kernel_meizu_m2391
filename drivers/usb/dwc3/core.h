@@ -746,6 +746,7 @@ struct dwc3_event_buffer {
  *		combo_num = 'b00
  */
 struct dwc3_ep {
+	u8 gsi_intr;
 	struct usb_ep		endpoint;
 	struct delayed_work	nostream_work;
 	struct list_head	cancelled_list;
@@ -1194,6 +1195,7 @@ struct dwc3_glue_ops {
  *			 represents interface_id.
  */
 struct dwc3 {
+	struct dwc3_gsi *gsi;
 	struct work_struct	drd_work;
 	struct dwc3_trb		*ep0_trb;
 	void			*bounce;

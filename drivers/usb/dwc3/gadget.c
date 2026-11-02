@@ -629,7 +629,7 @@ static int dwc3_gadget_set_ep_config(struct dwc3_ep *dep, unsigned int action)
 	 * so on. We consider the direction bit as part of the physical
 	 * endpoint number. So USB endpoint 0x81 is 0x03.
 	 */
-	params.param1 |= DWC3_DEPCFG_EP_NUMBER(dep->number);
+	params.param1 |= DWC3_DEPCFG_EP_NUMBER(dep->number) | DWC3_DEPCFG_INT_NUM(dep->gsi_intr);
 
 	/*
 	 * We must use the lower 16 TX FIFOs even though
@@ -950,7 +950,7 @@ static int __dwc3_gadget_ep_enable(struct dwc3_ep *dep, unsigned int action)
 		dep->trb_dequeue = 0;
 		dep->trb_enqueue = 0;
 
-		if (usb_endpoint_xfer_control(desc))
+		if (usb_endpoint_xfer_control(desc) || dep->gsi_intr)
 			goto out;
 
 		/* Initialize the TRB ring */
@@ -2331,7 +2331,7 @@ static const struct usb_ep_ops dwc3_gadget_ep0_ops = {
 	.set_wedge	= dwc3_gadget_ep_set_wedge,
 };
 
-static const struct usb_ep_ops dwc3_gadget_ep_ops = {
+const struct usb_ep_ops dwc3_gadget_ep_ops = {
 	.enable		= dwc3_gadget_ep_enable,
 	.disable	= dwc3_gadget_ep_disable,
 	.alloc_request	= dwc3_gadget_ep_alloc_request,
