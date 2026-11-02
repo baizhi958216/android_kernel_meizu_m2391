@@ -164,4 +164,11 @@ config UIO_DFL
 	    opae-sdk/tools/libopaeuio/
 
 	  If you compile this as a module, it will be called uio_dfl.
+config UIO_MSM_SHAREDMEM
+	tristate "Qualcomm modem remote-storage shared memory"
+	depends on ARCH_QCOM && QCOM_SCM && OF
+	help
+	  Expose the shared RMTFS buffer to the modem storage service and
+	  grant the modem access through the secure monitor.
+
 endif
