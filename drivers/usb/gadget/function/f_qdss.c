@@ -903,6 +903,7 @@ void usb_qdss_close(struct usb_qdss_ch *ch)
 	unsigned long flags;
 	struct qdss_req *qreq;
 	bool do_wait;
+	int status;
 
 	if (!ch) {
 		pr_err("%s: ch is NULL\n", __func__);
@@ -914,7 +915,8 @@ void usb_qdss_close(struct usb_qdss_ch *ch)
 	mutex_lock(&qdss->mutex);
 	if (!qdss->opened) {
 		pr_err("%s: channel %s closed\n", __func__, ch->name);
-		goto unlock_out;
+		mutex_unlock(&qdss->mutex);
+		return;
 	}
 
 	spin_lock_irqsave(&qdss->lock, flags);
