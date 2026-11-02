@@ -14,6 +14,7 @@
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/rpmsg.h>
+#include <linux/rpmsg/qcom_glink.h>
 #include <linux/sizes.h>
 #include <linux/slab.h>
 #include <linux/wait.h>
@@ -207,6 +208,7 @@ static const struct rpmsg_endpoint_ops glink_endpoint_ops;
 #define GLINK_CMD_RX_INTENT_REQ		7
 #define GLINK_CMD_RX_INTENT_REQ_ACK	8
 #define GLINK_CMD_TX_DATA		9
+#define GLINK_CMD_TX_DATA_ZERO_COPY	10
 #define GLINK_CMD_CLOSE_ACK		11
 #define GLINK_CMD_TX_DATA_CONT		12
 #define GLINK_CMD_READ_NOTIF		13
@@ -1013,6 +1015,111 @@ advance_rx:
 	return ret;
 }
 
+struct qcom_glink_window {
+	struct list_head node;
+	void *cpu;
+	phys_addr_t phys;
+	size_t size;
+};
+
+static LIST_HEAD(modem_windows);
+static DEFINE_MUTEX(modem_windows_lock);
+
+struct qcom_glink_window *qcom_glink_register_modem_window(void *cpu,
+							   phys_addr_t phys, size_t size)
+{
+	struct qcom_glink_window *window;
+
+	if (!cpu || !size)
+		return ERR_PTR(-EINVAL);
+	window = kmalloc(sizeof(*window), GFP_KERNEL);
+	if (!window)
+		return ERR_PTR(-ENOMEM);
+	window->cpu = cpu;
+	window->phys = phys;
+	window->size = size;
+	mutex_lock(&modem_windows_lock);
+	list_add_rcu(&window->node, &modem_windows);
+	mutex_unlock(&modem_windows_lock);
+	return window;
+}
+EXPORT_SYMBOL_GPL(qcom_glink_register_modem_window);
+
+void qcom_glink_unregister_modem_window(struct qcom_glink_window *window)
+{
+	if (!window)
+		return;
+	mutex_lock(&modem_windows_lock);
+	list_del_rcu(&window->node);
+	mutex_unlock(&modem_windows_lock);
+	synchronize_rcu();
+	kfree(window);
+}
+EXPORT_SYMBOL_GPL(qcom_glink_unregister_modem_window);
+
+static int qcom_glink_rx_modem_window(struct qcom_glink *glink, size_t avail)
+{
+	struct {
+		struct glink_msg_hdr msg;
+		__le32 pool, size;
+		__le64 addr;
+	} __packed hdr;
+	struct glink_core_rx_intent *intent;
+	struct qcom_glink_window *window;
+	struct glink_channel *channel;
+	unsigned long flags;
+	u32 size;
+	u64 addr;
+
+	if (avail < sizeof(hdr))
+		return -EAGAIN;
+	qcom_glink_rx_peek(glink, &hdr, 0, sizeof(hdr));
+	if (!(glink->features & GLINK_FEATURE_ZERO_COPY))
+		goto consume;
+	size = le32_to_cpu(hdr.size);
+	addr = le64_to_cpu(hdr.addr);
+	spin_lock_irqsave(&glink->idr_lock, flags);
+	channel = idr_find(&glink->rcids, le16_to_cpu(hdr.msg.param1));
+	if (channel)
+		kref_get(&channel->refcount);
+	spin_unlock_irqrestore(&glink->idr_lock, flags);
+	if (!channel)
+		goto consume;
+	spin_lock_irqsave(&channel->intent_lock, flags);
+	intent = idr_find(&channel->liids, le32_to_cpu(hdr.msg.param2));
+	spin_unlock_irqrestore(&channel->intent_lock, flags);
+	if (!intent || intent->size)
+		goto put;
+
+	/* RPMsg callbacks consume the data synchronously. A withdrawing QMI
+	 * allocation must wait until the last callback returns before reclaim.
+	 */
+	rcu_read_lock();
+	list_for_each_entry_rcu(window, &modem_windows, node) {
+		u64 offset;
+
+		if (addr < window->phys || !size || size > window->size)
+			continue;
+		offset = addr - window->phys;
+		if (offset > window->size - size)
+			continue;
+		dma_rmb();
+		spin_lock_irqsave(&channel->recv_lock, flags);
+		if (channel->ept.cb)
+			channel->ept.cb(channel->ept.rpdev, window->cpu + offset,
+					size, channel->ept.priv, RPMSG_ADDR_ANY);
+		spin_unlock_irqrestore(&channel->recv_lock, flags);
+		break;
+	}
+	rcu_read_unlock();
+	qcom_glink_rx_done(glink, channel, intent);
+put:
+	kref_put(&channel->refcount, qcom_glink_channel_release);
+consume:
+	qcom_glink_rx_advance(glink, sizeof(hdr));
+	return 0;
+}
+
 static void qcom_glink_rx_read_notif(struct qcom_glink *glink)
 {
 	trace_qcom_glink_cmd_read_notif_rx(glink->label);
@@ -1210,6 +1317,9 @@ void qcom_glink_native_rx(struct qcom_glink *glink)
 		case GLINK_CMD_TX_DATA:
 		case GLINK_CMD_TX_DATA_CONT:
 			ret = qcom_glink_rx_data(glink, avail);
+			break;
+		case GLINK_CMD_TX_DATA_ZERO_COPY:
+			ret = qcom_glink_rx_modem_window(glink, avail);
 			break;
 		case GLINK_CMD_READ_NOTIF:
 			qcom_glink_rx_read_notif(glink);
