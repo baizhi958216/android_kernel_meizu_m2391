@@ -56,3 +56,4 @@ obj-y += mem_buf/
 obj-$(CONFIG_MSM_PERFORMANCE) += msm_performance.o
 obj-y += dcvs/
 obj-$(CONFIG_SPS) += sps/
+obj-$(CONFIG_QTI_PMIC_PON_LOG) += pmic-pon-log.o

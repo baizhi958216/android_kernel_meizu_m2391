@@ -346,3 +346,7 @@ config POWER_MLXBF
 	  This driver supports reset or low power mode handling for Mellanox BlueField.
 
 endif
+
+config POWER_RESET_QCOM_REBOOT_REASON
+	tristate "Qualcomm PMIC restart reason"
+	depends on NVMEM
