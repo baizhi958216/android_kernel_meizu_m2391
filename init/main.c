@@ -86,6 +86,9 @@
 #include <linux/blkdev.h>
 #include <linux/sched/clock.h>
 #include <linux/sched/task.h>
+#if IS_ENABLED(CONFIG_SCHED_WALT)
+#include <linux/sched/walt.h>
+#endif
 #include <linux/sched/task_stack.h>
 #include <linux/context_tracking.h>
 #include <linux/random.h>
@@ -910,6 +913,10 @@ static void __init early_numa_node_init(void)
 static void __init setup_arch_task_struct_size(void)
 {
 	arch_task_struct_size = sizeof(struct task_struct);
+#if IS_ENABLED(CONFIG_SCHED_WALT)
+	BUILD_BUG_ON(sizeof(struct walt_task_struct) > CONFIG_GKI_TASK_STRUCT_VENDOR_SIZE_MAX);
+	arch_task_struct_size += sizeof(struct walt_task_struct);
+#endif
 }
 
 static int __init task_struct_vendor_size_setup(char *str)
@@ -921,6 +928,10 @@ static int __init task_struct_vendor_size_setup(char *str)
 
 	size = memparse(str, &str);
 
+#if IS_ENABLED(CONFIG_SCHED_WALT)
+	if (size < sizeof(struct walt_task_struct))
+		return -EINVAL;
+#endif
 	if (size < 0 || size > CONFIG_GKI_TASK_STRUCT_VENDOR_SIZE_MAX)
 		return -EINVAL;
 
