@@ -397,6 +397,10 @@ config USB_F_AUDIO_SRC
 	tristate "Android accessory audio source"
 	depends on USB_CONFIGFS && SND_PCM
 
+config USB_F_GSI
+	tristate "Qualcomm IPA GSI tethering and modem data"
+	depends on USB_CONFIGFS && USB_DWC3_QCOM_GSI && IPA3 && USB_F_RNDIS
+
 config USB_CONFIGFS_F_FS
 	bool "Function filesystem (FunctionFS)"
 	depends on USB_CONFIGFS
