@@ -4,6 +4,14 @@
 #
 menu "Qualcomm SoC drivers"
 
+config QCOM_MODEM_MEMSHARE
+	tristate "Qualcomm modem heap memory service"
+	depends on ARCH_QCOM && OF_RESERVED_MEM && QCOM_SCM
+	depends on QCOM_QMI_HELPERS && QCOM_RPROC_COMMON && RPMSG_QCOM_GLINK
+	help
+	  Service modem heap requests over QRTR and grant access to physically
+	  contiguous allocations according to each board-defined client.
+
 config SPS
 	tristate "Qualcomm NDP BAM Smart Peripheral Switch"
 	depends on ARCH_QCOM && OF

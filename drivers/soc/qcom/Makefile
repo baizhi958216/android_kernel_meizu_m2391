@@ -57,3 +57,4 @@ obj-$(CONFIG_MSM_PERFORMANCE) += msm_performance.o
 obj-y += dcvs/
 obj-$(CONFIG_SPS) += sps/
 obj-$(CONFIG_QTI_PMIC_PON_LOG) += pmic-pon-log.o
+obj-$(CONFIG_QCOM_MODEM_MEMSHARE) += memshare/
