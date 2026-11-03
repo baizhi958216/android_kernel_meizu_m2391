@@ -304,7 +304,7 @@ static int memshare_probe(struct platform_device *pdev)
 			return dev_err_probe(dev, ret, "cannot set up %pOF\n", np);
 	}
 	ms->ssr.notifier_call = modem_event;
-	ms->ssr_handle = qcom_register_ssr_notifier("modem", &ms->ssr);
+	ms->ssr_handle = qcom_register_ssr_notifier("mpss", &ms->ssr);
 	if (IS_ERR(ms->ssr_handle))
 		return PTR_ERR(ms->ssr_handle);
 	/* A FREE request can describe 64 (64-bit address, 32-bit size) pairs. */
