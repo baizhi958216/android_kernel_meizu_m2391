@@ -86,3 +86,7 @@ endif
 config ARCH_NEEDS_CPU_IDLE_COUPLED
 	def_bool n
 endmenu
+
+config CPU_IDLE_GOV_QCOM_LPM
+	tristate "Qualcomm CPU and cluster idle governor"
+	depends on ARM_PSCI_CPUIDLE_DOMAIN && ANDROID_VENDOR_HOOKS && SMP
