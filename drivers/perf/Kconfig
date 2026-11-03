@@ -312,3 +312,7 @@ config MARVELL_PEM_PMU
 	  on Marvell platform.
 
 endmenu
+
+config QCOM_LLCC_PMU
+	tristate "Qualcomm LLCC performance monitoring unit"
+	depends on ARM64 && PERF_EVENTS

@@ -397,3 +397,23 @@ config QCOM_SUBSYSTEM_SLEEP_STATS
 config QCOM_SMP2P_SLEEPSTATE
 	tristate "Qualcomm ADSP sleep-state notification"
 	depends on SUSPEND && QCOM_SMP2P
+
+config QCOM_PMU_LIB
+	tristate "Qualcomm CPU and LLCC event sampling"
+	depends on QCOM_LLCC_PMU && ARM_PMU && ANDROID_VENDOR_HOOKS
+
+config QCOM_MEMLAT
+	tristate "Qualcomm memory-latency governor"
+	depends on QCOM_PMU_LIB && QCOM_DCVS
+
+config QCOM_BWMON
+	tristate "Qualcomm DDR and LLCC bandwidth monitoring"
+	depends on QCOM_DCVS
+
+config QTI_PMU_SCMI_CLIENT
+	tristate "Qualcomm firmware PMU event sharing"
+	depends on QCOM_PMU_LIB && QTI_SCMI_PMU_PROTOCOL
+
+config QTI_HW_MEMLAT_SCMI_CLIENT
+	tristate "Qualcomm firmware-assisted memory-latency governor"
+	depends on QCOM_MEMLAT && QTI_SCMI_MEMLAT_PROTOCOL

@@ -100,3 +100,11 @@ config ARM_SCMI_POWER_CONTROL
 	  early shutdown/reboot SCMI requests.
 
 endmenu
+
+config QTI_SCMI_PMU_PROTOCOL
+	tristate "Qualcomm SCMI PMU protocol"
+	depends on ARM_SCMI_PROTOCOL
+
+config QTI_SCMI_MEMLAT_PROTOCOL
+	tristate "Qualcomm SCMI memory-latency protocol"
+	depends on ARM_SCMI_PROTOCOL
