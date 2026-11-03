@@ -18,6 +18,7 @@
 #include <linux/sizes.h>
 #include <linux/slab.h>
 #include <linux/wait.h>
+#include <linux/termios.h>
 #include <linux/workqueue.h>
 #include <linux/mailbox_client.h>
 
@@ -188,6 +189,9 @@ struct glink_channel {
 	struct completion open_ack;
 	struct completion open_req;
 
+	struct mutex sig_lock;
+	u32 local_sigs;
+	u32 remote_sigs;
 	struct mutex intent_req_lock;
 	int intent_req_result;
 	bool intent_received;
@@ -236,6 +240,7 @@ static struct glink_channel *qcom_glink_alloc_channel(struct qcom_glink *glink,
 	/* Setup glink internal glink_channel data */
 	spin_lock_init(&channel->recv_lock);
 	spin_lock_init(&channel->intent_lock);
+	mutex_init(&channel->sig_lock);
 	mutex_init(&channel->intent_req_lock);
 
 	channel->glink = glink;
@@ -1222,32 +1227,58 @@ static int qcom_glink_rx_open_ack(struct qcom_glink *glink, unsigned int lcid)
 	return 0;
 }
 
-/**
- * qcom_glink_set_flow_control() - convert a signal cmd to wire format and transmit
- * @ept:	Rpmsg endpoint for channel.
- * @pause:	Pause transmission
- * @dst:	destination address of the endpoint
- *
- * Return: 0 on success or standard Linux error code.
- */
-static int qcom_glink_set_flow_control(struct rpmsg_endpoint *ept, bool pause, u32 dst)
+int qcom_glink_get_signals(struct rpmsg_endpoint *ept)
 {
-	struct glink_channel *channel = to_glink_channel(ept);
-	struct qcom_glink *glink = channel->glink;
+	struct glink_channel *channel;
+
+	if (ept->ops != &glink_endpoint_ops)
+		return -EOPNOTSUPP;
+	channel = to_glink_channel(ept);
+	return READ_ONCE(channel->local_sigs) | READ_ONCE(channel->remote_sigs);
+}
+EXPORT_SYMBOL_GPL(qcom_glink_get_signals);
+
+int qcom_glink_update_signals(struct rpmsg_endpoint *ept, u32 set, u32 clear)
+{
+	struct glink_channel *channel;
+	struct qcom_glink *glink;
 	struct glink_msg msg;
-	u32 sigs = 0;
+	u32 sigs, native;
+	int ret;
 
-	if (pause)
-		sigs |= NATIVE_DTR_SIG | NATIVE_RTS_SIG;
-
+	if (ept->ops != &glink_endpoint_ops)
+		return -EOPNOTSUPP;
+	channel = to_glink_channel(ept);
+	glink = channel->glink;
+	mutex_lock(&channel->sig_lock);
+	sigs = (channel->local_sigs & ~clear) | set;
+	native = sigs & 0xfff;
+	if (sigs & TIOCM_DTR)
+		native |= NATIVE_DTR_SIG;
+	if (sigs & TIOCM_RTS)
+		native |= NATIVE_RTS_SIG;
+	if (sigs & TIOCM_CD)
+		native |= BIT(29);
+	if (sigs & TIOCM_RI)
+		native |= BIT(28);
 	msg.cmd = cpu_to_le16(GLINK_CMD_SIGNALS);
 	msg.param1 = cpu_to_le16(channel->lcid);
-	msg.param2 = cpu_to_le32(sigs);
-
+	msg.param2 = cpu_to_le32(native);
 	trace_qcom_glink_cmd_signal_tx(glink->label, channel->name,
-				       channel->lcid, channel->rcid, sigs);
+				       channel->lcid, channel->rcid, native);
+	ret = qcom_glink_tx(glink, &msg, sizeof(msg), NULL, 0, true);
+	if (!ret)
+		WRITE_ONCE(channel->local_sigs, sigs);
+	mutex_unlock(&channel->sig_lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(qcom_glink_update_signals);
 
-	return qcom_glink_tx(glink, &msg, sizeof(msg), NULL, 0, true);
+static int qcom_glink_set_flow_control(struct rpmsg_endpoint *ept, bool pause, u32 dst)
+{
+	u32 flow = TIOCM_DTR | TIOCM_RTS;
+
+	return qcom_glink_update_signals(ept, pause ? flow : 0, flow);
 }
 
 static void qcom_glink_handle_signals(struct qcom_glink *glink,
@@ -1270,7 +1301,12 @@ static void qcom_glink_handle_signals(struct qcom_glink *glink,
 		return;
 	}
 
-	enable = sigs & NATIVE_DSR_SIG || sigs & NATIVE_CTS_SIG;
+	enable = sigs & (NATIVE_DSR_SIG | NATIVE_CTS_SIG);
+	WRITE_ONCE(channel->remote_sigs, (sigs & 0xfff) |
+		   (sigs & NATIVE_DSR_SIG ? TIOCM_DSR : 0) |
+		   (sigs & NATIVE_CTS_SIG ? TIOCM_CTS : 0) |
+		   (sigs & BIT(29) ? TIOCM_CD : 0) |
+		   (sigs & BIT(28) ? TIOCM_RI : 0));
 
 	if (channel->ept.flow_cb)
 		channel->ept.flow_cb(channel->ept.rpdev, channel->ept.priv, enable);

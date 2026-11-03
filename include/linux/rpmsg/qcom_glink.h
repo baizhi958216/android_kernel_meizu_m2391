@@ -5,6 +5,10 @@
 
 #include <linux/device.h>
 
+struct rpmsg_endpoint;
+int qcom_glink_get_signals(struct rpmsg_endpoint *ept);
+int qcom_glink_update_signals(struct rpmsg_endpoint *ept, u32 set, u32 clear);
+
 struct qcom_glink_smem;
 struct qcom_glink_window;
 
