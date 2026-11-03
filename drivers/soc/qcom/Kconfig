@@ -381,3 +381,19 @@ config QCOM_UBWC_CONFIG
 config QTI_PMIC_PON_LOG
 	tristate "Qualcomm PMIC power-on history"
 	depends on NVMEM
+
+config QCOM_CPUSS_SLEEP_STATS
+	tristate "Qualcomm CPU subsystem residency counters"
+	depends on QCOM_SCM && DEBUG_FS
+
+config QCOM_SOC_SLEEP_STATS
+	tristate "Qualcomm RPMh and DDR residency statistics"
+	depends on QCOM_SMEM && QCOM_KALAMA_QMP
+
+config QCOM_SUBSYSTEM_SLEEP_STATS
+	tristate "Qualcomm subsystem residency character device"
+	depends on QCOM_SOC_SLEEP_STATS
+
+config QCOM_SMP2P_SLEEPSTATE
+	tristate "Qualcomm ADSP sleep-state notification"
+	depends on SUSPEND && QCOM_SMP2P

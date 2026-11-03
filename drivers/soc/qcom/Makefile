@@ -58,3 +58,7 @@ obj-y += dcvs/
 obj-$(CONFIG_SPS) += sps/
 obj-$(CONFIG_QTI_PMIC_PON_LOG) += pmic-pon-log.o
 obj-$(CONFIG_QCOM_MODEM_MEMSHARE) += memshare/
+obj-$(CONFIG_QCOM_CPUSS_SLEEP_STATS) += qcom_cpuss_sleep_stats.o
+obj-$(CONFIG_QCOM_SOC_SLEEP_STATS) += soc_sleep_stats.o
+obj-$(CONFIG_QCOM_SUBSYSTEM_SLEEP_STATS) += subsystem_sleep_stats.o
+obj-$(CONFIG_QCOM_SMP2P_SLEEPSTATE) += smp2p_sleepstate.o
