@@ -318,13 +318,13 @@ static int halt_cpus(struct cpumask *cpus, enum pause_type type, enum pause_clie
 
 	trace_halt_cpus_start(cpus, 1);
 
-	/* add the cpus to the halt mask */
+	/* Reject an invalid group before changing any CPU in it. */
+	cpu = cpumask_first(system_32bit_el0_cpumask());
+	if (cpu < nr_cpu_ids && cpumask_test_cpu(cpu, cpus)) {
+		ret = -EINVAL;
+		goto out;
+	}
 	for_each_cpu(cpu, cpus) {
-		if (cpu == cpumask_first(system_32bit_el0_cpumask())) {
-			ret = -EINVAL;
-			goto out;
-		}
-
 		halt_cpu_state = per_cpu_ptr(&halt_state, cpu);
 
 		if (type == HALT)

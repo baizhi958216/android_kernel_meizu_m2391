@@ -16,3 +16,4 @@ qti_qmi_cdev-y := qmi_cooling.o thermal_mitigation_device_service_v01.o
 obj-$(CONFIG_QTI_CPU_HOTPLUG_COOLING_DEVICE) += cpu_hotplug.o
 obj-$(CONFIG_QTI_DDR_COOLING_DEVICE) += ddr_cdev.o
 obj-$(CONFIG_QTI_USERSPACE_CDEV) += qti_userspace_cdev.o
+obj-$(CONFIG_QTI_CPU_PAUSE_COOLING_DEVICE) += thermal_pause.o
