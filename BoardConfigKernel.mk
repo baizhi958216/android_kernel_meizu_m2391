@@ -29,8 +29,11 @@ BOARD_KERNEL_IMAGE_NAME := Image
 # Boot image geometry and board DTB
 # ---------------------------------------------------------------------------
 BOARD_KERNEL_BASE := 0x00000000
+# Keep the slow synchronous UART console opt-in for device debugging. Console
+# output from IRQ-disabled callers can otherwise stall watchdog CPU pings.
+# The driver remains available; use con_enabled=1 when serial output is needed.
 BOARD_KERNEL_CMDLINE := video=vfb:640x400,bpp=32,memsize=3072000 \
-    qcom_geni_serial.con_enabled=1 nosoftlockup page_poison=1 \
+    qcom_geni_serial.con_enabled=0 nosoftlockup page_poison=1 \
     sysrq_always_enabled firmware_class.path=/vendor/firmware bootconfig
 BOARD_BOOTCONFIG := androidboot.hardware=qcom androidboot.memcg=1 \
     androidboot.usbcontroller=a600000.dwc3
