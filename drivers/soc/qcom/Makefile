@@ -62,3 +62,4 @@ obj-$(CONFIG_QCOM_CPUSS_SLEEP_STATS) += qcom_cpuss_sleep_stats.o
 obj-$(CONFIG_QCOM_SOC_SLEEP_STATS) += soc_sleep_stats.o
 obj-$(CONFIG_QCOM_SUBSYSTEM_SLEEP_STATS) += subsystem_sleep_stats.o
 obj-$(CONFIG_QCOM_SMP2P_SLEEPSTATE) += smp2p_sleepstate.o
+obj-$(CONFIG_QCOM_GLINK_PKT) += glink_pkt.o

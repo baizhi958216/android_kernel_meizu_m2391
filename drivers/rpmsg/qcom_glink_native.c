@@ -1234,7 +1234,7 @@ int qcom_glink_get_signals(struct rpmsg_endpoint *ept)
 	if (ept->ops != &glink_endpoint_ops)
 		return -EOPNOTSUPP;
 	channel = to_glink_channel(ept);
-	return READ_ONCE(channel->local_sigs) | READ_ONCE(channel->remote_sigs);
+	return READ_ONCE(channel->remote_sigs);
 }
 EXPORT_SYMBOL_GPL(qcom_glink_get_signals);
 
