@@ -1748,17 +1748,7 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 }
 EXPORT_SYMBOL_GPL(thermal_zone_device_unregister);
 
-/**
- * thermal_zone_get_zone_by_name() - search for a zone and returns its ref
- * @name: thermal zone name to fetch the temperature
- *
- * When only one zone is found with the passed name, returns a reference to it.
- *
- * Return: On success returns a reference to an unique thermal zone with
- * matching name equals to @name, an ERR_PTR otherwise (-EINVAL for invalid
- * paramenters, -ENODEV for not found and -EEXIST for multiple matches).
- */
-struct thermal_zone_device *thermal_zone_get_zone_by_name(const char *name)
+static struct thermal_zone_device *thermal_zone_find_by_name(const char *name, bool take_ref)
 {
 	struct thermal_zone_device *pos = NULL, *ref = ERR_PTR(-EINVAL);
 	unsigned int found = 0;
@@ -1781,9 +1771,33 @@ struct thermal_zone_device *thermal_zone_get_zone_by_name(const char *name)
 	if (found > 1)
 		return ERR_PTR(-EEXIST);
 
+	if (take_ref)
+		get_device(&ref->device);
 	return ref;
 }
+
+/**
+ * thermal_zone_get_zone_by_name() - search for a zone and returns its ref
+ * @name: thermal zone name to fetch the temperature
+ *
+ * When only one zone is found with the passed name, returns a reference to it.
+ *
+ * Return: On success returns a reference to an unique thermal zone with
+ * matching name equals to @name, an ERR_PTR otherwise (-EINVAL for invalid
+ * paramenters, -ENODEV for not found and -EEXIST for multiple matches).
+ */
+struct thermal_zone_device *thermal_zone_get_zone_by_name(const char *name)
+{
+	return thermal_zone_find_by_name(name, false);
+}
 EXPORT_SYMBOL_GPL(thermal_zone_get_zone_by_name);
+
+/* The caller must put_device(thermal_zone_device(tz)) after use. */
+struct thermal_zone_device *thermal_zone_get_by_name(const char *name)
+{
+	return thermal_zone_find_by_name(name, true);
+}
+EXPORT_SYMBOL_GPL(thermal_zone_get_by_name);
 
 static void thermal_zone_device_resume(struct work_struct *work)
 {
