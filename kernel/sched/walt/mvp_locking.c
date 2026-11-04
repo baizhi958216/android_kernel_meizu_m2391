@@ -21,13 +21,17 @@ static void android_vh_alter_mutex_list_add(void *unused, struct mutex *lock,
 	if (unlikely(walt_disabled))
 		return;
 
-	if (!lock || !waiter || !list)
+	if (*already_on_list || !lock || !waiter || list != &lock->wait_list ||
+	    waiter->ww_ctx ||
+	    (atomic_long_read(&lock->owner) & (MUTEX_FLAG_HANDOFF | MUTEX_FLAG_PICKUP)))
 		return;
 
 	if (!is_mvp(wts_waiter))
 		return;
 
 	list_for_each_entry_safe(pos, n, head, list) {
+		if (pos->ww_ctx)
+			return;
 		wts = (struct walt_task_struct *)
 			android_task_vendor_data((struct task_struct *)(pos->task));
 		if (!is_mvp(wts)) {

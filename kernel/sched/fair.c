@@ -54,6 +54,7 @@
 
 #include <uapi/linux/sched/types.h>
 
+#include <linux/meizu_vip_task.h>
 #include "sched.h"
 #include "stats.h"
 #include "autogroup.h"
@@ -9169,6 +9170,7 @@ static void check_preempt_wakeup_fair(struct rq *rq, struct task_struct *p, int 
 	update_curr(cfs_rq);
 	trace_android_rvh_check_preempt_wakeup_fair(rq, p, &preempt, &ignore,
 						wake_flags, se, pse);
+	mz_check_preempt_wakeup(rq, p, &preempt, &ignore);
 	if (preempt)
 		goto preempt;
 	if (ignore)
@@ -9294,6 +9296,7 @@ again:
 	if (!p) {
 		p = pick_task_fair(rq, rf);
 		trace_android_rvh_replace_next_task_fair(rq, &p, prev);
+		mz_replace_next_task_fair(rq, &p);
 	}
 	if (!p)
 		goto idle;
