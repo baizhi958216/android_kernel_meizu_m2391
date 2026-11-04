@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Graphics frame events consumed by the Qualcomm performance HAL. */
 #include <linux/circ_buf.h>
+#include <linux/cpufreq.h>
+#include <linux/meizu_thermal_boost.h>
+#include <linux/slab.h>
 #include <linux/kobject.h>
 #include <linux/ktime.h>
 #include <linux/module.h>
@@ -94,9 +97,201 @@ static ssize_t gfx_evt_show(struct kobject *kobj, struct kobj_attribute *attr, c
 	return len;
 }
 
+#ifdef CONFIG_CPU_FREQ
+struct perf_limit {
+	struct freq_qos_request request[2];
+	struct cpufreq_policy *policy;
+	s32 value[2];
+};
+
+enum perf_constraint { MINIMUM, MAXIMUM };
+static struct perf_limit limits[NR_CPUS];
+static DEFINE_MUTEX(limits_lock);
+
+static void remove_limits(struct perf_limit *limit)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(limit->request); i++)
+		if (freq_qos_request_active(&limit->request[i]))
+			freq_qos_remove_request(&limit->request[i]);
+	limit->policy = NULL;
+}
+
+static int bind_limits(unsigned int cpu)
+{
+	struct perf_limit *limit = &limits[cpu];
+	struct cpufreq_policy *policy;
+	int member, ret;
+
+	if (limit->policy)
+		return 0;
+	/* An offline CPU can still share an active frequency domain. */
+	for_each_online_cpu(member) {
+		policy = cpufreq_cpu_get(member);
+		if (!policy)
+			continue;
+		if (cpumask_test_cpu(cpu, policy->related_cpus))
+			goto found;
+		cpufreq_cpu_put(policy);
+	}
+	return -EAGAIN;
+found:
+	ret = freq_qos_add_request(&policy->constraints, &limit->request[MINIMUM],
+				   FREQ_QOS_MIN, FREQ_QOS_MIN_DEFAULT_VALUE);
+	if (ret >= 0)
+		ret = freq_qos_add_request(&policy->constraints, &limit->request[MAXIMUM],
+					   FREQ_QOS_MAX, FREQ_QOS_MAX_DEFAULT_VALUE);
+	if (ret < 0) {
+		remove_limits(limit);
+	} else {
+		limit->policy = policy;
+		limit->value[MINIMUM] = FREQ_QOS_MIN_DEFAULT_VALUE;
+		limit->value[MAXIMUM] = FREQ_QOS_MAX_DEFAULT_VALUE;
+	}
+	cpufreq_cpu_put(policy);
+	return ret < 0 ? ret : 0;
+}
+
+/* cpufreq drops the policy from its lookup table before this event. */
+static int limits_policy_event(struct notifier_block *nb, unsigned long event, void *data)
+{
+	int cpu;
+
+	if (event == CPUFREQ_REMOVE_POLICY) {
+		mutex_lock(&limits_lock);
+		for_each_possible_cpu(cpu)
+			if (limits[cpu].policy == data)
+				remove_limits(&limits[cpu]);
+		mutex_unlock(&limits_lock);
+	}
+	return NOTIFY_OK;
+}
+static struct notifier_block limits_nb = { .notifier_call = limits_policy_event };
+
+static ssize_t show_limits(char *buf, enum perf_constraint kind)
+{
+	ssize_t len = 0;
+	int cpu;
+	s32 value;
+
+	mutex_lock(&limits_lock);
+	for_each_present_cpu(cpu) {
+		value = limits[cpu].policy ? limits[cpu].value[kind] :
+			kind == MINIMUM ? FREQ_QOS_MIN_DEFAULT_VALUE : FREQ_QOS_MAX_DEFAULT_VALUE;
+		len += sysfs_emit_at(buf, len, "%d:%d ", cpu, value);
+	}
+	mutex_unlock(&limits_lock);
+	return len + sysfs_emit_at(buf, len, "\n");
+}
+
+static int apply_limit(struct perf_limit *limit, enum perf_constraint kind, s32 value)
+{
+	int ret;
+
+	if (kind == MINIMUM && IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
+		mz_thermal_boost_request(limit->policy, value);
+	ret = freq_qos_update_request(&limit->request[kind], value);
+	if (ret >= 0) {
+		limit->value[kind] = value;
+		if (kind == MINIMUM && IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
+			mz_thermal_boost_restore(limit->policy, value);
+	}
+	return ret < 0 ? ret : 0;
+}
+
+struct perf_change { s32 requested, previous; };
+
+static ssize_t store_limits(const char *buf, size_t count, enum perf_constraint kind)
+{
+	struct perf_change *changes __free(kfree) = NULL;
+	char *input __free(kfree) = kstrndup(buf, count, GFP_KERNEL);
+	char *cursor = input, *token, *freq;
+	cpumask_t specified;
+	unsigned int cpu, value;
+	int ret;
+
+	if (!input)
+		return -ENOMEM;
+	changes = kcalloc(nr_cpu_ids, sizeof(*changes), GFP_KERNEL);
+	if (!changes)
+		return -ENOMEM;
+	cpumask_clear(&specified);
+	while ((token = strsep(&cursor, " \t\r\n"))) {
+		if (!*token)
+			continue;
+		freq = strchr(token, ':');
+		if (!freq)
+			return -EINVAL;
+		*freq++ = '\0';
+		if (kstrtouint(token, 10, &cpu) || cpu >= nr_cpu_ids || !cpu_present(cpu) ||
+		    kstrtouint(freq, 10, &value))
+			return -EINVAL;
+		/* The stock HAL also represents the default with unsigned -1. */
+		if (value == UINT_MAX)
+			value = kind == MINIMUM ? FREQ_QOS_MIN_DEFAULT_VALUE : FREQ_QOS_MAX_DEFAULT_VALUE;
+		if (value > S32_MAX)
+			return -ERANGE;
+		changes[cpu].requested = value;
+		cpumask_set_cpu(cpu, &specified);
+	}
+	if (cpumask_empty(&specified))
+		return -EINVAL;
+
+	guard(mutex)(&limits_lock);
+	for_each_cpu(cpu, &specified) {
+		ret = bind_limits(cpu);
+		if (ret)
+			return ret;
+		changes[cpu].previous = limits[cpu].value[kind];
+	}
+	for_each_cpu(cpu, &specified) {
+		ret = apply_limit(&limits[cpu], kind, changes[cpu].requested);
+		if (ret) {
+			unsigned int done;
+
+			for_each_cpu(done, &specified) {
+				if (done == cpu)
+					break;
+				apply_limit(&limits[done], kind, changes[done].previous);
+			}
+			return ret;
+		}
+	}
+	return count;
+}
+
+static ssize_t cpu_min_freq_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return show_limits(buf, MINIMUM);
+}
+static ssize_t cpu_max_freq_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return show_limits(buf, MAXIMUM);
+}
+static ssize_t cpu_min_freq_store(struct kobject *kobj, struct kobj_attribute *attr,
+				  const char *buf, size_t count)
+{
+	return store_limits(buf, count, MINIMUM);
+}
+static ssize_t cpu_max_freq_store(struct kobject *kobj, struct kobj_attribute *attr,
+				  const char *buf, size_t count)
+{
+	return store_limits(buf, count, MAXIMUM);
+}
+static struct kobj_attribute cpu_min_freq_attr = __ATTR_RW(cpu_min_freq);
+static struct kobj_attribute cpu_max_freq_attr = __ATTR_RW(cpu_max_freq);
+#endif
+
 static struct kobj_attribute evnt_gplaf_pid_attr = __ATTR_RW(evnt_gplaf_pid);
 static struct kobj_attribute gfx_evt_attr = __ATTR_RO(gfx_evt);
-static struct attribute *parameters_attrs[] = { &evnt_gplaf_pid_attr.attr, NULL };
+static struct attribute *parameters_attrs[] = {
+	&evnt_gplaf_pid_attr.attr,
+#ifdef CONFIG_CPU_FREQ
+	&cpu_min_freq_attr.attr, &cpu_max_freq_attr.attr,
+#endif
+	NULL
+};
 static struct attribute *notify_attrs[] = { &gfx_evt_attr.attr, NULL };
 static const struct attribute_group parameters = { .name = "parameters", .attrs = parameters_attrs };
 static const struct attribute_group notify = { .name = "notify", .attrs = notify_attrs };
@@ -109,9 +304,20 @@ static int __init msm_perf_init(void)
 	perf_kobj = kobject_create_and_add("msm_performance", kernel_kobj);
 	if (!perf_kobj)
 		return -ENOMEM;
-	ret = sysfs_create_groups(perf_kobj, groups);
-	if (ret)
+#ifdef CONFIG_CPU_FREQ
+	ret = cpufreq_register_notifier(&limits_nb, CPUFREQ_POLICY_NOTIFIER);
+	if (ret) {
 		kobject_put(perf_kobj);
+		return ret;
+	}
+#endif
+	ret = sysfs_create_groups(perf_kobj, groups);
+	if (ret) {
+#ifdef CONFIG_CPU_FREQ
+		cpufreq_unregister_notifier(&limits_nb, CPUFREQ_POLICY_NOTIFIER);
+#endif
+		kobject_put(perf_kobj);
+	}
 	return ret;
 }
 
@@ -120,6 +326,15 @@ static void __exit msm_perf_exit(void)
 	WRITE_ONCE(stopping, true);
 	wake_up_interruptible_all(&event_wait);
 	sysfs_remove_groups(perf_kobj, groups);
+#ifdef CONFIG_CPU_FREQ
+	/* Serialize with REMOVE_POLICY until every request is detached. */
+	mutex_lock(&limits_lock);
+	for (int cpu = 0; cpu < nr_cpu_ids; cpu++)
+		if (limits[cpu].policy)
+			remove_limits(&limits[cpu]);
+	mutex_unlock(&limits_lock);
+	cpufreq_unregister_notifier(&limits_nb, CPUFREQ_POLICY_NOTIFIER);
+#endif
 	kobject_put(perf_kobj);
 }
 module_init(msm_perf_init);
