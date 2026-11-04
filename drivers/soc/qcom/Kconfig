@@ -431,3 +431,7 @@ config QCOM_GLINK_PKT
 	help
 	  Expose modem and DSP packet channels named by qcom,glinkpkt
 	  firmware as character devices with modem signals and framed reads.
+
+config MSM_BOOT_STATS
+	tristate "Qualcomm SM8550 boot timing in IMEM"
+	depends on ARM64 && OF
