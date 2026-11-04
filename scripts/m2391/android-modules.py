@@ -15,6 +15,27 @@ import sys
 import tempfile
 
 
+# The factory modules.load files use downstream driver names. Retain their
+# boot phase when the same board hardware or Android ABI moved to another
+# upstream driver. The two DSP controls share one driver in this tree.
+STOCK_REPLACEMENTS = {
+    "adsp_loader_dlkm": "kalama_dsp_loader",
+    "altmode_glink": "pmic_glink_altmode",
+    "cdsp_loader": "kalama_dsp_loader",
+    "dwc3_msm": "dwc3_qcom_legacy",
+    "fsa4480_i2c": "fsa4480",
+    "i2c_msm_geni": "i2c_qcom_geni",
+    "msm_geni_serial": "qcom_geni_serial",
+    "phy_msm_snps_eusb2": "phy_snps_eusb2",
+    "qnoc_kalama": "qnoc_sm8550",
+    "repeater_qti_pmic_eusb2": "phy_qcom_eusb2_repeater",
+    "rproc_qcom_common": "qcom_common",
+    "smart_zsmalloc": "zsmalloc",
+    "smartswap_zram": "zram",
+    "spi_msm_geni": "spi_geni_qcom",
+}
+
+
 def key(name):
     return Path(name).name.removesuffix(".ko").replace("-", "_")
 
@@ -91,8 +112,20 @@ class Modules:
         self.missing = {}
         def stock(partition):
             ids = [key(p) for p in lines(config / ("modules.load." + partition))]
-            self.missing[partition] = [m for m in ids if m not in self.files and m not in self.builtins]
-            return [m for m in ids if m in self.files]
+            missing = []
+            resolved = []
+            for name in ids:
+                target = name
+                if name not in self.files and name not in self.builtins:
+                    target = STOCK_REPLACEMENTS.get(name, name)
+                if target in self.files:
+                    resolved.append(target)
+                elif target not in self.builtins:
+                    if target != name:
+                        raise ValueError(f"{partition} requires {target} for {name}")
+                    missing.append(name)
+            self.missing[partition] = missing
+            return resolved
 
         first = [key(p) for p in lines(self.root / "modules.load")]
         external = sorted(m for m, p in self.files.items()
