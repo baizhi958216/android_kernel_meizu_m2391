@@ -4,6 +4,8 @@
  */
 
 #include <linux/auxiliary_bus.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
 #include <linux/ctype.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma-map-ops.h>
@@ -99,7 +101,7 @@ struct intf_info {
 struct uaudio_qmi_dev {
 	struct device *dev;
 	struct q6usb_offload *data;
-	struct auxiliary_device *auxdev;
+	struct device *soc_usb;
 
 	/* list to keep track of available iova */
 	struct list_head xfer_ring_list;
@@ -140,6 +142,7 @@ static struct uaudio_dev uadev[SNDRV_CARDS];
 static struct uaudio_qmi_dev *uaudio_qdev;
 static struct uaudio_qmi_svc *uaudio_svc;
 static DEFINE_MUTEX(qdev_mutex);
+static DEFINE_MUTEX(service_lock);
 
 struct uaudio_qmi_svc {
 	struct qmi_handle *uaudio_svc_hdl;
@@ -1392,7 +1395,8 @@ static int prepare_qmi_response(struct snd_usb_substream *subs,
 	resp->slot_id = subs->dev->slot_id;
 	resp->slot_id_valid = 1;
 
-	data = snd_soc_usb_find_priv_data(uaudio_qdev->auxdev->dev.parent);
+	data = uaudio_qdev->soc_usb ? snd_soc_usb_find_priv_data(uaudio_qdev->soc_usb) :
+				     uaudio_qdev->data;
 	if (!data) {
 		dev_err(&subs->dev->dev, "No private data found\n");
 		return -ENODEV;
@@ -1779,8 +1783,8 @@ static void qc_usb_audio_offload_probe(struct snd_usb_audio *chip)
 	 * device doesn't support offloading.  Avoid populating entries for
 	 * this device.
 	 */
-	if (!snd_soc_usb_find_priv_data(uaudio_qdev->auxdev->dev.parent) ||
-	    !usb_qmi_get_pcm_num(chip, 0))
+	if (uaudio_qdev->soc_usb &&
+	    (!snd_soc_usb_find_priv_data(uaudio_qdev->soc_usb) || !usb_qmi_get_pcm_num(chip, 0)))
 		return;
 
 	guard(mutex)(&qdev_mutex);
@@ -1807,7 +1811,7 @@ static void qc_usb_audio_offload_probe(struct snd_usb_audio *chip)
 	altsd = get_iface_desc(alts);
 
 	/* Wait until all PCM devices are populated before notifying soc-usb */
-	if (altsd->bInterfaceNumber == chip->last_iface) {
+	if (uaudio_qdev->soc_usb && altsd->bInterfaceNumber == chip->last_iface) {
 		sdev->num_playback = usb_qmi_get_pcm_num(chip, 0);
 
 		/*
@@ -1823,8 +1827,8 @@ static void qc_usb_audio_offload_probe(struct snd_usb_audio *chip)
 		sdev->card_idx = chip->card->number;
 		sdev->chip_idx = chip->index;
 
-		snd_usb_offload_create_ctl(chip, uaudio_qdev->auxdev->dev.parent);
-		snd_soc_usb_connect(uaudio_qdev->auxdev->dev.parent, sdev);
+		snd_usb_offload_create_ctl(chip, uaudio_qdev->soc_usb);
+		snd_soc_usb_connect(uaudio_qdev->soc_usb, sdev);
 	}
 
 	return;
@@ -1891,7 +1895,8 @@ done:
 	 * This is to accommodate for devices w/ multiple UAC functions.
 	 */
 	if (chip->num_interfaces == 1) {
-		snd_soc_usb_disconnect(uaudio_qdev->auxdev->dev.parent, dev->sdev);
+		if (uaudio_qdev->soc_usb)
+			snd_soc_usb_disconnect(uaudio_qdev->soc_usb, dev->sdev);
 		xhci_sideband_unregister(dev->sb);
 		dev->chip = NULL;
 		kfree(dev->sdev->ppcm_idx);
@@ -1934,73 +1939,134 @@ static struct snd_usb_platform_ops offload_ops = {
 	.suspend_cb = qc_usb_audio_offload_suspend,
 };
 
-static int qc_usb_audio_probe(struct auxiliary_device *auxdev,
-			  const struct auxiliary_device_id *id)
-
+static int qc_usb_audio_start(struct device *dev, struct q6usb_offload *legacy)
 {
 	struct uaudio_qmi_svc *svc;
 	int ret;
 
-	svc = kzalloc(sizeof(*svc), GFP_KERNEL);
+	guard(mutex)(&service_lock);
+	if (uaudio_svc)
+		return -EBUSY;
+	svc = devm_kzalloc(dev, sizeof(*svc), GFP_KERNEL);
 	if (!svc)
 		return -ENOMEM;
-
-	svc->uaudio_svc_hdl = kzalloc(sizeof(*svc->uaudio_svc_hdl), GFP_KERNEL);
-	if (!svc->uaudio_svc_hdl) {
-		ret = -ENOMEM;
-		goto free_svc;
-	}
-
-	ret = qmi_handle_init(svc->uaudio_svc_hdl,
-			      QMI_UAUDIO_STREAM_REQ_MSG_V01_MAX_MSG_LEN,
-			      &uaudio_svc_ops_options,
-			      &uaudio_stream_req_handlers);
+	svc->uaudio_svc_hdl = devm_kzalloc(dev, sizeof(*svc->uaudio_svc_hdl), GFP_KERNEL);
+	if (!svc->uaudio_svc_hdl)
+		return -ENOMEM;
+	ret = qc_usb_audio_offload_init_qmi_dev();
+	if (ret)
+		return ret;
+	uaudio_qdev->data = legacy;
+	uaudio_qdev->soc_usb = legacy ? NULL : dev->parent;
+	uaudio_svc = svc;
+	ret = qmi_handle_init(svc->uaudio_svc_hdl, QMI_UAUDIO_STREAM_REQ_MSG_V01_MAX_MSG_LEN,
+			      &uaudio_svc_ops_options, &uaudio_stream_req_handlers);
+	if (ret)
+		goto free_qdev;
 	ret = qmi_add_server(svc->uaudio_svc_hdl, UAUDIO_STREAM_SERVICE_ID_V01,
 			     UAUDIO_STREAM_SERVICE_VERS_V01, 0);
-
-	uaudio_svc = svc;
-
-	qc_usb_audio_offload_init_qmi_dev();
-	uaudio_qdev->auxdev = auxdev;
-
-	ret = snd_usb_register_platform_ops(&offload_ops);
-	if (ret < 0)
+	if (ret)
 		goto release_qmi;
-
+	ret = snd_usb_register_platform_ops(&offload_ops);
+	if (ret)
+		goto release_qmi;
 	snd_usb_rediscover_devices();
-
 	return 0;
 
 release_qmi:
-	qc_usb_audio_cleanup_qmi_dev();
 	qmi_handle_release(svc->uaudio_svc_hdl);
-free_svc:
-	kfree(svc);
-
+free_qdev:
+	uaudio_svc = NULL;
+	qc_usb_audio_cleanup_qmi_dev();
 	return ret;
 }
 
-static void qc_usb_audio_remove(struct auxiliary_device *auxdev)
+static void qc_usb_audio_stop(void)
 {
-	struct uaudio_qmi_svc *svc = uaudio_svc;
 	int idx;
 
-	/*
-	 * Remove all connected devices after unregistering ops, to ensure
-	 * that no further connect events will occur.  The disconnect routine
-	 * will issue the QMI disconnect indication, which results in the
-	 * external DSP to stop issuing transfers.
-	 */
+	guard(mutex)(&service_lock);
 	snd_usb_unregister_platform_ops();
 	for (idx = 0; idx < SNDRV_CARDS; idx++)
 		qc_usb_audio_offload_disconnect(uadev[idx].chip);
-
-	qc_usb_audio_cleanup_qmi_dev();
-
-	qmi_handle_release(svc->uaudio_svc_hdl);
-	kfree(svc);
+	qmi_handle_release(uaudio_svc->uaudio_svc_hdl);
 	uaudio_svc = NULL;
+	qc_usb_audio_cleanup_qmi_dev();
 }
+
+static int qc_usb_audio_probe(struct auxiliary_device *adev, const struct auxiliary_device_id *id)
+{
+	return qc_usb_audio_start(&adev->dev, NULL);
+}
+
+static void qc_usb_audio_remove(struct auxiliary_device *adev)
+{
+	qc_usb_audio_stop();
+}
+
+static void uaudio_free_domain(void *arg)
+{
+	struct q6usb_offload *data = arg;
+
+	iommu_detach_device(data->domain, data->dev);
+	iommu_domain_free(data->domain);
+}
+
+static int uaudio_platform_probe(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct q6usb_offload *data;
+	u32 sid, intr;
+	int ret;
+
+	ret = of_property_read_u32(dev->of_node, "qcom,usb-audio-stream-id", &sid);
+	if (ret || sid > U8_MAX)
+		return -EINVAL;
+	ret = of_property_read_u32(dev->of_node, "qcom,usb-audio-intr-num", &intr);
+	if (ret || !intr || intr > U16_MAX)
+		return -EINVAL;
+	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+	data->dev = dev;
+	data->sid = sid;
+	data->intr_num = intr;
+	/* The legacy stream device has a dedicated SMMU context.  The DSP
+	 * consumes the fixed IOVAs returned in the QMI response.
+	 */
+	data->domain = iommu_paging_domain_alloc(dev);
+	if (IS_ERR(data->domain))
+		return dev_err_probe(dev, PTR_ERR(data->domain), "allocate audio IOMMU domain\n");
+	ret = iommu_attach_device(data->domain, dev);
+	if (ret) {
+		iommu_domain_free(data->domain);
+		return dev_err_probe(dev, ret, "attach audio IOMMU domain\n");
+	}
+	ret = devm_add_action_or_reset(dev, uaudio_free_domain, data);
+	if (ret)
+		return ret;
+	return qc_usb_audio_start(dev, data);
+}
+
+static void uaudio_platform_remove(struct platform_device *pdev)
+{
+	qc_usb_audio_stop();
+}
+
+static const struct of_device_id uaudio_of_match[] = {
+	{ .compatible = "qcom,usb-audio-qmi-dev" },
+	{}
+};
+MODULE_DEVICE_TABLE(of, uaudio_of_match);
+
+static struct platform_driver uaudio_platform_driver = {
+	.driver = {
+		.name = "qcom-usb-audio-qmi",
+		.of_match_table = uaudio_of_match,
+	},
+	.probe = uaudio_platform_probe,
+	.remove = uaudio_platform_remove,
+};
 
 static const struct auxiliary_device_id qc_usb_audio_table[] = {
 	{ .name = "q6usb.qc-usb-audio-offload" },
@@ -2014,7 +2080,26 @@ static struct auxiliary_driver qc_usb_audio_offload_drv = {
 	.probe = qc_usb_audio_probe,
 	.remove = qc_usb_audio_remove,
 };
-module_auxiliary_driver(qc_usb_audio_offload_drv);
+static int __init qc_usb_audio_init(void)
+{
+	int ret;
+
+	ret = auxiliary_driver_register(&qc_usb_audio_offload_drv);
+	if (ret)
+		return ret;
+	ret = platform_driver_register(&uaudio_platform_driver);
+	if (ret)
+		auxiliary_driver_unregister(&qc_usb_audio_offload_drv);
+	return ret;
+}
+module_init(qc_usb_audio_init);
+
+static void __exit qc_usb_audio_exit(void)
+{
+	platform_driver_unregister(&uaudio_platform_driver);
+	auxiliary_driver_unregister(&qc_usb_audio_offload_drv);
+}
+module_exit(qc_usb_audio_exit);
 
 MODULE_DESCRIPTION("QC USB Audio Offloading");
 MODULE_LICENSE("GPL");
