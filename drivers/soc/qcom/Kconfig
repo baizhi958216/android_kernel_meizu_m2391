@@ -4,6 +4,13 @@
 #
 menu "Qualcomm SoC drivers"
 
+config QCOM_KALAMA_CDSPRM
+	tristate "Kalama compute DSP resource manager"
+	depends on ARM64 && ARCH_QCOM && RPMSG && ARM_ARCH_TIMER
+	help
+	  Serve time-limited host latency requests and negotiate the process
+	  domain policy for the compute DSP over its GLINK channel.
+
 config QCOM_MODEM_MEMSHARE
 	tristate "Qualcomm modem heap memory service"
 	depends on ARCH_QCOM && OF_RESERVED_MEM && QCOM_SCM
