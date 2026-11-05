@@ -379,7 +379,13 @@ int usb_gsi_ep_op(struct usb_ep *ep, void *data, enum gsi_ep_op op)
 		dwc3_stop_active_transfer(dep, true, false);
 		break;
 	case GSI_EP_OP_ENABLE_GSI:
-		val = readl(cfg) | BIT(12);
+		/* DPL can join a running RMNET or RNDIS composition. Restarting
+		 * the shared doorbell pointer here would disturb the live ring.
+		 */
+		val = readl(cfg);
+		if (val & BIT(0))
+			break;
+		val |= BIT(12);
 		writel(val, cfg);
 		writel(val | BIT(20), cfg);
 		writel(val, cfg);
