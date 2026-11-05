@@ -37,7 +37,7 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/of_dma.h>
-#include <linux/circ_buf.h>
+#include <linux/genalloc.h>
 #include <linux/clk.h>
 #include <linux/dmaengine.h>
 #include <linux/pm_runtime.h>
@@ -339,11 +339,8 @@ static const struct reg_offset_data bam_v1_7_reg_info[] = {
 #define P_SW_OFSTS_MASK		0xffff
 
 #define BAM_DESC_FIFO_SIZE	SZ_32K
-#define MAX_DESCRIPTORS (BAM_DESC_FIFO_SIZE / sizeof(struct bam_desc_hw) - 1)
+#define BAM_SLIM_FIFO_BYTES	(32 * sizeof(struct bam_desc_hw))
 #define BAM_FIFO_SIZE	(SZ_32K - 8)
-#define IS_BUSY(chan)	(CIRC_SPACE(bchan->tail, bchan->head,\
-			 MAX_DESCRIPTORS + 1) == 0)
-
 struct bam_chan {
 	struct virt_dma_chan vc;
 
@@ -357,6 +354,7 @@ struct bam_chan {
 
 	/* fifo storage */
 	struct bam_desc_hw *fifo_virt;
+	void __iomem *fifo_io;
 	dma_addr_t fifo_phys;
 
 	/* fifo markers */
@@ -383,6 +381,8 @@ struct bam_device {
 	struct dma_device common;
 	struct bam_chan *channels;
 	u32 num_channels;
+	u32 fifo_entries;
+	struct gen_pool *fifo_pool;
 	u32 num_ees;
 
 	/* execution environment ID, from DT */
@@ -399,6 +399,46 @@ struct bam_device {
 	/* dma start transaction tasklet */
 	struct tasklet_struct task;
 };
+
+/* Hardware offsets wrap at the programmed FIFO size. Leave one descriptor
+ * empty so a full pipe can never look empty to the hardware.
+ */
+static unsigned int bam_fifo_used(unsigned int tail, unsigned int head,
+				  unsigned int entries)
+{
+	return tail >= head ? tail - head : entries - head + tail;
+}
+
+static unsigned int bam_fifo_space(const struct bam_chan *chan)
+{
+	unsigned int n = chan->bdev->fifo_entries;
+
+	return n - 1 - bam_fifo_used(chan->tail, chan->head, n);
+}
+
+static void bam_fifo_write(struct bam_chan *chan, unsigned int index,
+			   const struct bam_desc_hw *desc, unsigned int n)
+{
+	size_t bytes = n * sizeof(*desc);
+
+	if (chan->fifo_io)
+		memcpy_toio(chan->fifo_io + index * sizeof(*desc), desc, bytes);
+	else
+		memcpy(PTR_ALIGN(chan->fifo_virt, sizeof(*desc)) + index, desc, bytes);
+}
+
+static void bam_release_fifo(struct bam_chan *chan)
+{
+	struct bam_device *bdev = chan->bdev;
+
+	if (chan->fifo_io) {
+		gen_pool_free(bdev->fifo_pool, (unsigned long)chan->fifo_io, BAM_SLIM_FIFO_BYTES);
+		chan->fifo_io = NULL;
+	} else if (chan->fifo_virt) {
+		dma_free_wc(bdev->dev, BAM_DESC_FIFO_SIZE, chan->fifo_virt, chan->fifo_phys);
+		chan->fifo_virt = NULL;
+	}
+}
 
 /**
  * bam_addr - returns BAM register address
@@ -500,7 +540,7 @@ static void bam_chan_init_hw(struct bam_chan *bchan,
 	 */
 	writel_relaxed(ALIGN(bchan->fifo_phys, sizeof(struct bam_desc_hw)),
 			bam_addr(bdev, bchan->id, BAM_P_DESC_FIFO_ADDR));
-	writel_relaxed(BAM_FIFO_SIZE,
+	writel_relaxed(bdev->fifo_entries * sizeof(struct bam_desc_hw),
 			bam_addr(bdev, bchan->id, BAM_P_FIFO_SIZES));
 
 	/* enable the per pipe interrupts, enable EOT, ERR, and INT irqs */
@@ -540,16 +580,22 @@ static int bam_alloc_chan(struct dma_chan *chan)
 	struct bam_chan *bchan = to_bam_chan(chan);
 	struct bam_device *bdev = bchan->bdev;
 
-	if (bchan->fifo_virt)
+	if (bchan->fifo_virt || bchan->fifo_io)
 		return 0;
 
-	/* allocate FIFO descriptor space, but only if necessary */
-	bchan->fifo_virt = dma_alloc_wc(bdev->dev, BAM_DESC_FIFO_SIZE,
-					&bchan->fifo_phys, GFP_KERNEL);
+	if (bdev->fifo_pool) {
+		unsigned long slot = gen_pool_alloc(bdev->fifo_pool, BAM_SLIM_FIFO_BYTES);
 
-	if (!bchan->fifo_virt) {
-		dev_err(bdev->dev, "Failed to allocate desc fifo\n");
-		return -ENOMEM;
+		if (!slot)
+			return -ENOMEM;
+		bchan->fifo_io = (void __iomem *)slot;
+		bchan->fifo_phys = gen_pool_virt_to_phys(bdev->fifo_pool, slot);
+		memset_io(bchan->fifo_io, 0, BAM_SLIM_FIFO_BYTES);
+	} else {
+		bchan->fifo_virt = dma_alloc_wc(bdev->dev, BAM_DESC_FIFO_SIZE,
+					       &bchan->fifo_phys, GFP_KERNEL);
+		if (!bchan->fifo_virt)
+			return -ENOMEM;
 	}
 
 	if (bdev->active_channels++ == 0 && bdev->powered_remotely)
@@ -588,9 +634,7 @@ static void bam_free_chan(struct dma_chan *chan)
 	bam_reset_channel(bchan);
 	spin_unlock_irqrestore(&bchan->vc.lock, flags);
 
-	dma_free_wc(bdev->dev, BAM_DESC_FIFO_SIZE, bchan->fifo_virt,
-		    bchan->fifo_phys);
-	bchan->fifo_virt = NULL;
+	bam_release_fifo(bchan);
 
 	/* mask irq for pipe/channel */
 	val = readl_relaxed(bam_addr(bdev, 0, BAM_IRQ_SRCS_MSK_EE));
@@ -852,11 +896,11 @@ static u32 process_channel_irqs(struct bam_device *bdev)
 				       P_SW_OFSTS_MASK;
 		offset /= sizeof(struct bam_desc_hw);
 
-		/* Number of bytes available to read */
-		avail = CIRC_CNT(offset, bchan->head, MAX_DESCRIPTORS + 1);
-
-		if (offset < bchan->head)
-			avail--;
+		if (offset >= bdev->fifo_entries) {
+			spin_unlock_irqrestore(&bchan->vc.lock, flags);
+			continue;
+		}
+		avail = bam_fifo_used(offset, bchan->head, bdev->fifo_entries);
 
 		list_for_each_entry_safe(async_desc, tmp,
 					 &bchan->desc_list, desc_node) {
@@ -866,7 +910,7 @@ static u32 process_channel_irqs(struct bam_device *bdev)
 
 			/* manage FIFO */
 			bchan->head += async_desc->xfer_len;
-			bchan->head %= MAX_DESCRIPTORS;
+			bchan->head %= bdev->fifo_entries;
 
 			async_desc->num_desc -= async_desc->xfer_len;
 			async_desc->curr_desc += async_desc->xfer_len;
@@ -1018,8 +1062,6 @@ static void bam_start_dma(struct bam_chan *bchan)
 	struct bam_device *bdev = bchan->bdev;
 	struct bam_async_desc *async_desc = NULL;
 	struct bam_desc_hw *desc;
-	struct bam_desc_hw *fifo = PTR_ALIGN(bchan->fifo_virt,
-					sizeof(struct bam_desc_hw));
 	int ret;
 	unsigned int avail;
 	struct dmaengine_desc_callback cb;
@@ -1033,7 +1075,7 @@ static void bam_start_dma(struct bam_chan *bchan)
 	if (ret < 0)
 		return;
 
-	while (vd && !IS_BUSY(bchan)) {
+	while (vd && bam_fifo_space(bchan)) {
 		list_del(&vd->node);
 
 		async_desc = container_of(vd, struct bam_async_desc, vd);
@@ -1047,8 +1089,7 @@ static void bam_start_dma(struct bam_chan *bchan)
 			bam_apply_new_config(bchan, async_desc->dir);
 
 		desc = async_desc->curr_desc;
-		avail = CIRC_SPACE(bchan->tail, bchan->head,
-				   MAX_DESCRIPTORS + 1);
+		avail = bam_fifo_space(bchan);
 
 		if (async_desc->num_desc > avail)
 			async_desc->xfer_len = avail;
@@ -1078,22 +1119,17 @@ static void bam_start_dma(struct bam_chan *bchan)
 			desc[async_desc->xfer_len - 1].flags |=
 				cpu_to_le16(DESC_FLAG_INT);
 
-		if (bchan->tail + async_desc->xfer_len > MAX_DESCRIPTORS) {
-			u32 partial = MAX_DESCRIPTORS - bchan->tail;
+		if (bchan->tail + async_desc->xfer_len > bdev->fifo_entries) {
+			u32 partial = bdev->fifo_entries - bchan->tail;
 
-			memcpy(&fifo[bchan->tail], desc,
-			       partial * sizeof(struct bam_desc_hw));
-			memcpy(fifo, &desc[partial],
-			       (async_desc->xfer_len - partial) *
-				sizeof(struct bam_desc_hw));
+			bam_fifo_write(bchan, bchan->tail, desc, partial);
+			bam_fifo_write(bchan, 0, desc + partial, async_desc->xfer_len - partial);
 		} else {
-			memcpy(&fifo[bchan->tail], desc,
-			       async_desc->xfer_len *
-			       sizeof(struct bam_desc_hw));
+			bam_fifo_write(bchan, bchan->tail, desc, async_desc->xfer_len);
 		}
 
 		bchan->tail += async_desc->xfer_len;
-		bchan->tail %= MAX_DESCRIPTORS;
+		bchan->tail %= bdev->fifo_entries;
 		list_add_tail(&async_desc->desc_node, &bchan->desc_list);
 	}
 
@@ -1124,7 +1160,7 @@ static void dma_tasklet(struct tasklet_struct *t)
 		bchan = &bdev->channels[i];
 		spin_lock_irqsave(&bchan->vc.lock, flags);
 
-		if (!list_empty(&bchan->vc.desc_issued) && !IS_BUSY(bchan))
+		if (!list_empty(&bchan->vc.desc_issued) && bam_fifo_space(bchan))
 			bam_start_dma(bchan);
 		spin_unlock_irqrestore(&bchan->vc.lock, flags);
 	}
@@ -1145,7 +1181,7 @@ static void bam_issue_pending(struct dma_chan *chan)
 	spin_lock_irqsave(&bchan->vc.lock, flags);
 
 	/* if work pending and idle, start a transaction */
-	if (vchan_issue_pending(&bchan->vc) && !IS_BUSY(bchan))
+	if (vchan_issue_pending(&bchan->vc) && bam_fifo_space(bchan))
 		bam_start_dma(bchan);
 
 	spin_unlock_irqrestore(&bchan->vc.lock, flags);
@@ -1233,6 +1269,31 @@ static const struct of_device_id bam_of_match[] = {
 
 MODULE_DEVICE_TABLE(of, bam_of_match);
 
+static int bam_setup_fifo_pool(struct platform_device *pdev, struct bam_device *bdev)
+{
+	struct resource *res;
+	void __iomem *base;
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "bam_remote_mem");
+	if (!res) {
+		bdev->fifo_entries = BAM_FIFO_SIZE / sizeof(struct bam_desc_hw);
+		return 0;
+	}
+	if (res->end > U32_MAX || !IS_ALIGNED(res->start, sizeof(struct bam_desc_hw)) ||
+	    resource_size(res) < BAM_SLIM_FIFO_BYTES)
+		return -EINVAL;
+	base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(base))
+		return PTR_ERR(base);
+	bdev->fifo_pool = devm_gen_pool_create(&pdev->dev, ilog2(BAM_SLIM_FIFO_BYTES),
+					       NUMA_NO_NODE, NULL);
+	if (IS_ERR(bdev->fifo_pool))
+		return PTR_ERR(bdev->fifo_pool);
+	bdev->fifo_entries = BAM_SLIM_FIFO_BYTES / sizeof(struct bam_desc_hw);
+	return gen_pool_add_virt(bdev->fifo_pool, (unsigned long)base, res->start,
+				 resource_size(res), NUMA_NO_NODE);
+}
+
 static int bam_dma_probe(struct platform_device *pdev)
 {
 	struct bam_device *bdev;
@@ -1252,6 +1313,9 @@ static int bam_dma_probe(struct platform_device *pdev)
 	}
 
 	bdev->layout = match->data;
+	ret = bam_setup_fifo_pool(pdev, bdev);
+	if (ret)
+		return ret;
 
 	bdev->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(bdev->regs))
@@ -1405,12 +1469,7 @@ static void bam_dma_remove(struct platform_device *pdev)
 		bam_dma_terminate_all(&bdev->channels[i].vc.chan);
 		tasklet_kill(&bdev->channels[i].vc.task);
 
-		if (!bdev->channels[i].fifo_virt)
-			continue;
-
-		dma_free_wc(bdev->dev, BAM_DESC_FIFO_SIZE,
-			    bdev->channels[i].fifo_virt,
-			    bdev->channels[i].fifo_phys);
+		bam_release_fifo(&bdev->channels[i]);
 	}
 
 	tasklet_kill(&bdev->task);

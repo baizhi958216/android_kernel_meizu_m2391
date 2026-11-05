@@ -13,6 +13,7 @@ config QCOM_ADM
 config QCOM_BAM_DMA
 	tristate "QCOM BAM DMA support"
 	depends on ARCH_QCOM || (COMPILE_TEST && OF && ARM)
+	select GENERIC_ALLOCATOR
 	select DMA_ENGINE
 	select DMA_VIRTUAL_CHANNELS
 	help
