@@ -89,6 +89,10 @@ extbuild meizu/rpmb-control KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/stor
 extbuild "$secure/hdcp" KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$secure/smcinvoke/Module.symvers"
 
 extbuild meizu/boot-mode
+extbuild meizu/freq-qos
+thermal_symbols=("$out/m2391-external/meizu/system/Module.symvers"
+                 "$out/m2391-external/meizu/boot-mode/Module.symvers")
+extbuild meizu/thermal-log KBUILD_EXTRA_SYMBOLS="${thermal_symbols[*]}"
 input_symbols=("$out/m2391-external/meizu/boot-mode/Module.symvers"
                "$out/m2391-external/meizu/system/Module.symvers"
                "$out/m2391-external/meizu/storage/Module.symvers")
@@ -119,8 +123,10 @@ display_symbols=("$out/m2391-external/meizu/system/Module.symvers"
 extbuild "$display/msm" DISPLAY_ROOT="$external/$display" KERNEL_SRC="$kernel" \
 	CONFIG_ARCH_KALAMA=y KBUILD_EXTRA_SYMBOLS="${display_symbols[*]}"
 gpu=qcom/opensource/graphics-kernel
+gpu_symbols=("$out/m2391-external/$mm/hw_fence/Module.symvers"
+             "$out/m2391-external/meizu/thermal-log/Module.symvers")
 extbuild "$gpu" KGSL_PATH="$external/$gpu" KERNEL_SRC="$kernel" CONFIG_ARCH_KALAMA=y \
-	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$mm/hw_fence/Module.symvers"
+	CONFIG_QCOM_KGSL_MEIZU_THERMAL_LOG=y KBUILD_EXTRA_SYMBOLS="${gpu_symbols[*]}"
 
 audio=qcom/opensource/audio-kernel
 audio_symbols=("$out/m2391-external/$mm/msm_ext_display/Module.symvers"
