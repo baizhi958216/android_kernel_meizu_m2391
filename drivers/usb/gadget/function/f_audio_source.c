@@ -28,6 +28,7 @@
 #include <linux/configfs.h>
 #include <linux/usb/composite.h>
 #include <linux/module.h>
+#include "../android_configfs_uevent.h"
 #include <linux/moduleparam.h>
 #define SAMPLE_RATE 44100
 #define FRAMES_PER_MSEC (SAMPLE_RATE / 1000)
@@ -303,10 +304,11 @@ static ssize_t audio_source_pcm_show(struct device *dev,
 
 static DEVICE_ATTR(pcm, S_IRUGO, audio_source_pcm_show, NULL);
 
-static struct device_attribute *audio_source_function_attributes[] = {
-	&dev_attr_pcm,
+static struct attribute *audio_source_attrs[] = {
+	&dev_attr_pcm.attr,
 	NULL
 };
+ATTRIBUTE_GROUPS(audio_source);
 
 /*--------------------------------------------------------------------------*/
 
@@ -948,10 +950,10 @@ static void audio_source_free_inst(struct usb_function_instance *fi)
 	struct audio_source_instance *fi_audio;
 
 	fi_audio = to_fi_audio_source(fi);
-	device_destroy(fi_audio->audio_device->class,
-			fi_audio->audio_device->devt);
+	device_unregister(fi_audio->audio_device);
 	kfree(fi_audio->name);
 	kfree(fi_audio->config);
+	kfree(fi_audio);
 }
 
 static ssize_t audio_source_pcm_show(struct device *dev,
@@ -964,16 +966,11 @@ static ssize_t audio_source_pcm_show(struct device *dev,
 	return sprintf(buf, "%d %d\n", config->card, config->device);
 }
 
-struct device *create_function_device(char *name);
-
 static struct usb_function_instance *audio_source_alloc_inst(void)
 {
 	struct audio_source_instance *fi_audio;
-	struct device_attribute **attrs;
-	struct device_attribute *attr;
 	struct device *dev;
 	void *err_ptr;
-	int err = 0;
 
 	fi_audio = kzalloc(sizeof(*fi_audio), GFP_KERNEL);
 	if (!fi_audio)
@@ -991,34 +988,20 @@ static struct usb_function_instance *audio_source_alloc_inst(void)
 
 	config_group_init_type_name(&fi_audio->func_inst.group, "",
 						&audio_source_func_type);
-	dev = create_function_device("f_audio_source");
+	fi_audio->config->card = -1;
+	fi_audio->config->device = -1;
+	dev = android_create_function_device("f_audio_source", fi_audio, audio_source_groups);
 
 	if (IS_ERR(dev)) {
 		err_ptr = dev;
 		goto fail_audio_config;
 	}
 
-	fi_audio->config->card = -1;
-	fi_audio->config->device = -1;
 	fi_audio->audio_device = dev;
-
-	attrs = audio_source_function_attributes;
-	if (attrs) {
-		while ((attr = *attrs++) && !err)
-			err = device_create_file(dev, attr);
-		if (err) {
-			err_ptr = ERR_PTR(-EINVAL);
-			goto fail_device;
-		}
-	}
-
-	dev_set_drvdata(dev, fi_audio);
 	_audio_dev.config = fi_audio->config;
 
 	return  &fi_audio->func_inst;
 
-fail_device:
-	device_destroy(dev->class, dev->devt);
 fail_audio_config:
 	kfree(fi_audio->config);
 fail_audio:

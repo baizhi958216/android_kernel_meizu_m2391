@@ -395,7 +395,7 @@ config USB_F_DIAG
 
 config USB_F_AUDIO_SRC
 	tristate "Android accessory audio source"
-	depends on USB_CONFIGFS && SND_PCM
+	depends on ANDROID_USB_CONFIGFS_UEVENT && SND_PCM
 
 config USB_F_GSI
 	tristate "Qualcomm IPA GSI tethering and modem data"

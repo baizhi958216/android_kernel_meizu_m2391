@@ -17,6 +17,8 @@
  * Returns: the result of class_register (0 for success, err otherwise)
  */
 int android_class_create(void);
+struct device *android_create_function_device(const char *name, void *data,
+					     const struct attribute_group **groups);
 
 /**
  * android_class_destroy - essentially the __exit() function for the

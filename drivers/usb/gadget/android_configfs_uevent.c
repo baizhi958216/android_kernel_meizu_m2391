@@ -144,8 +144,22 @@ ATTRIBUTE_GROUPS(android_usb);
 
 static struct class android_usb_class = {
 	.name = "android_usb",
-	.dev_groups = android_usb_groups,
 };
+
+struct device *android_create_function_device(const char *name, void *data,
+					     const struct attribute_group **groups)
+{
+	struct device *parent, *dev;
+
+	parent = class_find_device_by_name(&android_usb_class, "android0");
+	if (!parent)
+		return ERR_PTR(-ENODEV);
+	dev = device_create_with_groups(&android_usb_class, parent, 0, data,
+					groups, "%s", name);
+	put_device(parent);
+	return dev;
+}
+EXPORT_SYMBOL_GPL(android_create_function_device);
 
 int android_class_create(void)
 {
@@ -171,8 +185,8 @@ int android_device_create(struct android_uevent_opts *opts)
 	if (opts->device_id < 0)
 		return opts->device_id;
 
-	dev = device_create(&android_usb_class, NULL, MKDEV(0, 0),
-			       opts, "android%d", opts->device_id);
+	dev = device_create_with_groups(&android_usb_class, NULL, 0, opts,
+					android_usb_groups, "android%d", opts->device_id);
 
 	spin_lock_irqsave(&opts_lock, flags);
 	if (IS_ERR(dev)) {
@@ -218,10 +232,11 @@ void android_device_destroy(struct android_uevent_opts *opts)
 	if (opts->device_id >= 0)
 		ida_free(&android_ida, opts->device_id);
 
-	android_opts = NULL;
+	if (android_opts == opts)
+		android_opts = NULL;
 	ida_destroy(&opts->function_ida);
-	device_destroy(dev->class, dev->devt);
 	spin_unlock_irqrestore(&opts_lock, flags);
+	device_unregister(dev);
 }
 
 static void __android_set_connected(struct android_uevent_opts *opts,
