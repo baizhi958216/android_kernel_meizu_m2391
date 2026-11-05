@@ -3525,7 +3525,6 @@ static void walt_update_cluster_topology(void)
 	find_cache_siblings();
 
 	early_walt_config();
-	create_freq_to_cost();
 	walt_clusters_parsed = true;
 }
 
@@ -5753,39 +5752,6 @@ static void android_rvh_update_thermal_stats(void *unused, int cpu)
 	update_cpu_capacity_helper(cpu);
 }
 
-static DECLARE_COMPLETION(rebuild_domains_completion);
-static void rebuild_sd_workfn(struct work_struct *work);
-static DECLARE_WORK(rebuild_sd_work, rebuild_sd_workfn);
-
-/** rebuild_sd_workfn
- *
- * rebuild the sched domains (and therefore the perf
- * domains). It is absolutely necessary that the
- * em_pds are created for each cpu device before
- * proceeding, and this must complete for walt to
- * function properly.
- */
-static void rebuild_sd_workfn(struct work_struct *work)
-{
-	int cpu;
-	struct device *cpu_dev;
-
-	for_each_possible_cpu(cpu) {
-		cpu_dev = get_cpu_device(cpu);
-		if (cpu_dev->em_pd)
-			continue;
-
-		WARN_ONCE(true, "must wait for perf domains to be created");
-		schedule_work(&rebuild_sd_work);
-
-		/* do not rebuild domains yet, and do not complete this action */
-		return;
-	}
-
-	rebuild_sched_domains();
-	complete(&rebuild_domains_completion);
-}
-
 static void android_vh_dup_task_struct(void *unused, struct task_struct *tsk,
 		struct task_struct *orig)
 {
@@ -6086,13 +6052,21 @@ static void walt_remove_cpufreq_efficiencies_available(void)
 	}
 }
 
+static void walt_init(struct work_struct *work);
+static DECLARE_DELAYED_WORK(walt_init_work, walt_init);
+
 static void walt_init(struct work_struct *work)
 {
 	static atomic_t already_inited = ATOMIC_INIT(0);
-	struct root_domain *rd = cpu_rq(cpumask_first(cpu_active_mask))->rd;
 	int i;
 
 	might_sleep();
+	for_each_possible_cpu(i) {
+		if (!em_cpu_get(i)) {
+			schedule_delayed_work(&walt_init_work, msecs_to_jiffies(250));
+			return;
+		}
+	}
 
 	if (atomic_cmpxchg(&already_inited, 0, 1))
 		return;
@@ -6110,36 +6084,14 @@ static void walt_init(struct work_struct *work)
 	walt_halt_init();
 	walt_mvp_lock_ordering_init();
 
-	wait_for_completion_interruptible(&tick_sched_clock_completion);
-
-	if (!rcu_access_pointer(rd->pd)) {
-		/*
-		 * perf domains not properly configured.  this is a must as
-		 * create_freq_to_cost depends on rd->pd being properly
-		 * initialized.
-		 */
-		schedule_work(&rebuild_sd_work);
-		wait_for_completion_interruptible(&rebuild_domains_completion);
-	}
-
+	wait_for_completion(&tick_sched_clock_completion);
+	rebuild_sched_domains();
 	walt_update_cluster_topology();
 	walt_remove_cpufreq_efficiencies_available();
 	walt_config();
 	walt_init_cycle_counter();
 
 	stop_machine(walt_init_stop_handler, NULL, NULL);
-
-	/*
-	 * validate root-domain perf-domain is configured properly
-	 * to work with an asymmetrical soc. This is necessary
-	 * for load balance and task placement to work properly.
-	 * see walt_find_energy_efficient_cpu(), and
-	 * create_freq_to_cost().
-	 */
-	if (!rcu_access_pointer(rd->pd) && num_sched_clusters > 1)
-		WALT_BUG(WALT_BUG_WALT, NULL,
-			 "root domain's perf-domain values not initialized rd->pd=%p.",
-			 rd->pd);
 
 	walt_register_sysctl();
 	walt_register_debugfs();
@@ -6160,10 +6112,9 @@ static void walt_init(struct work_struct *work)
 	walt_stats_sysctl_init();
 }
 
-static DECLARE_WORK(walt_init_work, walt_init);
 static void android_vh_update_topology_flags_workfn(void *unused, void *unused2)
 {
-	schedule_work(&walt_init_work);
+	schedule_delayed_work(&walt_init_work, 0);
 }
 
 #define WALT_VENDOR_DATA_SIZE_TEST(wstruct, kstruct)		\
@@ -6179,7 +6130,7 @@ static int walt_module_init(void)
 			android_vh_update_topology_flags_workfn, NULL);
 
 	if (topology_update_done)
-		schedule_work(&walt_init_work);
+		schedule_delayed_work(&walt_init_work, 0);
 
 	walt_cpufreq_cycle_cntr_driver_register();
 	walt_gclk_cycle_counter_driver_register();

@@ -27,38 +27,6 @@
 #include <frame_boost/frame_group.h>
 #endif
 
-static void create_freq_to_cost_pd(struct em_perf_domain *pd)
-{
-	int cpu = cpumask_first(to_cpumask(pd->cpus));
-	struct walt_sched_cluster *cluster = cpu_cluster(cpu);
-	struct em_perf_table *em_table = rcu_dereference(pd->em_table);
-	struct em_perf_state *ps;
-	bool size_mismatch;
-
-	if (pd->nr_perf_states > soc_cluster_freq_table_size[cluster->id])
-		size_mismatch = true;
-
-	for (int i = 0; i < pd->nr_perf_states; i++) {
-		ps = &em_table->state[i];
-		if (size_mismatch)
-			cluster->freq_to_cost[i] = ps->cost;
-		else
-			cluster->freq_to_cost[i] = soc_cluster_freq_table[cluster->id][i];
-	}
-}
-
-void create_freq_to_cost(void)
-{
-	struct perf_domain *pd;
-	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
-
-	rcu_read_lock();
-	pd = rcu_dereference(rd->pd);
-	for (; pd; pd = pd->next)
-		create_freq_to_cost_pd(pd->em_pd);
-	rcu_read_unlock();
-}
-
 DECLARE_PER_CPU(unsigned long, gov_last_util);
 
 /* Migration margins */
@@ -721,7 +689,10 @@ static inline unsigned long get_util_to_cost(int cpu, unsigned long util)
 
 	for (int i = 0; i < pd->nr_perf_states; i++) {
 		ps = &em_table->state[i];
-		cost = cluster->freq_to_cost[i];
+		if (pd->nr_perf_states == soc_cluster_freq_table_size[cluster->id])
+			cost = soc_cluster_freq_table[cluster->id][i];
+		else
+			cost = ps->cost;
 		if (ps->frequency >= freq)
 			break;
 	}

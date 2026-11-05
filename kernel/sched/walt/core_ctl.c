@@ -48,6 +48,7 @@ struct cluster_data {
 	unsigned int		task_thres;
 	unsigned int		max_nr;
 	unsigned int		nr_assist;
+	unsigned int		nr_prev_assist_thresh;
 	unsigned int		nr_busy;
 	unsigned int		nr_big;
 	s64			need_ts;
@@ -183,6 +184,24 @@ static ssize_t store_offline_delay_ms(struct cluster_data *state,
 	state->offline_delay_ms = val;
 	sysfs_param_changed(state);
 
+	return count;
+}
+
+static ssize_t show_nr_prev_assist_thresh(const struct cluster_data *state, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", READ_ONCE(state->nr_prev_assist_thresh));
+}
+
+static ssize_t store_nr_prev_assist_thresh(struct cluster_data *state,
+					   const char *buf, size_t count)
+{
+	unsigned int threshold;
+	int ret = kstrtouint(buf, 10, &threshold);
+
+	if (ret)
+		return ret;
+	WRITE_ONCE(state->nr_prev_assist_thresh, threshold);
+	sysfs_param_changed(state);
 	return count;
 }
 
@@ -611,6 +630,7 @@ core_ctl_attr_rw(offline_delay_ms);
 core_ctl_attr_rw(busy_up_thres);
 core_ctl_attr_rw(busy_down_thres);
 core_ctl_attr_rw(task_thres);
+core_ctl_attr_rw(nr_prev_assist_thresh);
 core_ctl_attr_ro(need_cpus);
 core_ctl_attr_ro(active_cpus);
 core_ctl_attr_ro(global_state);
@@ -631,6 +651,7 @@ static struct attribute *default_attrs[] = {
 	&busy_up_thres.attr,
 	&busy_down_thres.attr,
 	&task_thres.attr,
+	&nr_prev_assist_thresh.attr,
 	&enable.attr,
 	&need_cpus.attr,
 	&active_cpus.attr,
@@ -1071,7 +1092,8 @@ static unsigned int apply_task_need(const struct cluster_data *cluster)
 	 * resume as many cores as the previous cluster
 	 * needs assistance with.
 	 */
-	new_need = new_need + cluster->nr_assist;
+	if (cluster->nr_assist >= READ_ONCE(cluster->nr_prev_assist_thresh))
+		new_need += cluster->nr_assist;
 
 	/* only resume more cores if there are tasks to run */
 	if (cluster->nrrun > new_need)
@@ -1936,15 +1958,28 @@ static int cluster_init(const struct cpumask *mask)
 	cluster->assist_cpu_min_misfit = 0;
 	cluster->nrrun_cpu_min_misfit = 0;
 
-	/*
-	 * set all cpus in the cluster.  this is an invalid state
-	 * and core control will not be considered initialized until
-	 * this state is no longer true (all masks must be written).
-	 */
-	cpumask_setall(&cluster->nrrun_cpu_mask);
-	cpumask_setall(&cluster->nrrun_cpu_misfit_mask);
-	cpumask_setall(&cluster->assist_cpu_mask);
-	cpumask_setall(&cluster->assist_cpu_misfit_mask);
+	if (of_machine_is_compatible("qcom,kalama")) {
+		int index = cluster - cluster_state;
+
+		/* Flyme configures thresholds, leaving the 5.15 placement masks
+		 * implicit: local runnable tasks plus misfits on the previous
+		 * cluster, and its runnable tasks plus misfits one tier below.
+		 */
+		cpumask_copy(&cluster->nrrun_cpu_mask, mask);
+		if (index > 0) {
+			cpumask_copy(&cluster->nrrun_cpu_misfit_mask, &cluster_state[index - 1].cpu_mask);
+			cpumask_copy(&cluster->assist_cpu_mask, &cluster_state[index - 1].cpu_mask);
+		}
+		if (index > 1)
+			cpumask_copy(&cluster->assist_cpu_misfit_mask, &cluster_state[index - 2].cpu_mask);
+		cluster->nr_prev_assist_thresh = UINT_MAX;
+		cluster->enable = true;
+	} else {
+		cpumask_setall(&cluster->nrrun_cpu_mask);
+		cpumask_setall(&cluster->nrrun_cpu_misfit_mask);
+		cpumask_setall(&cluster->assist_cpu_mask);
+		cpumask_setall(&cluster->assist_cpu_misfit_mask);
+	}
 
 	INIT_LIST_HEAD(&cluster->lru);
 

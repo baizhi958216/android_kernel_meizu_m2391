@@ -32,7 +32,11 @@ static const char *walt_soc_name(void)
 	};
 	const struct soc_device_attribute *match = soc_device_match(platforms);
 
-	return match ? match->data : NULL;
+	if (match)
+		return match->data;
+	if (of_machine_is_compatible("qcom,kalama"))
+		return "KALAMA";
+	return "";
 }
 
 void walt_config(void)

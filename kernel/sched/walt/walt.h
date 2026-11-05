@@ -244,7 +244,6 @@ struct walt_sched_cluster {
 	unsigned long		pre_smart_freq_capacity;
 	u64			aggr_grp_load;
 	/* Assume at most 100 frequency states per cluster */
-	unsigned int		freq_to_cost[MAX_FREQ_TABLE_ENTRIES];
 	u64			found_ts;
 	struct smart_freq_cluster_info *smart_freq_info;
 	int8_t			sibling_cluster;
@@ -1388,7 +1387,6 @@ static inline u64 scale_time_to_util(u64 d)
 	return d;
 }
 
-void create_freq_to_cost(void);
 struct compute_energy_output {
 	unsigned long	sum_util[MAX_CLUSTERS];
 	unsigned long	max_util[MAX_CLUSTERS];

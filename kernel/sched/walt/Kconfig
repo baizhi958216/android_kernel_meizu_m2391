@@ -6,6 +6,7 @@ menu "QTI WALT based scheduler features"
 
 config SCHED_WALT
 	tristate "Support window based load tracking"
+	depends on CPU_FREQ && ENERGY_MODEL
 	depends on SMP && ANDROID_VENDOR_HOOKS && GKI_DYNAMIC_TASK_STRUCT_SIZE && FAIR_GROUP_SCHED
 	help
 	This feature will allow the scheduler to maintain a tunable window
