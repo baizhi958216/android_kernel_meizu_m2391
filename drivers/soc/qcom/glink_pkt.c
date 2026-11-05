@@ -170,10 +170,13 @@ static int glink_pkt_rpdev_probe(struct rpmsg_device *rpdev)
 	struct rpmsg_driver *rpdrv = drv_to_rpdrv(drv);
 	struct glink_pkt_device *gpdev = rpdrv_to_gpdev(rpdrv);
 
-	const char *edge;
+	struct device_node *node = rpdev->dev.parent->of_node;
 
-	if (of_property_read_string(rpdev->dev.parent->of_node, "label", &edge) ||
-	    strcmp(edge, gpdev->edge))
+	/* Packet firmware names MPSS by its GLINK label and ADSP by its
+	 * remoteproc label. Both names identify the same physical edge.
+	 */
+	if (of_property_match_string(node, "label", gpdev->edge) < 0 &&
+	    of_property_match_string(node, "qcom,glink-label", gpdev->edge) < 0)
 		return -ENODEV;
 
 	mutex_lock(&gpdev->lock);
