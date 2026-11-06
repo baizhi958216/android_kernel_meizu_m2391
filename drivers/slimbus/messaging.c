@@ -29,22 +29,20 @@ void slim_msg_response(struct slim_controller *ctrl, u8 *reply, u8 tid, u8 len)
 
 	spin_lock_irqsave(&ctrl->txn_lock, flags);
 	txn = idr_find(&ctrl->tid_idr, tid);
-	spin_unlock_irqrestore(&ctrl->txn_lock, flags);
-
-	if (txn == NULL)
-		return;
-
-	msg = txn->msg;
-	if (msg == NULL || msg->rbuf == NULL) {
-		dev_err(ctrl->dev, "Got response to invalid TID:%d, len:%d\n",
-				tid, len);
+	if (!txn || !txn->msg || !txn->msg->rbuf ||
+	    (txn->mt == SLIM_MSG_MT_CORE && len > txn->msg->num_bytes)) {
+		spin_unlock_irqrestore(&ctrl->txn_lock, flags);
 		return;
 	}
-
-	slim_free_txn_tid(ctrl, txn);
+	msg = txn->msg;
+	/* A caller retiring a timed-out TID must wait until both the copy
+	 * and the completion have stopped using its transaction and buffer.
+	 */
+	idr_remove(&ctrl->tid_idr, tid);
 	memcpy(msg->rbuf, reply, len);
 	if (txn->comp)
 		complete(txn->comp);
+	spin_unlock_irqrestore(&ctrl->txn_lock, flags);
 
 	/* Remove runtime-pm vote now that response was received for TID txn */
 	pm_runtime_mark_last_busy(ctrl->dev);
@@ -89,7 +87,8 @@ void slim_free_txn_tid(struct slim_controller *ctrl, struct slim_msg_txn *txn)
 	unsigned long flags;
 
 	spin_lock_irqsave(&ctrl->txn_lock, flags);
-	idr_remove(&ctrl->tid_idr, txn->tid);
+	if (idr_find(&ctrl->tid_idr, txn->tid) == txn)
+		idr_remove(&ctrl->tid_idr, txn->tid);
 	spin_unlock_irqrestore(&ctrl->txn_lock, flags);
 }
 EXPORT_SYMBOL_GPL(slim_free_txn_tid);

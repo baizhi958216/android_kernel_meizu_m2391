@@ -163,6 +163,8 @@ struct qcom_slim_ngd_ctrl {
 	struct workqueue_struct *mwq;
 	struct completion qmi_up;
 	spinlock_t tx_buf_lock;
+	spinlock_t rx_lock;
+	bool rx_active;
 	struct mutex tx_lock;
 	struct mutex ssr_lock;
 	struct notifier_block nb;
@@ -574,6 +576,7 @@ static int qcom_slim_ngd_tx_msg_post(struct qcom_slim_ngd_ctrl *ctrl,
 	struct qcom_slim_ngd_dma_desc *desc;
 	unsigned long flags;
 	int index, offset;
+	dma_cookie_t cookie;
 
 	spin_lock_irqsave(&ctrl->tx_buf_lock, flags);
 	offset = buf - ctrl->tx_base;
@@ -594,17 +597,23 @@ static int qcom_slim_ngd_tx_msg_post(struct qcom_slim_ngd_ctrl *ctrl,
 						DMA_PREP_INTERRUPT);
 	if (!desc->desc) {
 		dev_err(ctrl->dev, "unable to prepare channel\n");
-		spin_unlock_irqrestore(&ctrl->tx_buf_lock, flags);
-		return -EINVAL;
+		goto undo;
 	}
 
 	desc->desc->callback = qcom_slim_ngd_tx_msg_dma_cb;
 	desc->desc->callback_param = desc;
-	desc->desc->cookie = dmaengine_submit(desc->desc);
+	cookie = dmaengine_submit(desc->desc);
+	if (dma_submit_error(cookie))
+		goto undo;
 	dma_async_issue_pending(ctrl->dma_tx_channel);
 	spin_unlock_irqrestore(&ctrl->tx_buf_lock, flags);
 
 	return 0;
+undo:
+	ctrl->tx_tail = index;
+	desc->comp = NULL;
+	spin_unlock_irqrestore(&ctrl->tx_buf_lock, flags);
+	return -EIO;
 }
 
 static void qcom_slim_ngd_rx(struct qcom_slim_ngd_ctrl *ctrl, u8 *buf)
@@ -636,6 +645,8 @@ static void qcom_slim_ngd_rx_msgq_cb(void *args)
 	struct qcom_slim_ngd_dma_desc *desc = args;
 	struct qcom_slim_ngd_ctrl *ctrl = desc->ctrl;
 
+	unsigned long flags;
+
 	if (ctrl->message_ram) {
 		u8 message[SLIM_MSGQ_BUF_LEN];
 		size_t offset = desc->phys - ctrl->rx_phys_base;
@@ -645,20 +656,25 @@ static void qcom_slim_ngd_rx_msgq_cb(void *args)
 	} else {
 		qcom_slim_ngd_rx(ctrl, desc->base);
 	}
-	/* Add descriptor back to the queue */
+	/* Stop resubmission before DMA termination during SSR or suspend. */
+	spin_lock_irqsave(&ctrl->rx_lock, flags);
+	if (!ctrl->rx_active)
+		goto unlock;
 	desc->desc = dmaengine_prep_slave_single(ctrl->dma_rx_channel,
 					desc->phys, SLIM_MSGQ_BUF_LEN,
 					DMA_DEV_TO_MEM,
 					DMA_PREP_INTERRUPT);
 	if (!desc->desc) {
 		dev_err(ctrl->dev, "Unable to prepare rx channel\n");
-		return;
+		goto unlock;
 	}
 
 	desc->desc->callback = qcom_slim_ngd_rx_msgq_cb;
 	desc->desc->callback_param = desc;
-	desc->desc->cookie = dmaengine_submit(desc->desc);
-	dma_async_issue_pending(ctrl->dma_rx_channel);
+	if (!dma_submit_error(dmaengine_submit(desc->desc)))
+		dma_async_issue_pending(ctrl->dma_rx_channel);
+unlock:
+	spin_unlock_irqrestore(&ctrl->rx_lock, flags);
 }
 
 static int qcom_slim_ngd_post_rx_msgq(struct qcom_slim_ngd_ctrl *ctrl)
@@ -682,7 +698,8 @@ static int qcom_slim_ngd_post_rx_msgq(struct qcom_slim_ngd_ctrl *ctrl)
 
 		desc->desc->callback = qcom_slim_ngd_rx_msgq_cb;
 		desc->desc->callback_param = desc;
-		desc->desc->cookie = dmaengine_submit(desc->desc);
+		if (dma_submit_error(dmaengine_submit(desc->desc)))
+			return -EIO;
 	}
 	dma_async_issue_pending(ctrl->dma_rx_channel);
 
@@ -714,6 +731,7 @@ static int qcom_slim_ngd_init_rx_msgq(struct qcom_slim_ngd_ctrl *ctrl)
 		}
 	}
 
+	ctrl->rx_active = true;
 	ret = qcom_slim_ngd_post_rx_msgq(ctrl);
 	if (ret) {
 		dev_err(dev, "post_rx_msgq() failed 0x%x\n", ret);
@@ -723,6 +741,9 @@ static int qcom_slim_ngd_init_rx_msgq(struct qcom_slim_ngd_ctrl *ctrl)
 	return 0;
 
 rx_post_err:
+	spin_lock_irq(&ctrl->rx_lock);
+	ctrl->rx_active = false;
+	spin_unlock_irq(&ctrl->rx_lock);
 	dmaengine_terminate_sync(ctrl->dma_rx_channel);
 	if (ctrl->rx_base)
 		dma_free_coherent(dev, size, ctrl->rx_base, ctrl->rx_phys_base);
@@ -840,16 +861,10 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 	if (txn->dt == SLIM_MSG_DEST_ENUMADDR)
 		return -EPROTONOSUPPORT;
 
-	if (txn->msg->num_bytes > SLIM_MSGQ_BUF_LEN ||
+	if (!txn->rl || txn->msg->num_bytes > SLIM_MSGQ_BUF_LEN ||
 			txn->rl > SLIM_MSGQ_BUF_LEN) {
 		dev_err(ctrl->dev, "msg exceeds HW limit\n");
 		return -EINVAL;
-	}
-
-	pbuf = qcom_slim_ngd_tx_msg_get(ctrl, txn->rl, &tx_sent);
-	if (!pbuf) {
-		dev_err(ctrl->dev, "Message buffer unavailable\n");
-		return -ENOMEM;
 	}
 
 	if (txn->mt == SLIM_MSG_MT_CORE &&
@@ -894,6 +909,13 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 		txn->rl = txn->msg->num_bytes + 4;
 	}
 
+	mutex_lock(&ctrl->tx_lock);
+	pbuf = qcom_slim_ngd_tx_msg_get(ctrl, txn->rl, &tx_sent);
+	if (!pbuf) {
+		ret = -ENOBUFS;
+		goto cancel_txn;
+	}
+
 	/* HW expects length field to be excluded */
 	txn->rl--;
 	puc = (u8 *)pbuf;
@@ -916,36 +938,49 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 		*(puc++) = (txn->ec >> 8) & 0xFF;
 	}
 
-	if (txn->msg && txn->msg->wbuf)
-		memcpy(puc, txn->msg->wbuf, txn->msg->num_bytes);
+	if (txn->msg && txn->msg->wbuf) {
+		if (puc - (u8 *)pbuf + txn->msg->num_bytes > SLIM_MSGQ_BUF_LEN) {
+			unsigned long flags;
+			unsigned int slot = ((void *)pbuf - ctrl->tx_base) / SLIM_MSGQ_BUF_LEN;
 
-	mutex_lock(&ctrl->tx_lock);
-	ret = qcom_slim_ngd_tx_msg_post(ctrl, pbuf, txn->rl);
-	if (ret) {
-		mutex_unlock(&ctrl->tx_lock);
-		return ret;
+			spin_lock_irqsave(&ctrl->tx_buf_lock, flags);
+			ctrl->tx_tail = slot;
+			ctrl->txdesc[slot].comp = NULL;
+			spin_unlock_irqrestore(&ctrl->tx_buf_lock, flags);
+			ret = -EMSGSIZE;
+			goto cancel_txn;
+		}
+		memcpy(puc, txn->msg->wbuf, txn->msg->num_bytes);
 	}
+
+	ret = qcom_slim_ngd_tx_msg_post(ctrl, pbuf, txn->rl);
+	if (ret)
+		goto cancel_txn;
 
 	time_left = wait_for_completion_timeout(&tx_sent, HZ);
 	if (!time_left) {
-		dev_err(sctrl->dev, "TX timed out:MC:0x%x,mt:0x%x", txn->mc,
-					txn->mt);
-		mutex_unlock(&ctrl->tx_lock);
-		return -ETIMEDOUT;
+		unsigned long flags;
+		unsigned int slot = ((void *)pbuf - ctrl->tx_base) / SLIM_MSGQ_BUF_LEN;
+
+		spin_lock_irqsave(&ctrl->tx_buf_lock, flags);
+		ctrl->txdesc[slot].comp = NULL;
+		spin_unlock_irqrestore(&ctrl->tx_buf_lock, flags);
+		ret = -ETIMEDOUT;
+		goto cancel_txn;
 	}
 
-	if (usr_msg) {
-		time_left = wait_for_completion_timeout(&done, HZ);
-		if (!time_left) {
-			dev_err(sctrl->dev, "TX timed out:MC:0x%x,mt:0x%x",
-				txn->mc, txn->mt);
-			mutex_unlock(&ctrl->tx_lock);
-			return -ETIMEDOUT;
-		}
+	if (usr_msg && !wait_for_completion_timeout(&done, HZ)) {
+		ret = -ETIMEDOUT;
+		goto cancel_txn;
 	}
-
 	mutex_unlock(&ctrl->tx_lock);
 	return 0;
+
+cancel_txn:
+	if (usr_msg)
+		slim_free_txn_tid(sctrl, txn);
+	mutex_unlock(&ctrl->tx_lock);
+	return ret;
 }
 
 static int qcom_slim_ngd_xfer_msg_sync(struct slim_controller *ctrl,
@@ -1167,6 +1202,9 @@ static int qcom_slim_ngd_get_laddr(struct slim_controller *ctrl,
 static int qcom_slim_ngd_exit_dma(struct qcom_slim_ngd_ctrl *ctrl)
 {
 	if (ctrl->dma_rx_channel) {
+		spin_lock_irq(&ctrl->rx_lock);
+		ctrl->rx_active = false;
+		spin_unlock_irq(&ctrl->rx_lock);
 		dmaengine_terminate_sync(ctrl->dma_rx_channel);
 		dma_release_channel(ctrl->dma_rx_channel);
 	}
@@ -1709,6 +1747,7 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 
 	mutex_init(&ctrl->tx_lock);
 	mutex_init(&ctrl->ssr_lock);
+	spin_lock_init(&ctrl->rx_lock);
 	spin_lock_init(&ctrl->tx_buf_lock);
 	init_completion(&ctrl->reconf);
 	init_completion(&ctrl->qmi.qmi_comp);
