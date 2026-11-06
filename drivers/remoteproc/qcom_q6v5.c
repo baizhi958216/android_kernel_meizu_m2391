@@ -16,6 +16,7 @@
 #include <linux/soc/qcom/smem.h>
 #include <linux/soc/qcom/smem_state.h>
 #include <linux/remoteproc.h>
+#include <linux/remoteproc/qcom_q6v5.h>
 #include "qcom_common.h"
 #include "qcom_q6v5.h"
 
@@ -89,11 +90,49 @@ int qcom_q6v5_unprepare(struct qcom_q6v5 *q6v5)
 }
 EXPORT_SYMBOL_GPL(qcom_q6v5_unprepare);
 
+static BLOCKING_NOTIFIER_HEAD(q6v5_crash_chain);
+
+int qcom_q6v5_register_crash_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&q6v5_crash_chain, nb);
+}
+EXPORT_SYMBOL_GPL(qcom_q6v5_register_crash_notifier);
+
+int qcom_q6v5_unregister_crash_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&q6v5_crash_chain, nb);
+}
+EXPORT_SYMBOL_GPL(qcom_q6v5_unregister_crash_notifier);
+
+static void q6v5_report_crash(struct qcom_q6v5 *q6v5, enum rproc_crash_type type)
+{
+	const char *description = type == RPROC_WATCHDOG ? "watchdog" : "fatal error";
+	struct qcom_q6v5_crash_data crash = {
+		.name = dev_name(q6v5->dev),
+		.message = "without message",
+		.length = sizeof("without message") - 1,
+	};
+	size_t len;
+	const char *msg;
+
+	msg = qcom_smem_get(QCOM_SMEM_HOST_ANY, q6v5->crash_reason, &len);
+	if (!IS_ERR(msg) && len && msg[0]) {
+		crash.message = msg;
+		crash.length = strnlen(msg, min_t(size_t, len, INT_MAX));
+		dev_err(q6v5->dev, "%s received: %.*s\n", description,
+			(int)crash.length, msg);
+	} else {
+		dev_err(q6v5->dev, "%s without message\n", description);
+	}
+	q6v5->running = false;
+	if (!q6v5->rproc->recovery_disabled)
+		blocking_notifier_call_chain(&q6v5_crash_chain, type, &crash);
+	rproc_report_crash(q6v5->rproc, type);
+}
+
 static irqreturn_t q6v5_wdog_interrupt(int irq, void *data)
 {
 	struct qcom_q6v5 *q6v5 = data;
-	size_t len;
-	char *msg;
 
 	/* Sometimes the stop triggers a watchdog rather than a stop-ack */
 	if (!q6v5->running) {
@@ -101,14 +140,7 @@ static irqreturn_t q6v5_wdog_interrupt(int irq, void *data)
 		return IRQ_HANDLED;
 	}
 
-	msg = qcom_smem_get(QCOM_SMEM_HOST_ANY, q6v5->crash_reason, &len);
-	if (!IS_ERR(msg) && len > 0 && msg[0])
-		dev_err(q6v5->dev, "watchdog received: %s\n", msg);
-	else
-		dev_err(q6v5->dev, "watchdog without message\n");
-
-	q6v5->running = false;
-	rproc_report_crash(q6v5->rproc, RPROC_WATCHDOG);
+	q6v5_report_crash(q6v5, RPROC_WATCHDOG);
 
 	return IRQ_HANDLED;
 }
@@ -116,20 +148,11 @@ static irqreturn_t q6v5_wdog_interrupt(int irq, void *data)
 static irqreturn_t q6v5_fatal_interrupt(int irq, void *data)
 {
 	struct qcom_q6v5 *q6v5 = data;
-	size_t len;
-	char *msg;
 
 	if (!q6v5->running)
 		return IRQ_HANDLED;
 
-	msg = qcom_smem_get(QCOM_SMEM_HOST_ANY, q6v5->crash_reason, &len);
-	if (!IS_ERR(msg) && len > 0 && msg[0])
-		dev_err(q6v5->dev, "fatal error received: %s\n", msg);
-	else
-		dev_err(q6v5->dev, "fatal error without message\n");
-
-	q6v5->running = false;
-	rproc_report_crash(q6v5->rproc, RPROC_FATAL_ERROR);
+	q6v5_report_crash(q6v5, RPROC_FATAL_ERROR);
 
 	return IRQ_HANDLED;
 }
