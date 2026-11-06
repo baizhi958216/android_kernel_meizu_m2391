@@ -4,6 +4,10 @@
 #
 menu "Qualcomm SoC drivers"
 
+config QCOM_SYSMON_SUBSYSTEM_STATS
+	tristate "Qualcomm DSP firmware statistics"
+	depends on ARM64 && QCOM_SMEM
+
 config QCOM_KALAMA_CDSPRM
 	tristate "Kalama compute DSP resource manager"
 	depends on ARM64 && ARCH_QCOM && RPMSG && ARM_ARCH_TIMER
