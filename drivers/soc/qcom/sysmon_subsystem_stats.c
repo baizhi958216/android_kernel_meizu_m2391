@@ -53,13 +53,13 @@ int sysmon_stats_query_power_residency(enum dsp_id_t dsp, struct sysmon_smem_pow
 {
 	return feature_copy(dsp, POWER, stats, sizeof(*stats));
 }
-EXPORT_SYMBOL_GPL(sysmon_stats_query_power_residency);
+EXPORT_SYMBOL(sysmon_stats_query_power_residency);
 
 int sysmon_stats_query_q6_votes(enum dsp_id_t dsp, struct sysmon_smem_q6_event_stats *stats)
 {
 	return feature_copy(dsp, Q6_EVENTS, stats, sizeof(*stats));
 }
-EXPORT_SYMBOL_GPL(sysmon_stats_query_q6_votes);
+EXPORT_SYMBOL(sysmon_stats_query_q6_votes);
 
 static int query_sample(enum dsp_id_t dsp, enum sysmon_feature type, u32 *result)
 {
@@ -89,19 +89,19 @@ int sysmon_stats_query_q6_load(enum dsp_id_t dsp, u32 *load)
 {
 	return query_sample(dsp, Q6_LOAD, load);
 }
-EXPORT_SYMBOL_GPL(sysmon_stats_query_q6_load);
+EXPORT_SYMBOL(sysmon_stats_query_q6_load);
 
 int sysmon_stats_query_hvx_utlization(u32 *load)
 {
 	return query_sample(CDSP, HVX, load);
 }
-EXPORT_SYMBOL_GPL(sysmon_stats_query_hvx_utlization);
+EXPORT_SYMBOL(sysmon_stats_query_hvx_utlization);
 
 int sysmon_stats_query_hmx_utlization(u32 *load)
 {
 	return query_sample(CDSP, HMX, load);
 }
-EXPORT_SYMBOL_GPL(sysmon_stats_query_hmx_utlization);
+EXPORT_SYMBOL(sysmon_stats_query_hmx_utlization);
 
 static int item_copy(enum dsp_id_t dsp, u32 item, void *dest, size_t bytes)
 {
@@ -151,7 +151,7 @@ int sysmon_stats_query_sleep(enum dsp_id_t dsp, struct sleep_stats *lpm, struct 
 	}
 	return 0;
 }
-EXPORT_SYMBOL_GPL(sysmon_stats_query_sleep);
+EXPORT_SYMBOL(sysmon_stats_query_sleep);
 
 static int master_show(struct seq_file *s, void *unused)
 {
