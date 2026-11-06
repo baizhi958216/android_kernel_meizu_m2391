@@ -83,3 +83,7 @@ config QTI_USERSPACE_CDEV
 config QTI_CPU_PAUSE_COOLING_DEVICE
 	tristate "Qualcomm CPU pause cooling"
 	depends on SCHED_WALT && OF
+
+config QTI_THERMAL_LIMITS_DCVS
+	tristate "Qualcomm firmware LMh current-sense references"
+	depends on OF && REGULATOR
