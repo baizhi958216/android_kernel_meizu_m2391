@@ -90,6 +90,7 @@
 /* Per spec.max 40 bytes per received message */
 #define SLIM_MSGQ_BUF_LEN	40
 #define QCOM_SLIM_NGD_DESC_NUM	32
+#define KALAMA_SLIM_NGD_DESC_NUM	30
 
 #define SLIM_MSG_ASM_FIRST_WORD(l, mt, mc, dt, ad) \
 		((l) | ((mt) << 5) | ((mc) << 8) | ((dt) << 15) | ((ad) << 16))
@@ -170,6 +171,10 @@ struct qcom_slim_ngd_ctrl {
 	enum qcom_slim_ngd_state state;
 	dma_addr_t rx_phys_base;
 	dma_addr_t tx_phys_base;
+	void __iomem *message_ram;
+	dma_addr_t message_phys;
+	void *tx_staging;
+	unsigned int slots;
 	void *rx_base;
 	void *tx_base;
 	int tx_tail;
@@ -532,14 +537,14 @@ static u32 *qcom_slim_ngd_tx_msg_get(struct qcom_slim_ngd_ctrl *ctrl, int len,
 
 	spin_lock_irqsave(&ctrl->tx_buf_lock, flags);
 
-	if ((ctrl->tx_tail + 1) % QCOM_SLIM_NGD_DESC_NUM == ctrl->tx_head) {
+	if (!ctrl->tx_base || (ctrl->tx_tail + 1) % ctrl->slots == ctrl->tx_head) {
 		spin_unlock_irqrestore(&ctrl->tx_buf_lock, flags);
 		return NULL;
 	}
 	desc  = &ctrl->txdesc[ctrl->tx_tail];
 	desc->base = ctrl->tx_base + ctrl->tx_tail * SLIM_MSGQ_BUF_LEN;
 	desc->comp = comp;
-	ctrl->tx_tail = (ctrl->tx_tail + 1) % QCOM_SLIM_NGD_DESC_NUM;
+	ctrl->tx_tail = (ctrl->tx_tail + 1) % ctrl->slots;
 
 	spin_unlock_irqrestore(&ctrl->tx_buf_lock, flags);
 
@@ -559,7 +564,7 @@ static void qcom_slim_ngd_tx_msg_dma_cb(void *args)
 		desc->comp = NULL;
 	}
 
-	ctrl->tx_head = (ctrl->tx_head + 1) % QCOM_SLIM_NGD_DESC_NUM;
+	ctrl->tx_head = (ctrl->tx_head + 1) % ctrl->slots;
 	spin_unlock_irqrestore(&ctrl->tx_buf_lock, flags);
 }
 
@@ -578,7 +583,10 @@ static int qcom_slim_ngd_tx_msg_post(struct qcom_slim_ngd_ctrl *ctrl,
 	desc->phys = ctrl->tx_phys_base + offset;
 	desc->base = ctrl->tx_base + offset;
 	desc->ctrl = ctrl;
-	len = (len + 3) & 0xfc;
+	len = ALIGN(len, sizeof(u32));
+	if (ctrl->message_ram)
+		memcpy_toio(ctrl->message_ram + ctrl->slots * SLIM_MSGQ_BUF_LEN + offset,
+			    buf, len);
 
 	desc->desc = dmaengine_prep_slave_single(ctrl->dma_tx_channel,
 						desc->phys, len,
@@ -606,6 +614,8 @@ static void qcom_slim_ngd_rx(struct qcom_slim_ngd_ctrl *ctrl, u8 *buf)
 	mt = SLIM_HEADER_GET_MT(buf[0]);
 	len = SLIM_HEADER_GET_RL(buf[0]);
 	mc = SLIM_HEADER_GET_MC(buf[1]);
+	if (len < 4 || len > SLIM_MSGQ_BUF_LEN)
+		return;
 
 	if (mc == SLIM_USR_MC_MASTER_CAPABILITY &&
 		mt == SLIM_MSG_MT_SRC_REFERRED_USER)
@@ -626,7 +636,15 @@ static void qcom_slim_ngd_rx_msgq_cb(void *args)
 	struct qcom_slim_ngd_dma_desc *desc = args;
 	struct qcom_slim_ngd_ctrl *ctrl = desc->ctrl;
 
-	qcom_slim_ngd_rx(ctrl, (u8 *)desc->base);
+	if (ctrl->message_ram) {
+		u8 message[SLIM_MSGQ_BUF_LEN];
+		size_t offset = desc->phys - ctrl->rx_phys_base;
+
+		memcpy_fromio(message, ctrl->message_ram + offset, sizeof(message));
+		qcom_slim_ngd_rx(ctrl, message);
+	} else {
+		qcom_slim_ngd_rx(ctrl, desc->base);
+	}
 	/* Add descriptor back to the queue */
 	desc->desc = dmaengine_prep_slave_single(ctrl->dma_rx_channel,
 					desc->phys, SLIM_MSGQ_BUF_LEN,
@@ -648,11 +666,11 @@ static int qcom_slim_ngd_post_rx_msgq(struct qcom_slim_ngd_ctrl *ctrl)
 	struct qcom_slim_ngd_dma_desc *desc;
 	int i;
 
-	for (i = 0; i < QCOM_SLIM_NGD_DESC_NUM; i++) {
+	for (i = 0; i < ctrl->slots; i++) {
 		desc = &ctrl->rx_desc[i];
 		desc->phys = ctrl->rx_phys_base + i * SLIM_MSGQ_BUF_LEN;
 		desc->ctrl = ctrl;
-		desc->base = ctrl->rx_base + i * SLIM_MSGQ_BUF_LEN;
+		desc->base = ctrl->rx_base ? ctrl->rx_base + i * SLIM_MSGQ_BUF_LEN : NULL;
 		desc->desc = dmaengine_prep_slave_single(ctrl->dma_rx_channel,
 						desc->phys, SLIM_MSGQ_BUF_LEN,
 						DMA_DEV_TO_MEM,
@@ -684,12 +702,16 @@ static int qcom_slim_ngd_init_rx_msgq(struct qcom_slim_ngd_ctrl *ctrl)
 		return ret;
 	}
 
-	size = QCOM_SLIM_NGD_DESC_NUM * SLIM_MSGQ_BUF_LEN;
-	ctrl->rx_base = dma_alloc_coherent(dev, size, &ctrl->rx_phys_base,
-					   GFP_KERNEL);
-	if (!ctrl->rx_base) {
-		ret = -ENOMEM;
-		goto rel_rx;
+	size = ctrl->slots * SLIM_MSGQ_BUF_LEN;
+	if (ctrl->message_ram) {
+		ctrl->rx_phys_base = ctrl->message_phys;
+		memset_io(ctrl->message_ram, 0, size);
+	} else {
+		ctrl->rx_base = dma_alloc_coherent(dev, size, &ctrl->rx_phys_base, GFP_KERNEL);
+		if (!ctrl->rx_base) {
+			ret = -ENOMEM;
+			goto rel_rx;
+		}
 	}
 
 	ret = qcom_slim_ngd_post_rx_msgq(ctrl);
@@ -701,9 +723,13 @@ static int qcom_slim_ngd_init_rx_msgq(struct qcom_slim_ngd_ctrl *ctrl)
 	return 0;
 
 rx_post_err:
-	dma_free_coherent(dev, size, ctrl->rx_base, ctrl->rx_phys_base);
+	dmaengine_terminate_sync(ctrl->dma_rx_channel);
+	if (ctrl->rx_base)
+		dma_free_coherent(dev, size, ctrl->rx_base, ctrl->rx_phys_base);
+	ctrl->rx_base = NULL;
 rel_rx:
 	dma_release_channel(ctrl->dma_rx_channel);
+	ctrl->dma_rx_channel = NULL;
 	return ret;
 }
 
@@ -722,12 +748,16 @@ static int qcom_slim_ngd_init_tx_msgq(struct qcom_slim_ngd_ctrl *ctrl)
 		return ret;
 	}
 
-	size = ((QCOM_SLIM_NGD_DESC_NUM + 1) * SLIM_MSGQ_BUF_LEN);
-	ctrl->tx_base = dma_alloc_coherent(dev, size, &ctrl->tx_phys_base,
-					   GFP_KERNEL);
-	if (!ctrl->tx_base) {
-		ret = -EINVAL;
-		goto rel_tx;
+	size = (ctrl->slots + 1) * SLIM_MSGQ_BUF_LEN;
+	if (ctrl->message_ram) {
+		ctrl->tx_base = ctrl->tx_staging;
+		ctrl->tx_phys_base = ctrl->message_phys + ctrl->slots * SLIM_MSGQ_BUF_LEN;
+	} else {
+		ctrl->tx_base = dma_alloc_coherent(dev, size, &ctrl->tx_phys_base, GFP_KERNEL);
+		if (!ctrl->tx_base) {
+			ret = -ENOMEM;
+			goto rel_tx;
+		}
 	}
 
 	spin_lock_irqsave(&ctrl->tx_buf_lock, flags);
@@ -738,8 +768,11 @@ static int qcom_slim_ngd_init_tx_msgq(struct qcom_slim_ngd_ctrl *ctrl)
 	return 0;
 rel_tx:
 	dma_release_channel(ctrl->dma_tx_channel);
+	ctrl->dma_tx_channel = NULL;
 	return ret;
 }
+
+static int qcom_slim_ngd_exit_dma(struct qcom_slim_ngd_ctrl *ctrl);
 
 static int qcom_slim_ngd_init_dma(struct qcom_slim_ngd_ctrl *ctrl)
 {
@@ -752,8 +785,10 @@ static int qcom_slim_ngd_init_dma(struct qcom_slim_ngd_ctrl *ctrl)
 	}
 
 	ret = qcom_slim_ngd_init_tx_msgq(ctrl);
-	if (ret)
+	if (ret) {
 		dev_err(ctrl->dev, "tx dma init failed\n");
+		qcom_slim_ngd_exit_dma(ctrl);
+	}
 
 	return ret;
 }
@@ -1141,6 +1176,13 @@ static int qcom_slim_ngd_exit_dma(struct qcom_slim_ngd_ctrl *ctrl)
 		dma_release_channel(ctrl->dma_tx_channel);
 	}
 
+	if (ctrl->rx_base)
+		dma_free_coherent(ctrl->dev, ctrl->slots * SLIM_MSGQ_BUF_LEN,
+				  ctrl->rx_base, ctrl->rx_phys_base);
+	if (ctrl->tx_base && !ctrl->message_ram)
+		dma_free_coherent(ctrl->dev, (ctrl->slots + 1) * SLIM_MSGQ_BUF_LEN,
+				  ctrl->tx_base, ctrl->tx_phys_base);
+	ctrl->tx_base = ctrl->rx_base = NULL;
 	ctrl->dma_tx_channel = ctrl->dma_rx_channel = NULL;
 
 	return 0;
@@ -1606,6 +1648,7 @@ wq_err:
 
 static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 {
+	struct resource *msg_ram;
 	struct device *dev = &pdev->dev;
 	struct qcom_slim_ngd_ctrl *ctrl;
 	int ret;
@@ -1616,6 +1659,22 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	dev_set_drvdata(dev, ctrl);
+
+	ctrl->slots = QCOM_SLIM_NGD_DESC_NUM;
+	msg_ram = platform_get_resource_byname(pdev, IORESOURCE_MEM, "slimbus_remote_mem");
+	if (msg_ram) {
+		ctrl->slots = KALAMA_SLIM_NGD_DESC_NUM;
+		if (msg_ram->end > U32_MAX || !IS_ALIGNED(msg_ram->start, sizeof(u32)) ||
+		    resource_size(msg_ram) < (2 * ctrl->slots + 1) * SLIM_MSGQ_BUF_LEN)
+			return -EINVAL;
+		ctrl->message_ram = devm_ioremap_resource(dev, msg_ram);
+		if (IS_ERR(ctrl->message_ram))
+			return PTR_ERR(ctrl->message_ram);
+		ctrl->message_phys = msg_ram->start;
+		ctrl->tx_staging = devm_kcalloc(dev, ctrl->slots + 1, SLIM_MSGQ_BUF_LEN, GFP_KERNEL);
+		if (!ctrl->tx_staging)
+			return -ENOMEM;
+	}
 
 	ctrl->base = devm_platform_get_and_ioremap_resource(pdev, 0, NULL);
 	if (IS_ERR(ctrl->base))
