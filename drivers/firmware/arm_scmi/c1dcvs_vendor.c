@@ -54,7 +54,7 @@ out:
 	return ret;
 }
 
-static int c1dcvs_init(const struct scmi_protocol_handle *ph)
+static int c1dcvs_instance_init(const struct scmi_protocol_handle *ph)
 {
 	u32 version;
 
@@ -66,7 +66,7 @@ static const struct scmi_protocol c1dcvs = {
 	.id = QCOM_SCMI_C1DCVS,
 	.owner = THIS_MODULE,
 	.vendor_id = "Qualcomm",
-	.instance_init = c1dcvs_init,
+	.instance_init = c1dcvs_instance_init,
 	.ops = &c1dcvs_ops,
 };
 module_scmi_protocol(c1dcvs);
