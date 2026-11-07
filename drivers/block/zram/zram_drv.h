@@ -59,6 +59,14 @@ enum zram_pageflags {
 	ZRAM_COMP_PRIORITY_BIT1, /* First bit of comp priority index */
 	ZRAM_COMP_PRIORITY_BIT2, /* Second bit of comp priority index */
 
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	ZRAM_SMART_WB,
+	ZRAM_UNDER_WB,
+	ZRAM_BATCHING_OUT,
+	ZRAM_FROM_SMARTSWAP,
+	ZRAM_MCGID_CLEAR,
+	ZRAM_IN_BD,
+#endif
 	__NR_ZRAM_PAGEFLAGS,
 };
 
@@ -163,6 +171,13 @@ struct zram {
 #endif
 #ifdef CONFIG_ZRAM_MEMORY_TRACKING
 	struct dentry *debugfs_dir;
+#endif
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	struct smartswap *hs_swap;
+	struct file *hs_backing_file;
+	struct block_device *hs_bdev;
+	unsigned long hs_pages;
+	unsigned long increase_nr_pages;
 #endif
 	atomic_t pp_in_progress;
 };

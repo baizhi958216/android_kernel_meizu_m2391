@@ -58,7 +58,22 @@ static size_t huge_class_size;
 static const struct block_device_operations zram_devops;
 
 static void slot_free(struct zram *zram, u32 index);
-#define slot_dep_map(zram, index) (&(zram)->table[(index)].dep_map)
+#include "zram_slot.h"
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+#include <linux/memcontrol.h>
+#include "smartswap/smartswap.h"
+static bool zram_devices_ready;
+
+bool smartswap_devices_ready(void)
+{
+	return smp_load_acquire(&zram_devices_ready);
+}
+#endif
+
+bool init_done(struct zram *zram)
+{
+	return zram->disksize;
+}
 
 static void slot_lock_init(struct zram *zram, u32 index)
 {
@@ -91,73 +106,6 @@ static __must_check bool slot_trylock(struct zram *zram, u32 index)
 	}
 
 	return false;
-}
-
-static void slot_lock(struct zram *zram, u32 index)
-{
-	unsigned long *lock = &zram->table[index].__lock;
-
-	mutex_acquire(slot_dep_map(zram, index), 0, 0, _RET_IP_);
-	wait_on_bit_lock(lock, ZRAM_ENTRY_LOCK_BIT, TASK_UNINTERRUPTIBLE);
-	lock_acquired(slot_dep_map(zram, index), _RET_IP_);
-}
-
-static void slot_unlock(struct zram *zram, u32 index)
-{
-	unsigned long *lock = &zram->table[index].__lock;
-
-	mutex_release(slot_dep_map(zram, index), _RET_IP_);
-	clear_and_wake_up_bit(ZRAM_ENTRY_LOCK_BIT, lock);
-}
-
-bool init_done(struct zram *zram)
-{
-	return zram->disksize;
-}
-
-static inline struct zram *dev_to_zram(struct device *dev)
-{
-	return (struct zram *)dev_to_disk(dev)->private_data;
-}
-
-static unsigned long get_slot_handle(struct zram *zram, u32 index)
-{
-	return zram->table[index].handle;
-}
-
-static void set_slot_handle(struct zram *zram, u32 index, unsigned long handle)
-{
-	zram->table[index].handle = handle;
-}
-
-static bool test_slot_flag(struct zram *zram, u32 index,
-			   enum zram_pageflags flag)
-{
-	return zram->table[index].attr.flags & BIT(flag);
-}
-
-static void set_slot_flag(struct zram *zram, u32 index,
-			  enum zram_pageflags flag)
-{
-	zram->table[index].attr.flags |= BIT(flag);
-}
-
-static void clear_slot_flag(struct zram *zram, u32 index,
-			    enum zram_pageflags flag)
-{
-	zram->table[index].attr.flags &= ~BIT(flag);
-}
-
-static size_t get_slot_size(struct zram *zram, u32 index)
-{
-	return zram->table[index].attr.flags & (BIT(ZRAM_FLAG_SHIFT) - 1);
-}
-
-static void set_slot_size(struct zram *zram, u32 index, size_t size)
-{
-	unsigned long flags = zram->table[index].attr.flags >> ZRAM_FLAG_SHIFT;
-
-	zram->table[index].attr.flags = (flags << ZRAM_FLAG_SHIFT) | size;
 }
 
 static inline bool slot_allocated(struct zram *zram, u32 index)
@@ -2306,6 +2254,9 @@ static void slot_free(struct zram *zram, u32 index)
 {
 	unsigned long handle;
 
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	smartswap_untrack(zram, index);
+#endif
 #ifdef CONFIG_ZRAM_TRACK_ENTRY_ACTIME
 	zram->table[index].attr.ac_time = 0;
 #endif
@@ -2455,6 +2406,15 @@ static int zram_read_page(struct zram *zram, struct page *page, u32 index,
 	int ret;
 
 	slot_lock(zram, index);
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	if (test_slot_flag(zram, index, ZRAM_SMART_WB)) {
+		ret = smartswap_fault_out(zram, index);
+		if (ret) {
+			slot_unlock(zram, index);
+			return ret;
+		}
+	}
+#endif
 	if (!test_slot_flag(zram, index, ZRAM_WB)) {
 		/* Slot should be locked through out the function call */
 		ret = read_from_zspool(zram, page, index);
@@ -2550,6 +2510,9 @@ static int write_incompressible_page(struct zram *zram, struct page *page,
 	set_slot_flag(zram, index, ZRAM_HUGE);
 	set_slot_handle(zram, index, handle);
 	set_slot_size(zram, index, PAGE_SIZE);
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	smartswap_track(zram, index, folio_memcg(page_folio(page)));
+#endif
 	slot_unlock(zram, index);
 
 	atomic64_add(PAGE_SIZE, &zram->stats.compr_data_size);
@@ -2614,6 +2577,9 @@ static int zram_write_page(struct zram *zram, struct page *page, u32 index)
 	slot_free(zram, index);
 	set_slot_handle(zram, index, handle);
 	set_slot_size(zram, index, comp_len);
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	smartswap_track(zram, index, folio_memcg(page_folio(page)));
+#endif
 	slot_unlock(zram, index);
 
 	/* Update stats */
@@ -2926,6 +2892,11 @@ static ssize_t recompress_store(struct device *dev,
 	if (!init_done(zram))
 		return -EINVAL;
 
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	/* The extent index records compressed object sizes until fault-in. */
+	if (zram->hs_backing_file)
+		return -EBUSY;
+#endif
 	/* Do not permit concurrent post-processing actions. */
 	if (atomic_xchg(&zram->pp_in_progress, 1))
 		return -EAGAIN;
@@ -3149,6 +3120,13 @@ static void zram_slot_free_notify(struct block_device *bdev,
 		return;
 	}
 
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	if (!smartswap_delete(zram, index)) {
+		slot_unlock(zram, index);
+		atomic64_inc(&zram->stats.miss_free);
+		return;
+	}
+#endif
 	slot_free(zram, index);
 	zram_prefetch_cache_drop(zram, index);
 	slot_unlock(zram, index);
@@ -3189,7 +3167,11 @@ static void zram_destroy_comps(struct zram *zram)
 
 static void zram_reset_device(struct zram *zram)
 {
-	guard(rwsem_write)(&zram->init_lock);
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	/* The caller claims the disk before waiting for the reclaim worker. */
+	smartswap_reset_quiesce(zram);
+#endif
+	down_write(&zram->init_lock);
 
 	zram->limit_pages = 0;
 
@@ -3205,6 +3187,10 @@ static void zram_reset_device(struct zram *zram)
 	reset_bdev(zram);
 
 	comp_algorithm_set(zram, ZRAM_PRIMARY_COMP, default_compressor);
+	up_write(&zram->init_lock);
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	smartswap_reset_finish(zram);
+#endif
 }
 
 static ssize_t disksize_store(struct device *dev, struct device_attribute *attr,
@@ -3221,7 +3207,7 @@ static ssize_t disksize_store(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 
 	guard(rwsem_write)(&zram->init_lock);
-	if (init_done(zram)) {
+	if (READ_ONCE(zram->claim) || init_done(zram)) {
 		pr_info("Cannot change disksize for initialized device\n");
 		return -EBUSY;
 	}
@@ -3345,7 +3331,40 @@ static DEVICE_ATTR_WO(recompress);
 #endif
 static DEVICE_ATTR_WO(algorithm_params);
 
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+static DEVICE_ATTR_RO(smartswap_vmstat);
+static DEVICE_ATTR_RW(smartswap_loglevel);
+static DEVICE_ATTR_RW(smartswap_enable);
+static DEVICE_ATTR_RW(smartswap_swapd_pause);
+static DEVICE_ATTR_RW(smartswap_fault_out_first);
+static DEVICE_ATTR_RW(smartswap_shrink_af_ratio);
+static DEVICE_ATTR_RW(smartswap_core_enable);
+static DEVICE_ATTR_RW(smartswap_loop_device);
+static DEVICE_ATTR_RW(smartswap_dev_life);
+static DEVICE_ATTR_RW(smartswap_quota_day);
+static DEVICE_ATTR_RO(smartswap_report);
+static DEVICE_ATTR_RO(smartswap_stat_snap);
+static DEVICE_ATTR_RO(smartswap_meminfo);
+static DEVICE_ATTR_RW(smartswap_zram_increase);
+#endif
+
 static struct attribute *zram_disk_attrs[] = {
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	&dev_attr_smartswap_vmstat.attr,
+	&dev_attr_smartswap_loglevel.attr,
+	&dev_attr_smartswap_enable.attr,
+	&dev_attr_smartswap_swapd_pause.attr,
+	&dev_attr_smartswap_fault_out_first.attr,
+	&dev_attr_smartswap_shrink_af_ratio.attr,
+	&dev_attr_smartswap_core_enable.attr,
+	&dev_attr_smartswap_loop_device.attr,
+	&dev_attr_smartswap_dev_life.attr,
+	&dev_attr_smartswap_quota_day.attr,
+	&dev_attr_smartswap_report.attr,
+	&dev_attr_smartswap_stat_snap.attr,
+	&dev_attr_smartswap_meminfo.attr,
+	&dev_attr_smartswap_zram_increase.attr,
+#endif
 	&dev_attr_disksize.attr,
 	&dev_attr_initstate.attr,
 	&dev_attr_reset.attr,
@@ -3624,6 +3643,13 @@ static int __init zram_init(void)
 		return -EBUSY;
 	}
 
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	ret = smartswap_pre_init();
+	if (ret) {
+		destroy_devices();
+		return ret;
+	}
+#endif
 	while (num_devices != 0) {
 		mutex_lock(&zram_index_mutex);
 		ret = zram_add();
@@ -3633,16 +3659,31 @@ static int __init zram_init(void)
 		num_devices--;
 	}
 
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	smp_store_release(&zram_devices_ready, true);
+#endif
+
 	return 0;
 
 out_error:
 	destroy_devices();
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	smartswap_exit();
+	smartswap_global_setting_deinit();
+#endif
 	return ret;
 }
 
 static void __exit zram_exit(void)
 {
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	smp_store_release(&zram_devices_ready, false);
+#endif
 	destroy_devices();
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+	smartswap_exit();
+	smartswap_global_setting_deinit();
+#endif
 }
 
 module_init(zram_init);
@@ -3651,6 +3692,9 @@ module_exit(zram_exit);
 module_param(num_devices, uint, 0);
 MODULE_PARM_DESC(num_devices, "Number of pre-created zram devices");
 
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+MODULE_IMPORT_NS("MINIDUMP"); /* si_swapinfo() */
+#endif
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Nitin Gupta <ngupta@vflare.org>");
 MODULE_DESCRIPTION("Compressed RAM Block Device");

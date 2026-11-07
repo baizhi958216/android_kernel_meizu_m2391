@@ -11,3 +11,5 @@ zram-$(CONFIG_ZRAM_BACKEND_842)		+= backend_842.o
 zram-$(CONFIG_ZRAM_ANDROID_IOCTL)	+= zram_ioctl.o
 
 obj-$(CONFIG_ZRAM)	+=	zram.o
+
+zram-$(CONFIG_ZRAM_MEIZU_SMARTSWAP) += smartswap/smartmain.o smartswap/smartswapd.o smartswap/smartswap.o

@@ -154,3 +154,10 @@ config ZRAM_ANDROID_IOCTL
 	 on a target process's virtual memory areas (VMAs) in zram. Then we can
 	 invoke the corresponding operations like writeback the compressed
 	 pages into the backing device.
+
+config ZRAM_MEIZU_SMARTSWAP
+	bool "Meizu per-application compressed swap writeback"
+	depends on ZRAM && MEMCG_V1 && LRU_GEN && ZRAM_WRITEBACK && ANDROID_VENDOR_HOOKS && ARM64_4K_PAGES
+	help
+	  Enable the Meizu memory cgroup policy and compressed extent storage on
+	  zram for systems using the Flyme memory management service.
