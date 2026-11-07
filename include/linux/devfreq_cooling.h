@@ -42,6 +42,10 @@ struct devfreq_cooling_power {
 #ifdef CONFIG_DEVFREQ_THERMAL
 
 struct thermal_cooling_device *
+of_devfreq_cooling_register_named(struct device_node *np, struct devfreq *df,
+				  const char *type);
+
+struct thermal_cooling_device *
 of_devfreq_cooling_register_power(struct device_node *np, struct devfreq *df,
 				  struct devfreq_cooling_power *dfc_power);
 struct thermal_cooling_device *

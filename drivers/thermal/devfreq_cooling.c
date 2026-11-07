@@ -374,31 +374,16 @@ static int devfreq_cooling_gen_tables(struct devfreq_cooling_device *dfc,
 	return 0;
 }
 
-/**
- * of_devfreq_cooling_register_power() - Register devfreq cooling device,
- *                                      with OF and power information.
- * @np:	Pointer to OF device_node.
- * @df:	Pointer to devfreq device.
- * @dfc_power:	Pointer to devfreq_cooling_power.
- *
- * Register a devfreq cooling device.  The available OPPs must be
- * registered on the device.
- *
- * If @dfc_power is provided, the cooling device is registered with the
- * power extensions.  For the power extensions to work correctly,
- * devfreq should use the simple_ondemand governor, other governors
- * are not currently supported.
- */
-struct thermal_cooling_device *
-of_devfreq_cooling_register_power(struct device_node *np, struct devfreq *df,
-				  struct devfreq_cooling_power *dfc_power)
+static struct thermal_cooling_device *
+register_devfreq_cooling(struct device_node *np, struct devfreq *df,
+			 struct devfreq_cooling_power *dfc_power, const char *type)
 {
 	struct thermal_cooling_device *cdev;
 	struct device *dev = df->dev.parent;
 	struct devfreq_cooling_device *dfc;
 	struct em_perf_domain *em;
 	struct thermal_cooling_device_ops *ops;
-	char *name;
+	char *name = NULL;
 	int err, num_opps;
 
 
@@ -429,6 +414,10 @@ of_devfreq_cooling_register_power(struct device_node *np, struct devfreq *df,
 		dev_dbg(dev, "missing proper EM for cooling device\n");
 
 		num_opps = dev_pm_opp_get_opp_count(dev);
+		if (num_opps <= 0) {
+			err = num_opps ?: -EINVAL;
+			goto free_dfc;
+		}
 
 		err = devfreq_cooling_gen_tables(dfc, num_opps);
 		if (err)
@@ -449,12 +438,16 @@ of_devfreq_cooling_register_power(struct device_node *np, struct devfreq *df,
 	if (err < 0)
 		goto free_table;
 
-	err = -ENOMEM;
-	name = kasprintf(GFP_KERNEL, "devfreq-%s", dev_name(dev));
-	if (!name)
-		goto remove_qos_req;
+	if (!type) {
+		name = kasprintf(GFP_KERNEL, "devfreq-%s", dev_name(dev));
+		if (!name) {
+			err = -ENOMEM;
+			goto remove_qos_req;
+		}
+		type = name;
+	}
 
-	cdev = thermal_of_cooling_device_register(np, name, dfc, ops);
+	cdev = thermal_of_cooling_device_register(np, type, dfc, ops);
 	kfree(name);
 
 	if (IS_ERR(cdev)) {
@@ -478,7 +471,36 @@ free_dfc:
 
 	return ERR_PTR(err);
 }
+/**
+ * of_devfreq_cooling_register_power() - Register devfreq cooling device,
+ *                                      with OF and power information.
+ * @np:	Pointer to OF device_node.
+ * @df:	Pointer to devfreq device.
+ * @dfc_power:	Pointer to devfreq_cooling_power.
+ *
+ * Register a devfreq cooling device.  The available OPPs must be
+ * registered on the device.
+ *
+ * If @dfc_power is provided, the cooling device is registered with the
+ * power extensions.  For the power extensions to work correctly,
+ * devfreq should use the simple_ondemand governor, other governors
+ * are not currently supported.
+ */
+struct thermal_cooling_device *
+of_devfreq_cooling_register_power(struct device_node *np, struct devfreq *df,
+				  struct devfreq_cooling_power *dfc_power)
+{
+	return register_devfreq_cooling(np, df, dfc_power, NULL);
+}
 EXPORT_SYMBOL_GPL(of_devfreq_cooling_register_power);
+
+struct thermal_cooling_device *
+of_devfreq_cooling_register_named(struct device_node *np, struct devfreq *df,
+				  const char *type)
+{
+	return register_devfreq_cooling(np, df, NULL, type);
+}
+EXPORT_SYMBOL_GPL(of_devfreq_cooling_register_named);
 
 /**
  * of_devfreq_cooling_register() - Register devfreq cooling device,

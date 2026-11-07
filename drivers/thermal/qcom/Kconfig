@@ -87,3 +87,7 @@ config QTI_CPU_PAUSE_COOLING_DEVICE
 config QTI_THERMAL_LIMITS_DCVS
 	tristate "Qualcomm firmware LMh current-sense references"
 	depends on OF && REGULATOR
+
+config QTI_DEVFREQ_CDEV
+	tristate "Qualcomm GPU thermal HAL cooling vote"
+	depends on OF && DEVFREQ_THERMAL
