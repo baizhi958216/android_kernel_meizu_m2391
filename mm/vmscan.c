@@ -12,6 +12,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/meizu_smartswap.h>
 #include <linux/mm.h>
 #include <linux/sched/mm.h>
 #include <linux/module.h>
@@ -2507,12 +2508,7 @@ static void customize_sc_file_is_tiny(struct scan_control *sc)
 	sc->file_is_tiny = file_is_tiny;
 }
 
-enum scan_balance {
-	SCAN_EQUAL,
-	SCAN_FRACT,
-	SCAN_ANON,
-	SCAN_FILE,
-};
+
 
 static void prepare_scan_control(pg_data_t *pgdat, struct scan_control *sc)
 {
@@ -4758,6 +4754,61 @@ static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct sca
 
 	return true;
 }
+
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+unsigned long meizu_smartshrink_anon(struct mem_cgroup *memcg,
+	unsigned long nr_to_scan, struct lruvec *lruvec, bool active)
+{
+	struct scan_control sc = {
+		.gfp_mask = current_gfp_context(GFP_HIGHUSER_MOVABLE),
+		.target_mem_cgroup = memcg,
+		.may_unmap = 1,
+		.may_swap = 1,
+	};
+	LIST_HEAD(isolated);
+	unsigned long scanned = 0;
+	int gen, zone;
+
+	if (!memcg || !lruvec || !nr_to_scan)
+		return 0;
+	nr_to_scan = min(nr_to_scan, SWAP_CLUSTER_MAX);
+	spin_lock_irq(&lruvec->lru_lock);
+	if (!lruvec->lrugen.enabled) {
+		sc.reclaim_idx = MAX_NR_ZONES - 1;
+		isolate_lru_folios(nr_to_scan, lruvec, &isolated, &scanned, &sc,
+				   active ? LRU_ACTIVE_ANON : LRU_INACTIVE_ANON);
+		goto unlock;
+	}
+	for (zone = MAX_NR_ZONES - 1; zone >= 0 && scanned < nr_to_scan; zone--) {
+		for (gen = 0; gen < MAX_NR_GENS && scanned < nr_to_scan; gen++) {
+			struct list_head *head = &lruvec->lrugen.folios[gen][LRU_GEN_ANON][zone];
+			LIST_HEAD(skipped);
+			unsigned long nr_skipped = 0;
+
+			if (lru_gen_is_active(lruvec, gen) != active)
+				continue;
+			while (!list_empty(head) && scanned < nr_to_scan) {
+				struct folio *folio = lru_to_folio(head);
+				unsigned long count = folio_nr_pages(folio);
+
+				scanned += count;
+				if (isolate_folio(lruvec, folio, &sc))
+					list_add_tail(&folio->lru, &isolated);
+				else {
+					list_move_tail(&folio->lru, &skipped);
+					nr_skipped += count;
+				}
+			}
+			list_splice_tail(&skipped, head);
+			__count_zid_vm_events(PGSCAN_SKIP, zone, nr_skipped);
+		}
+	}
+unlock:
+	spin_unlock_irq(&lruvec->lru_lock);
+	return reclaim_pages(&isolated);
+}
+EXPORT_SYMBOL_GPL(meizu_smartshrink_anon);
+#endif
 
 static int scan_folios(unsigned long nr_to_scan, struct lruvec *lruvec,
 		       struct scan_control *sc, int type, int tier,

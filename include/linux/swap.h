@@ -390,6 +390,13 @@ extern unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 #define MIN_SWAPPINESS 0
 #define MAX_SWAPPINESS 200
 
+enum scan_balance {
+	SCAN_EQUAL,
+	SCAN_FRACT,
+	SCAN_ANON,
+	SCAN_FILE,
+};
+
 /* Just reclaim from anon folios in proactive memory reclaim */
 #define SWAPPINESS_ANON_ONLY (MAX_SWAPPINESS + 1)
 

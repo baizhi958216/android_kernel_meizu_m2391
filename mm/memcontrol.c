@@ -25,6 +25,7 @@
  * Copyright (C) 2020 Alibaba, Inc, Alex Shi
  */
 
+#include <linux/meizu_smartswap.h>
 #include <linux/cgroup-defs.h>
 #include <linux/page_counter.h>
 #include <linux/memcontrol.h>
@@ -3645,6 +3646,14 @@ static void mem_cgroup_id_put_many(struct mem_cgroup *memcg, unsigned int n)
 		css_put(&memcg->css);
 	}
 }
+
+#ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
+void meizu_smartput_memcg_id(struct mem_cgroup *memcg)
+{
+	mem_cgroup_id_put_many(memcg, 1);
+}
+EXPORT_SYMBOL_GPL(meizu_smartput_memcg_id);
+#endif
 
 static inline void mem_cgroup_id_put(struct mem_cgroup *memcg)
 {
