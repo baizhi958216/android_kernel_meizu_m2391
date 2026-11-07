@@ -83,7 +83,9 @@ void panel_event_notification_trigger(enum panel_event_notifier_tag tag,
 	index = srcu_read_lock(&panel_clients_srcu);
 	for (i = 0; i < ARRAY_SIZE(panel_clients); i++) {
 		sub = srcu_dereference(panel_clients[i], &panel_clients_srcu);
-		if (sub && sub->panel == notification->panel && sub->tag == tag)
+		/* SmartSwap follows the primary display across panel selection. */
+		if (sub && sub->tag == tag && (sub->panel == notification->panel ||
+		    (sub->client == PANEL_EVENT_NOTIFIER_CLIENT_SMARTSWAP && !sub->panel)))
 			sub->handler(tag, notification, sub->data);
 	}
 	srcu_read_unlock(&panel_clients_srcu, index);
