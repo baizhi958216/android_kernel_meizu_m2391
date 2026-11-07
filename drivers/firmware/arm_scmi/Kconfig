@@ -112,3 +112,7 @@ config QTI_SCMI_MEMLAT_PROTOCOL
 config QTI_SCMI_C1DCVS_PROTOCOL
 	tristate "Qualcomm SCMI C1DCVS protocol"
 	depends on ARM_SCMI_PROTOCOL
+
+config QTI_SCMI_CPUFREQ_STATS_PROTOCOL
+	tristate "Qualcomm SCMI frequency statistics protocol"
+	depends on ARM_SCMI_PROTOCOL

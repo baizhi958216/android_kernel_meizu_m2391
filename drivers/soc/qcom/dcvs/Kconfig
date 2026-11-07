@@ -24,3 +24,7 @@ config QCOM_DCVS
 config QTI_C1DCVS_SCMI_CLIENT
 	tristate "Qualcomm CPUCP C1DCVS"
 	depends on QTI_SCMI_C1DCVS_PROTOCOL
+
+config QTI_CPUFREQ_STATS_SCMI_CLIENT
+	tristate "Qualcomm CPUCP frequency statistics"
+	depends on QTI_SCMI_CPUFREQ_STATS_PROTOCOL
