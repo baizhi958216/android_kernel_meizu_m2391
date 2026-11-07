@@ -20,3 +20,7 @@ config QCOM_DCVS
 	  DCVS HW blocks and voting interfaces that are supported on some
 	  Qualcomm Technologies, Inc. (QTI) chipsets. This includes voting
 	  interfaces from both QCOM_DCVS_FP and INTERCONNECT.
+
+config QTI_C1DCVS_SCMI_CLIENT
+	tristate "Qualcomm CPUCP C1DCVS"
+	depends on QTI_SCMI_C1DCVS_PROTOCOL

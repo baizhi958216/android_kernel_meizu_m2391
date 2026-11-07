@@ -108,3 +108,7 @@ config QTI_SCMI_PMU_PROTOCOL
 config QTI_SCMI_MEMLAT_PROTOCOL
 	tristate "Qualcomm SCMI memory-latency protocol"
 	depends on ARM_SCMI_PROTOCOL
+
+config QTI_SCMI_C1DCVS_PROTOCOL
+	tristate "Qualcomm SCMI C1DCVS protocol"
+	depends on ARM_SCMI_PROTOCOL
