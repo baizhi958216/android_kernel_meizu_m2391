@@ -7,6 +7,23 @@
 #include <linux/pm_runtime.h>
 #include "slimbus.h"
 
+/* The API permits the sending function to return before an asynchronous
+ * value read completes. Only the caller's reply buffer and completion
+ * remain live at that point.
+ */
+struct slim_pending_reply {
+	const struct slim_msg_txn *owner;
+	struct completion *done;
+	u8 *buffer;
+	u8 capacity;
+};
+
+static void slim_put_pm(struct slim_controller *ctrl)
+{
+	pm_runtime_mark_last_busy(ctrl->dev);
+	pm_runtime_put_autosuspend(ctrl->dev);
+}
+
 /**
  * slim_msg_response() - Deliver Message response received from a device to the
  *			framework.
@@ -23,30 +40,21 @@
  */
 void slim_msg_response(struct slim_controller *ctrl, u8 *reply, u8 tid, u8 len)
 {
-	struct slim_msg_txn *txn;
-	struct slim_val_inf *msg;
+	struct slim_pending_reply *reply_ctx;
 	unsigned long flags;
 
 	spin_lock_irqsave(&ctrl->txn_lock, flags);
-	txn = idr_find(&ctrl->tid_idr, tid);
-	if (!txn || !txn->msg || !txn->msg->rbuf ||
-	    (txn->mt == SLIM_MSG_MT_CORE && len > txn->msg->num_bytes)) {
+	reply_ctx = idr_find(&ctrl->tid_idr, tid);
+	if (!reply_ctx || len > reply_ctx->capacity) {
 		spin_unlock_irqrestore(&ctrl->txn_lock, flags);
 		return;
 	}
-	msg = txn->msg;
-	/* A caller retiring a timed-out TID must wait until both the copy
-	 * and the completion have stopped using its transaction and buffer.
-	 */
 	idr_remove(&ctrl->tid_idr, tid);
-	memcpy(msg->rbuf, reply, len);
-	if (txn->comp)
-		complete(txn->comp);
+	memcpy(reply_ctx->buffer, reply, len);
+	complete(reply_ctx->done);
 	spin_unlock_irqrestore(&ctrl->txn_lock, flags);
-
-	/* Remove runtime-pm vote now that response was received for TID txn */
-	pm_runtime_mark_last_busy(ctrl->dev);
-	pm_runtime_put_autosuspend(ctrl->dev);
+	kfree(reply_ctx);
+	slim_put_pm(ctrl);
 }
 EXPORT_SYMBOL_GPL(slim_msg_response);
 
@@ -55,23 +63,38 @@ EXPORT_SYMBOL_GPL(slim_msg_response);
  *
  * @ctrl: Controller handle
  * @txn: transaction to be allocated with tid.
+ * @capacity: size of the reply buffer in bytes.
  *
  * Return: zero on success with valid txn->tid and error code on failures.
  */
-int slim_alloc_txn_tid(struct slim_controller *ctrl, struct slim_msg_txn *txn)
+int slim_alloc_txn_tid(struct slim_controller *ctrl, struct slim_msg_txn *txn,
+		       u8 capacity)
 {
+	struct slim_pending_reply *reply;
 	unsigned long flags;
-	int ret = 0;
+	int tid;
 
+	if (!txn->comp || !txn->msg || !txn->msg->rbuf)
+		return -EINVAL;
+	reply = kmalloc(sizeof(*reply), GFP_KERNEL);
+	if (!reply)
+		return -ENOMEM;
+	reply->owner = txn;
+	reply->buffer = txn->msg->rbuf;
+	reply->done = txn->comp;
+	reply->capacity = capacity;
+
+	pm_runtime_get_noresume(ctrl->dev);
 	spin_lock_irqsave(&ctrl->txn_lock, flags);
-	ret = idr_alloc_cyclic(&ctrl->tid_idr, txn, 1,
-				SLIM_MAX_TIDS, GFP_ATOMIC);
-	if (ret < 0) {
-		spin_unlock_irqrestore(&ctrl->txn_lock, flags);
-		return ret;
-	}
-	txn->tid = ret;
+	tid = idr_alloc_cyclic(&ctrl->tid_idr, reply, 1, SLIM_MAX_TIDS, GFP_ATOMIC);
+	if (tid >= 0)
+		txn->tid = tid;
 	spin_unlock_irqrestore(&ctrl->txn_lock, flags);
+	if (tid < 0) {
+		kfree(reply);
+		slim_put_pm(ctrl);
+		return tid;
+	}
 	return 0;
 }
 EXPORT_SYMBOL_GPL(slim_alloc_txn_tid);
@@ -84,12 +107,19 @@ EXPORT_SYMBOL_GPL(slim_alloc_txn_tid);
  */
 void slim_free_txn_tid(struct slim_controller *ctrl, struct slim_msg_txn *txn)
 {
+	struct slim_pending_reply *reply;
 	unsigned long flags;
 
 	spin_lock_irqsave(&ctrl->txn_lock, flags);
-	if (idr_find(&ctrl->tid_idr, txn->tid) == txn)
-		idr_remove(&ctrl->tid_idr, txn->tid);
+	reply = idr_find(&ctrl->tid_idr, txn->tid);
+	if (!reply || reply->owner != txn) {
+		spin_unlock_irqrestore(&ctrl->txn_lock, flags);
+		return;
+	}
+	idr_remove(&ctrl->tid_idr, txn->tid);
 	spin_unlock_irqrestore(&ctrl->txn_lock, flags);
+	kfree(reply);
+	slim_put_pm(ctrl);
 }
 EXPORT_SYMBOL_GPL(slim_free_txn_tid);
 
@@ -124,53 +154,41 @@ int slim_do_transfer(struct slim_controller *ctrl, struct slim_msg_txn *txn)
 		clk_pause_msg = true;
 
 	if (!clk_pause_msg) {
-		ret = pm_runtime_get_sync(ctrl->dev);
+		ret = pm_runtime_resume_and_get(ctrl->dev);
+		if (ret < 0)
+			return ret;
 		if (ctrl->sched.clk_state != SLIM_CLK_ACTIVE) {
-			dev_err(ctrl->dev, "ctrl wrong state:%d, ret:%d\n",
-				ctrl->sched.clk_state, ret);
+			ret = -EHOSTDOWN;
 			goto slim_xfer_err;
 		}
 	}
-	/* Initialize tid to invalid value */
 	txn->tid = 0;
 	need_tid = slim_tid_txn(txn->mt, txn->mc);
-
 	if (need_tid) {
-		ret = slim_alloc_txn_tid(ctrl, txn);
+		txn->comp = txn->msg->comp ?: &done;
+		ret = slim_alloc_txn_tid(ctrl, txn, txn->msg->num_bytes);
 		if (ret)
-			return ret;
-
-		if (!txn->msg->comp)
-			txn->comp = &done;
+			goto slim_xfer_err;
 	}
 
 	ret = ctrl->xfer_msg(ctrl, txn);
-	if (ret == -ETIMEDOUT) {
-		slim_free_txn_tid(ctrl, txn);
-	} else if (!ret && need_tid && !txn->msg->comp) {
+	if (!ret && need_tid && !txn->msg->comp) {
 		unsigned long ms = txn->rl + HZ;
 
-		time_left = wait_for_completion_timeout(txn->comp,
-							msecs_to_jiffies(ms));
-		if (!time_left) {
+		time_left = wait_for_completion_timeout(&done, msecs_to_jiffies(ms));
+		if (!time_left)
 			ret = -ETIMEDOUT;
-			slim_free_txn_tid(ctrl, txn);
-		}
 	}
+	if (ret && need_tid)
+		slim_free_txn_tid(ctrl, txn);
 
 	if (ret)
 		dev_err(ctrl->dev, "Tx:MT:0x%x, MC:0x%x, LA:0x%x failed:%d\n",
 			txn->mt, txn->mc, txn->la, ret);
 
 slim_xfer_err:
-	if (!clk_pause_msg && (txn->tid == 0  || ret == -ETIMEDOUT)) {
-		/*
-		 * remove runtime-pm vote if this was TX only, or
-		 * if there was error during this transaction
-		 */
-		pm_runtime_mark_last_busy(ctrl->dev);
-		pm_runtime_put_autosuspend(ctrl->dev);
-	}
+	if (!clk_pause_msg)
+		slim_put_pm(ctrl);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(slim_do_transfer);

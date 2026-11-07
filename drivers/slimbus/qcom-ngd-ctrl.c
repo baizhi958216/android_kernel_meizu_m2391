@@ -842,6 +842,8 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 				  struct slim_msg_txn *txn)
 {
 	struct qcom_slim_ngd_ctrl *ctrl = dev_get_drvdata(sctrl->dev);
+	struct slim_msg_txn converted;
+	struct slim_val_inf converted_msg;
 	DECLARE_COMPLETION_ONSTACK(tx_sent);
 	DECLARE_COMPLETION_ONSTACK(done);
 	int ret, i;
@@ -871,6 +873,10 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 		(txn->mc == SLIM_MSG_MC_CONNECT_SOURCE ||
 		txn->mc == SLIM_MSG_MC_CONNECT_SINK ||
 		txn->mc == SLIM_MSG_MC_DISCONNECT_PORT)) {
+		converted = *txn;
+		converted_msg = *txn->msg;
+		converted.msg = &converted_msg;
+		txn = &converted;
 		txn->mt = SLIM_MSG_MT_DEST_REFERRED_USER;
 		switch (txn->mc) {
 		case SLIM_MSG_MC_CONNECT_SOURCE:
@@ -895,7 +901,8 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 			wbuf[i++] = txn->msg->wbuf[1];
 
 		txn->comp = &done;
-		ret = slim_alloc_txn_tid(sctrl, txn);
+		txn->msg->rbuf = rbuf;
+		ret = slim_alloc_txn_tid(sctrl, txn, sizeof(rbuf));
 		if (ret) {
 			dev_err(ctrl->dev, "Unable to allocate TID\n");
 			return ret;
@@ -905,7 +912,6 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 
 		txn->msg->num_bytes = i;
 		txn->msg->wbuf = wbuf;
-		txn->msg->rbuf = rbuf;
 		txn->rl = txn->msg->num_bytes + 4;
 	}
 
@@ -984,34 +990,27 @@ cancel_txn:
 }
 
 static int qcom_slim_ngd_xfer_msg_sync(struct slim_controller *ctrl,
-				       struct slim_msg_txn *txn)
+				      struct slim_msg_txn *txn, u8 *wire_tid,
+				      u8 reply_size)
 {
 	DECLARE_COMPLETION_ONSTACK(done);
 	int ret;
-	unsigned long time_left;
 
-	ret = pm_runtime_get_sync(ctrl->dev);
+	ret = pm_runtime_resume_and_get(ctrl->dev);
 	if (ret < 0)
-		goto pm_put;
-
+		return ret;
 	txn->comp = &done;
-
-	ret = qcom_slim_ngd_xfer_msg(ctrl, txn);
-	if (ret)
-		goto pm_put;
-
-	time_left = wait_for_completion_timeout(&done, HZ);
-	if (!time_left) {
-		dev_err(ctrl->dev, "TX timed out:MC:0x%x,mt:0x%x", txn->mc,
-				txn->mt);
-		ret = -ETIMEDOUT;
-		goto pm_put;
+	ret = slim_alloc_txn_tid(ctrl, txn, reply_size);
+	if (!ret) {
+		*wire_tid = txn->tid;
+		ret = qcom_slim_ngd_xfer_msg(ctrl, txn);
+		if (!ret && !wait_for_completion_timeout(&done, HZ))
+			ret = -ETIMEDOUT;
+		if (ret)
+			slim_free_txn_tid(ctrl, txn);
 	}
-	return 0;
-
-pm_put:
-	pm_runtime_put(ctrl->dev);
-
+	pm_runtime_mark_last_busy(ctrl->dev);
+	pm_runtime_put_autosuspend(ctrl->dev);
 	return ret;
 }
 
@@ -1073,6 +1072,10 @@ static int qcom_slim_ngd_enable_stream(struct slim_stream_runtime *rt)
 	struct slim_msg_txn txn = {0,};
 	int i, ret;
 
+	/* Header and the TID occupy five payload bytes. */
+	if (!rt->num_ports || rt->num_ports > SLIM_MSGQ_BUF_LEN - 9)
+		return -EINVAL;
+
 	txn.mt = SLIM_MSG_MT_DEST_REFERRED_USER;
 	txn.dt = SLIM_MSG_DEST_LOGICALADDR;
 	txn.la = SLIM_LA_MGR;
@@ -1114,21 +1117,16 @@ static int qcom_slim_ngd_enable_stream(struct slim_stream_runtime *rt)
 			else
 				wbuf[txn.msg->num_bytes++] =  port->ch.prrate;
 
-			ret = slim_alloc_txn_tid(ctrl, &txn);
-			if (ret) {
-				dev_err(&sdev->dev, "Fail to allocate TID\n");
-				return -ENXIO;
-			}
-			wbuf[txn.msg->num_bytes++] = txn.tid;
+			/* Filled once the reply context has been registered. */
+			wbuf[txn.msg->num_bytes++] = 0;
 		}
 		wbuf[txn.msg->num_bytes++] = port->ch.id;
 	}
 
 	txn.mc = SLIM_USR_MC_DEF_ACT_CHAN;
 	txn.rl = txn.msg->num_bytes + 4;
-	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn);
+	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn, &wbuf[4], sizeof(rbuf));
 	if (ret) {
-		slim_free_txn_tid(ctrl, &txn);
 		dev_err(&sdev->dev, "TX timed out:MC:0x%x,mt:0x%x", txn.mc,
 				txn.mt);
 		return ret;
@@ -1139,21 +1137,7 @@ static int qcom_slim_ngd_enable_stream(struct slim_stream_runtime *rt)
 	wbuf[1] = sdev->laddr;
 	txn.rl = txn.msg->num_bytes + 4;
 
-	ret = slim_alloc_txn_tid(ctrl, &txn);
-	if (ret) {
-		dev_err(ctrl->dev, "Fail to allocate TID\n");
-		return ret;
-	}
-
-	wbuf[0] = txn.tid;
-	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn);
-	if (ret) {
-		slim_free_txn_tid(ctrl, &txn);
-		dev_err(&sdev->dev, "TX timed out:MC:0x%x,mt:0x%x", txn.mc,
-				txn.mt);
-	}
-
-	return ret;
+	return qcom_slim_ngd_xfer_msg_sync(ctrl, &txn, &wbuf[0], sizeof(rbuf));
 }
 
 static int qcom_slim_ngd_get_laddr(struct slim_controller *ctrl,
@@ -1178,18 +1162,10 @@ static int qcom_slim_ngd_get_laddr(struct slim_controller *ctrl,
 	txn.msg->wbuf = wbuf;
 	txn.msg->rbuf = rbuf;
 
-	ret = slim_alloc_txn_tid(ctrl, &txn);
-	if (ret < 0)
-		return ret;
-
-	wbuf[0] = (u8)txn.tid;
 	memcpy(&wbuf[1], ea, sizeof(*ea));
-
-	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn);
-	if (ret) {
-		slim_free_txn_tid(ctrl, &txn);
+	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn, &wbuf[0], sizeof(rbuf));
+	if (ret)
 		return ret;
-	}
 
 	if (!memcmp(rbuf, failed_ea, 6))
 		return -ENXIO;
