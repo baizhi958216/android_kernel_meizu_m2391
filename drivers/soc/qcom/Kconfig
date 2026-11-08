@@ -8,6 +8,10 @@ config QCOM_SYSMON_SUBSYSTEM_STATS
 	tristate "Qualcomm DSP firmware statistics"
 	depends on ARM64 && QCOM_SMEM
 
+config QCOM_RIMPS_LOG
+	tristate "Qualcomm RIMPS CPU co-processor logs"
+	depends on MAILBOX && OF
+
 config QCOM_ADSP_SLEEPMON
 	tristate "Qualcomm audio DSP sleep monitor"
 	depends on QCOM_SYSMON_SUBSYSTEM_STATS && RPMSG && PM
