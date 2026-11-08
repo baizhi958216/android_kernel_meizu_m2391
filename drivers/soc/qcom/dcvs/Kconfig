@@ -28,3 +28,8 @@ config QTI_C1DCVS_SCMI_CLIENT
 config QTI_CPUFREQ_STATS_SCMI_CLIENT
 	tristate "Qualcomm CPUCP frequency statistics"
 	depends on QTI_SCMI_CPUFREQ_STATS_PROTOCOL
+
+config QTI_PLH_SCMI_CLIENT
+	tristate "Qualcomm CPUCP performance locks"
+	depends on QTI_SCMI_PLH_PROTOCOL
+	depends on MSM_PERFORMANCE

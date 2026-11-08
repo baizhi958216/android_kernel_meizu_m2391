@@ -116,3 +116,7 @@ config QTI_SCMI_C1DCVS_PROTOCOL
 config QTI_SCMI_CPUFREQ_STATS_PROTOCOL
 	tristate "Qualcomm SCMI frequency statistics protocol"
 	depends on ARM_SCMI_PROTOCOL
+
+config QTI_SCMI_PLH_PROTOCOL
+	tristate "Qualcomm SCMI performance locks protocol"
+	depends on ARM_SCMI_PROTOCOL

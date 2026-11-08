@@ -4,6 +4,7 @@
 #include <linux/cpufreq.h>
 #include <linux/meizu_thermal_boost.h>
 #include <linux/slab.h>
+#include <linux/scmi_plh.h>
 #include <linux/kobject.h>
 #include <linux/ktime.h>
 #include <linux/module.h>
@@ -21,6 +22,13 @@ struct gfx_event {
 };
 
 static struct kobject *perf_kobj;
+/* PLH clients hold a module reference while their attributes are registered. */
+struct kobject *msm_perf_kobject(void)
+{
+	return perf_kobj;
+}
+EXPORT_SYMBOL_GPL(msm_perf_kobject);
+
 static DEFINE_SPINLOCK(event_lock);
 static DECLARE_WAIT_QUEUE_HEAD(event_wait);
 static struct gfx_event events[512];
