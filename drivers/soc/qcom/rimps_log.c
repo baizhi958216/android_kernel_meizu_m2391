@@ -96,6 +96,11 @@ static void rimps_receive(struct mbox_client *cl, void *message)
 	schedule_work(&log->work);
 }
 
+static void rimps_free_packet(void *data)
+{
+	kvfree(data);
+}
+
 static void rimps_log_stop(void *data)
 {
 	struct rimps_log *log = data;
@@ -109,6 +114,7 @@ static int rimps_log_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct rimps_log *log;
 	unsigned int i;
+	int ret;
 
 	log = devm_kzalloc(dev, sizeof(*log), GFP_KERNEL);
 	if (!log)
@@ -124,10 +130,13 @@ static int rimps_log_probe(struct platform_device *pdev)
 			return -EINVAL;
 	}
 	for (i = 0; i < ARRAY_SIZE(log->queue); i++) {
-		log->queue[i].data = devm_kvmalloc(dev, max(log->bank_size[0], log->bank_size[1]),
-						  GFP_KERNEL);
+		log->queue[i].data = kvmalloc(max(log->bank_size[0], log->bank_size[1]),
+					     GFP_KERNEL);
 		if (!log->queue[i].data)
 			return -ENOMEM;
+		ret = devm_add_action_or_reset(dev, rimps_free_packet, log->queue[i].data);
+		if (ret)
+			return ret;
 	}
 	spin_lock_init(&log->lock);
 	INIT_WORK(&log->work, rimps_process);
