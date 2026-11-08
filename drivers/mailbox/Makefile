@@ -83,3 +83,4 @@ obj-$(CONFIG_BCM74110_MAILBOX)	+= bcm74110-mailbox.o
 
 obj-$(CONFIG_RISCV_SBI_MPXY_MBOX)	+= riscv-sbi-mpxy-mbox.o
 obj-$(CONFIG_QCOM_KALAMA_QMP) += msm_qmp.o
+obj-$(CONFIG_QCOM_RIMPS_MBOX) += qcom_rimps.o
