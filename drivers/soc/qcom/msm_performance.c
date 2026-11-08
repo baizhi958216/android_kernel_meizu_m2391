@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Graphics frame events consumed by the Qualcomm performance HAL. */
 #include <linux/circ_buf.h>
+#include <linux/cpu.h>
 #include <linux/cpufreq.h>
+#include <linux/cpuhotplug.h>
+#include <linux/math64.h>
+#include <linux/sched/topology.h>
+#include <soc/qcom/pmu_lib.h>
 #include <linux/meizu_thermal_boost.h>
 #include <linux/slab.h>
 #include <linux/scmi_plh.h>
@@ -291,19 +296,91 @@ static struct kobj_attribute cpu_min_freq_attr = __ATTR_RW(cpu_min_freq);
 static struct kobj_attribute cpu_max_freq_attr = __ATTR_RW(cpu_max_freq);
 #endif
 
+static int hotplug_state;
+static DEFINE_MUTEX(instruction_lock);
+struct pmu_counts {
+	u64 instructions;
+	u64 cycles;
+};
+static DEFINE_PER_CPU(struct pmu_counts, previous);
+
+static int monitor_hotplug(unsigned int cpu)
+{
+	mutex_lock(&instruction_lock);
+	per_cpu(previous, cpu) = (struct pmu_counts){};
+	mutex_unlock(&instruction_lock);
+	sysfs_notify(perf_kobj, "events", "cpu_hotplug");
+	return 0;
+}
+
+/* perfd polls this file for a change, then re-reads the online mask. */
+static ssize_t cpu_hotplug_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "\n");
+}
+static struct kobj_attribute cpu_hotplug_attr = __ATTR_RO(cpu_hotplug);
+
+#if IS_REACHABLE(CONFIG_QCOM_PMU_LIB)
+static ssize_t inst_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	struct pmu_counts *sample __free(kfree) = kcalloc(nr_cpu_ids, sizeof(*sample), GFP_KERNEL);
+	u64 inst[2] = {}, ipc[2] = {};
+	unsigned long capacity = ULONG_MAX;
+	int cpu, ret = 0;
+
+	if (!sample)
+		return -ENOMEM;
+	cpus_read_lock();
+	mutex_lock(&instruction_lock);
+	for_each_possible_cpu(cpu)
+		capacity = min(capacity, arch_scale_cpu_capacity(cpu));
+	for_each_online_cpu(cpu) {
+		ret = qcom_pmu_read(cpu, 0x08, &sample[cpu].instructions);
+		if (!ret)
+			ret = qcom_pmu_read(cpu, 0x11, &sample[cpu].cycles);
+		if (ret)
+			goto out;
+	}
+	for_each_online_cpu(cpu) {
+		struct pmu_counts *last = &per_cpu(previous, cpu), *now = &sample[cpu];
+		bool big = arch_scale_cpu_capacity(cpu) > capacity;
+		u64 ins, cyc;
+
+		ins = now->instructions >= last->instructions ? now->instructions - last->instructions : 0;
+		cyc = now->cycles >= last->cycles ? now->cycles - last->cycles : 0;
+		*last = *now;
+		inst[big] += ins;
+		if (cyc && (!big || cyc >= 650000))
+			ipc[big] = max(ipc[big], mul_u64_u64_div_u64(ins, 100, cyc));
+	}
+out:
+	mutex_unlock(&instruction_lock);
+	cpus_read_unlock();
+	if (ret)
+		return ret;
+	return sysfs_emit(buf, "%llu:%llu:%llu:%llu\n", inst[1], ipc[1], inst[0], ipc[0]);
+}
+static struct kobj_attribute inst_attr = __ATTR_RO(inst);
+#endif
+
 static struct kobj_attribute evnt_gplaf_pid_attr = __ATTR_RW(evnt_gplaf_pid);
 static struct kobj_attribute gfx_evt_attr = __ATTR_RO(gfx_evt);
 static struct attribute *parameters_attrs[] = {
 	&evnt_gplaf_pid_attr.attr,
+#if IS_REACHABLE(CONFIG_QCOM_PMU_LIB)
+	&inst_attr.attr,
+#endif
 #ifdef CONFIG_CPU_FREQ
 	&cpu_min_freq_attr.attr, &cpu_max_freq_attr.attr,
 #endif
 	NULL
 };
 static struct attribute *notify_attrs[] = { &gfx_evt_attr.attr, NULL };
+static struct attribute *events_attrs[] = { &cpu_hotplug_attr.attr, NULL };
+static const struct attribute_group hotplug = { .name = "events", .attrs = events_attrs };
 static const struct attribute_group parameters = { .name = "parameters", .attrs = parameters_attrs };
 static const struct attribute_group notify = { .name = "notify", .attrs = notify_attrs };
-static const struct attribute_group *groups[] = { &parameters, &notify, NULL };
+static const struct attribute_group *groups[] = { &parameters, &notify, &hotplug, NULL };
 
 static int __init msm_perf_init(void)
 {
@@ -319,8 +396,12 @@ static int __init msm_perf_init(void)
 		return ret;
 	}
 #endif
-	ret = sysfs_create_groups(perf_kobj, groups);
+	hotplug_state = cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN, "soc/qcom/perf:online",
+						monitor_hotplug, monitor_hotplug);
+	ret = hotplug_state < 0 ? hotplug_state : sysfs_create_groups(perf_kobj, groups);
 	if (ret) {
+		if (hotplug_state >= 0)
+			cpuhp_remove_state_nocalls(hotplug_state);
 #ifdef CONFIG_CPU_FREQ
 		cpufreq_unregister_notifier(&limits_nb, CPUFREQ_POLICY_NOTIFIER);
 #endif
@@ -333,6 +414,7 @@ static void __exit msm_perf_exit(void)
 {
 	WRITE_ONCE(stopping, true);
 	wake_up_interruptible_all(&event_wait);
+	cpuhp_remove_state_nocalls(hotplug_state);
 	sysfs_remove_groups(perf_kobj, groups);
 #ifdef CONFIG_CPU_FREQ
 	/* Serialize with REMOVE_POLICY until every request is detached. */
