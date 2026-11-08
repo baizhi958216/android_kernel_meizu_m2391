@@ -84,3 +84,10 @@ config GUNYAH_KALAMA_VM
 	help
 	  Load the firmware specified by Kalama's secure VM device tree and
 	  expose its virtio backend and vCPU scheduling ABI to the vendor VMM.
+
+config GUNYAH_KALAMA_WATCHDOG
+	tristate "Kalama Gunyah apps watchdog"
+	depends on GUNYAH_KALAMA_RM && SMP && QCOM_SCM
+	help
+	  Service the virtual applications watchdog supplied by the Kalama
+	  hypervisor, verify CPU responsiveness, and report bark interrupts.
