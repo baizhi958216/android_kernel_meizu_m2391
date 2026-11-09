@@ -89,6 +89,8 @@ struct dwc3_qcom {
 
 	struct extcon_dev	*edev;
 	struct extcon_dev	*host_edev;
+	struct work_struct	eud_work;
+	struct notifier_block	eud_nb;
 	struct notifier_block	vbus_nb;
 	struct notifier_block	host_nb;
 
@@ -804,10 +806,16 @@ static void kalama_remove_core(struct dwc3_qcom *qcom)
 
 static int kalama_update_core(struct dwc3_qcom *qcom)
 {
-	enum usb_dr_mode mode = qcom->requested_role == USB_ROLE_HOST ?
-				USB_DR_MODE_HOST : USB_DR_MODE_PERIPHERAL;
+	enum usb_role role = qcom->requested_role;
+	enum usb_dr_mode mode;
 	u32 rate = qcom->rate_active;
 	int ret;
+
+	if (qcom->edev && extcon_get_state(qcom->edev, EXTCON_JIG) > 0)
+		role = extcon_get_state(qcom->edev, EXTCON_USB) > 0 ?
+			USB_ROLE_DEVICE : USB_ROLE_NONE;
+	mode = role == USB_ROLE_HOST ?
+				USB_DR_MODE_HOST : USB_DR_MODE_PERIPHERAL;
 
 	if (!qcom->data_enabled || readl(qcom->usb_access) != 0xf) {
 		kalama_remove_core(qcom);
@@ -818,7 +826,7 @@ static int kalama_update_core(struct dwc3_qcom *qcom)
 	if (qcom->dwc3 && qcom->glue.child_mode != mode)
 		kalama_remove_core(qcom);
 
-	if (qcom->requested_role == USB_ROLE_NONE)
+	if (role == USB_ROLE_NONE)
 		rate = qcom->rate_idle;
 	else if (mode == USB_DR_MODE_HOST &&
 		 (qcom->glue.usb2_only || device_property_read_bool(qcom->dev, "qcom,select-utmi-as-pipe-clk")))
@@ -827,12 +835,36 @@ static int kalama_update_core(struct dwc3_qcom *qcom)
 	if (ret)
 		return ret;
 
-	dwc3_qcom_vbus_override_enable(qcom, qcom->requested_role == USB_ROLE_DEVICE);
+	dwc3_qcom_vbus_override_enable(qcom, role == USB_ROLE_DEVICE);
 	if (qcom->dwc3)
 		return 0;
 
 	qcom->glue.child_mode = mode;
 	return dwc3_qcom_of_register_core(to_platform_device(qcom->dev));
+}
+
+static void kalama_update_eud(struct work_struct *work)
+{
+	struct dwc3_qcom *qcom = container_of(work, struct dwc3_qcom, eud_work);
+	int ret;
+
+	ret = pm_runtime_resume_and_get(qcom->dev);
+	if (ret < 0)
+		return;
+	mutex_lock(&qcom->role_lock);
+	ret = kalama_update_core(qcom);
+	mutex_unlock(&qcom->role_lock);
+	pm_runtime_put(qcom->dev);
+	if (ret && ret != -EACCES)
+		dev_warn_ratelimited(qcom->dev, "EUD cable update failed: %d\n", ret);
+}
+
+static int kalama_eud_event(struct notifier_block *nb, unsigned long event, void *unused)
+{
+	struct dwc3_qcom *qcom = container_of(nb, struct dwc3_qcom, eud_nb);
+
+	schedule_work(&qcom->eud_work);
+	return NOTIFY_OK;
 }
 
 static void kalama_mux_put(void *data)
@@ -1165,6 +1197,13 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 			.driver_data = qcom,
 		};
 
+		if (IS_ENABLED(CONFIG_USB_KALAMA_EUD) && of_property_present(np, "extcon")) {
+			qcom->edev = extcon_get_edev_by_phandle(dev, 0);
+			if (IS_ERR(qcom->edev)) {
+				ret = dev_err_probe(dev, PTR_ERR(qcom->edev), "EUD cable provider\n");
+				goto clk_disable;
+			}
+		}
 		qcom->data_enabled = readl(qcom->usb_access) == 0xf;
 		ret = kalama_update_core(qcom);
 		if (ret)
@@ -1180,6 +1219,19 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 			pm_runtime_disable(dev);
 			kalama_remove_core(qcom);
 			goto clk_disable;
+		}
+		if (qcom->edev) {
+			INIT_WORK(&qcom->eud_work, kalama_update_eud);
+			qcom->eud_nb.notifier_call = kalama_eud_event;
+			ret = extcon_register_notifier(qcom->edev, EXTCON_USB, &qcom->eud_nb);
+			if (ret) {
+				usb_role_switch_unregister(qcom->role_sw);
+				pm_runtime_allow(dev);
+				pm_runtime_disable(dev);
+				kalama_remove_core(qcom);
+				goto clk_disable;
+			}
+			schedule_work(&qcom->eud_work);
 		}
 		device_init_wakeup(dev, true);
 		return 0;
@@ -1242,6 +1294,10 @@ static void dwc3_qcom_remove(struct platform_device *pdev)
 	int i;
 
 	if (qcom->kalama) {
+		if (qcom->edev) {
+			extcon_unregister_notifier(qcom->edev, EXTCON_USB, &qcom->eud_nb);
+			cancel_work_sync(&qcom->eud_work);
+		}
 		usb_role_switch_unregister(qcom->role_sw);
 		kalama_remove_core(qcom);
 		device_init_wakeup(dev, false);
