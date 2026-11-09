@@ -25,7 +25,8 @@ struct level {
 struct domain_header {
 	__le16 levels, current_index;
 	__le32 ext_offset;
-	__le64 last_change;
+	/* Firmware aligns domain headers to words, including the timestamp. */
+	__le32 last_change_low, last_change_high;
 	struct level table[];
 };
 
