@@ -124,7 +124,9 @@ static int dummy_probe(struct platform_device *pdev)
 	if (!drvdata)
 		return -ENOMEM;
 
-	if (of_device_is_compatible(node, "arm,coresight-dummy-source")) {
+	if (of_device_is_compatible(node, "arm,coresight-dummy-source") ||
+	    (of_device_is_compatible(node, "qcom,coresight-dummy") &&
+	     of_property_read_bool(node, "qcom,dummy-source"))) {
 
 		desc.name = coresight_alloc_device_name(&source_devs, dev);
 		if (!desc.name)
@@ -154,7 +156,9 @@ static int dummy_probe(struct platform_device *pdev)
 		}
 		drvdata->traceid = (u8)trace_id;
 
-	} else if (of_device_is_compatible(node, "arm,coresight-dummy-sink")) {
+	} else if (of_device_is_compatible(node, "arm,coresight-dummy-sink") ||
+		   (of_device_is_compatible(node, "qcom,coresight-dummy") &&
+		    of_property_read_bool(node, "qcom,dummy-sink"))) {
 		desc.name = coresight_alloc_device_name(&sink_devs, dev);
 		if (!desc.name)
 			return -ENOMEM;
@@ -213,6 +217,7 @@ static void dummy_remove(struct platform_device *pdev)
 static const struct of_device_id dummy_match[] = {
 	{.compatible = "arm,coresight-dummy-source"},
 	{.compatible = "arm,coresight-dummy-sink"},
+	{.compatible = "qcom,coresight-dummy"},
 	{},
 };
 

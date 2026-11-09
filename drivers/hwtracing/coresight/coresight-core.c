@@ -1536,6 +1536,12 @@ char *coresight_alloc_device_name(struct coresight_dev_list *dict,
 	char *name = NULL;
 	struct fwnode_handle **list;
 
+	const char *board_name;
+
+	/* Downstream firmware exposes these stable names to the Android trace HAL. */
+	if (!device_property_read_string(dev, "coresight-name", &board_name))
+		return devm_kstrdup(dev, board_name, GFP_KERNEL);
+
 	mutex_lock(&coresight_mutex);
 
 	idx = coresight_search_device_idx(dict, dev_fwnode(dev));
