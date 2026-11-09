@@ -3853,6 +3853,8 @@ struct smartswap_segment {
 	struct list_head io_entries;
 	struct smartswap_entry *io_entries_fifo[BIO_MAX_VECS];
 	struct work_struct endio_work;
+	struct work_struct submit_work;
+	struct bio *backing_bio;
 	struct smartswap_io_req *req;
 	struct smartswap_segment_time time;
 	u32 bio_result;
@@ -3862,6 +3864,7 @@ static u8 smartswap_io_key[SMARTSWAP_KEY_SIZE];
 #ifdef CONFIG_SCSI_UFS_ENHANCED_INLINE_CRYPTO_V3
 static u8 smartswap_io_metadata[METADATA_BYTE_IN_KDF];
 #endif
+static struct workqueue_struct *smartswap_submit_wq;
 static struct workqueue_struct *smartswap_proc_read_workqueue;
 static struct workqueue_struct *smartswap_proc_write_workqueue;
 bool smartswap_schedule_init_flag;
@@ -4218,6 +4221,15 @@ static void smartswap_set_bio_opf(struct bio *bio,
 	bio->bi_opf |= REQ_SYNC;
 }
 
+static void smartswap_submit_nested_bio(struct work_struct *work)
+{
+	struct smartswap_segment *segment = container_of(work, struct smartswap_segment,
+							submit_work);
+
+	/* Completion owns the segment after submission. */
+	submit_bio(segment->backing_bio);
+}
+
 static int smartswap_submit_bio(struct smartswap_segment *segment)
 {
 	unsigned int op =
@@ -4266,7 +4278,16 @@ static int smartswap_submit_bio(struct smartswap_segment *segment)
 	segment->time.submit_bio = ktime_get();
 
 	perf_latency_begin(record, STAGE_SUBMIT_BIO);
-	submit_bio(bio);
+	/* A synchronous zram swap fault runs in ->submit_bio(). A nested bio
+	 * on the same task would be deferred until this fault returned.
+	 */
+	if (current->bio_list) {
+		segment->backing_bio = bio;
+		INIT_WORK(&segment->submit_work, smartswap_submit_nested_bio);
+		queue_work(smartswap_submit_wq, &segment->submit_work);
+	} else {
+		submit_bio(bio);
+	}
 	perf_latency_end(record, STAGE_SUBMIT_BIO);
 
 	return 0;
@@ -4426,18 +4447,24 @@ int smartswap_schedule_init(void)
 		return 0;
 
 	smartswap_proc_read_workqueue = alloc_workqueue("proc_smartswap_read",
-							 WQ_HIGHPRI | WQ_UNBOUND, 0);
+							 WQ_HIGHPRI | WQ_UNBOUND | WQ_MEM_RECLAIM, 0);
 	if (unlikely(!smartswap_proc_read_workqueue))
 		return -EFAULT;
 
 	smartswap_proc_write_workqueue = alloc_workqueue("proc_smartswap_write",
-							  WQ_CPU_INTENSIVE, 0);
+							  WQ_CPU_INTENSIVE | WQ_MEM_RECLAIM, 0);
 	if (unlikely(!smartswap_proc_write_workqueue)) {
 		destroy_workqueue(smartswap_proc_read_workqueue);
 
 		return -EFAULT;
 	}
 
+	smartswap_submit_wq = alloc_workqueue("smartswap_submit", WQ_UNBOUND | WQ_MEM_RECLAIM, 0);
+	if (!smartswap_submit_wq) {
+		destroy_workqueue(smartswap_proc_write_workqueue);
+		destroy_workqueue(smartswap_proc_read_workqueue);
+		return -ENOMEM;
+	}
 	smartswap_key_init();
 
 	smartswap_schedule_init_flag = true;
@@ -5600,6 +5627,7 @@ void smartswap_schedule_deinit(void)
 {
 	if (!smartswap_schedule_init_flag)
 		return;
+	destroy_workqueue(smartswap_submit_wq);
 	destroy_workqueue(smartswap_proc_read_workqueue);
 	destroy_workqueue(smartswap_proc_write_workqueue);
 	smartswap_proc_read_workqueue = NULL;
