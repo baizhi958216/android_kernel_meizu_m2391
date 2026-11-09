@@ -263,6 +263,7 @@ int slim_register_controller(struct slim_controller *ctrl)
 
 	ida_init(&ctrl->laddr_ida);
 	idr_init(&ctrl->tid_idr);
+	ctrl->stopping = false;
 	mutex_init(&ctrl->lock);
 	mutex_init(&ctrl->sched.m_reconf);
 	init_completion(&ctrl->sched.pause_comp);
@@ -297,8 +298,10 @@ static int slim_ctrl_remove_device(struct device *dev, void *null)
  */
 int slim_unregister_controller(struct slim_controller *ctrl)
 {
-	/* Remove all clients */
+	/* Wake pending readers before unbinding their drivers. */
+	slim_abort_replies(ctrl);
 	device_for_each_child(ctrl->dev, NULL, slim_ctrl_remove_device);
+	ida_destroy(&ctrl->laddr_ida);
 	ida_free(&ctrl_ida, ctrl->id);
 
 	return 0;

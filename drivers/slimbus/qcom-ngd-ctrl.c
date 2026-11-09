@@ -846,7 +846,7 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 	struct slim_val_inf converted_msg;
 	DECLARE_COMPLETION_ONSTACK(tx_sent);
 	DECLARE_COMPLETION_ONSTACK(done);
-	int ret, i;
+	int ret, i, reply_status = 0;
 	unsigned long time_left;
 	u8 wbuf[SLIM_MSGQ_BUF_LEN];
 	u8 rbuf[SLIM_MSGQ_BUF_LEN];
@@ -902,7 +902,7 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 
 		txn->comp = &done;
 		txn->msg->rbuf = rbuf;
-		ret = slim_alloc_txn_tid(sctrl, txn, sizeof(rbuf));
+		ret = slim_alloc_txn_tid(sctrl, txn, sizeof(rbuf), &reply_status);
 		if (ret) {
 			dev_err(ctrl->dev, "Unable to allocate TID\n");
 			return ret;
@@ -975,9 +975,10 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 		goto cancel_txn;
 	}
 
-	if (usr_msg && !wait_for_completion_timeout(&done, HZ)) {
-		ret = -ETIMEDOUT;
-		goto cancel_txn;
+	if (usr_msg) {
+		ret = wait_for_completion_timeout(&done, HZ) ? reply_status : -ETIMEDOUT;
+		if (ret)
+			goto cancel_txn;
 	}
 	mutex_unlock(&ctrl->tx_lock);
 	return 0;
@@ -994,18 +995,18 @@ static int qcom_slim_ngd_xfer_msg_sync(struct slim_controller *ctrl,
 				      u8 reply_size)
 {
 	DECLARE_COMPLETION_ONSTACK(done);
-	int ret;
+	int ret, reply_status = 0;
 
 	ret = pm_runtime_resume_and_get(ctrl->dev);
 	if (ret < 0)
 		return ret;
 	txn->comp = &done;
-	ret = slim_alloc_txn_tid(ctrl, txn, reply_size);
+	ret = slim_alloc_txn_tid(ctrl, txn, reply_size, &reply_status);
 	if (!ret) {
 		*wire_tid = txn->tid;
 		ret = qcom_slim_ngd_xfer_msg(ctrl, txn);
-		if (!ret && !wait_for_completion_timeout(&done, HZ))
-			ret = -ETIMEDOUT;
+		if (!ret)
+			ret = wait_for_completion_timeout(&done, HZ) ? reply_status : -ETIMEDOUT;
 		if (ret)
 			slim_free_txn_tid(ctrl, txn);
 	}

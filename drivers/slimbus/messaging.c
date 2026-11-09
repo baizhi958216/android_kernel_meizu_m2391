@@ -14,6 +14,7 @@
 struct slim_pending_reply {
 	const struct slim_msg_txn *owner;
 	struct completion *done;
+	int *status;
 	u8 *buffer;
 	u8 capacity;
 };
@@ -64,11 +65,12 @@ EXPORT_SYMBOL_GPL(slim_msg_response);
  * @ctrl: Controller handle
  * @txn: transaction to be allocated with tid.
  * @capacity: size of the reply buffer in bytes.
+ * @status: optional synchronous completion error, live until cancel or reply.
  *
  * Return: zero on success with valid txn->tid and error code on failures.
  */
 int slim_alloc_txn_tid(struct slim_controller *ctrl, struct slim_msg_txn *txn,
-		       u8 capacity)
+		       u8 capacity, int *status)
 {
 	struct slim_pending_reply *reply;
 	unsigned long flags;
@@ -83,10 +85,12 @@ int slim_alloc_txn_tid(struct slim_controller *ctrl, struct slim_msg_txn *txn,
 	reply->buffer = txn->msg->rbuf;
 	reply->done = txn->comp;
 	reply->capacity = capacity;
+	reply->status = status;
 
 	pm_runtime_get_noresume(ctrl->dev);
 	spin_lock_irqsave(&ctrl->txn_lock, flags);
-	tid = idr_alloc_cyclic(&ctrl->tid_idr, reply, 1, SLIM_MAX_TIDS, GFP_ATOMIC);
+	tid = ctrl->stopping ? -ESHUTDOWN :
+		idr_alloc_cyclic(&ctrl->tid_idr, reply, 1, SLIM_MAX_TIDS, GFP_ATOMIC);
 	if (tid >= 0)
 		txn->tid = tid;
 	spin_unlock_irqrestore(&ctrl->txn_lock, flags);
@@ -123,6 +127,28 @@ void slim_free_txn_tid(struct slim_controller *ctrl, struct slim_msg_txn *txn)
 }
 EXPORT_SYMBOL_GPL(slim_free_txn_tid);
 
+void slim_abort_replies(struct slim_controller *ctrl)
+{
+	struct slim_pending_reply *reply;
+	unsigned long flags;
+	int id = 0, votes = 0;
+
+	spin_lock_irqsave(&ctrl->txn_lock, flags);
+	ctrl->stopping = true;
+	while ((reply = idr_get_next(&ctrl->tid_idr, &id))) {
+		idr_remove(&ctrl->tid_idr, id);
+		if (reply->status)
+			*reply->status = -ESHUTDOWN;
+		complete(reply->done);
+		kfree(reply);
+		votes++;
+	}
+	idr_destroy(&ctrl->tid_idr);
+	spin_unlock_irqrestore(&ctrl->txn_lock, flags);
+	while (votes--)
+		slim_put_pm(ctrl);
+}
+
 /**
  * slim_do_transfer() - Process a SLIMbus-messaging transaction
  *
@@ -140,7 +166,7 @@ int slim_do_transfer(struct slim_controller *ctrl, struct slim_msg_txn *txn)
 {
 	DECLARE_COMPLETION_ONSTACK(done);
 	bool need_tid = false, clk_pause_msg = false;
-	int ret;
+	int ret, reply_status = 0;
 	unsigned long time_left;
 
 	/*
@@ -166,7 +192,8 @@ int slim_do_transfer(struct slim_controller *ctrl, struct slim_msg_txn *txn)
 	need_tid = slim_tid_txn(txn->mt, txn->mc);
 	if (need_tid) {
 		txn->comp = txn->msg->comp ?: &done;
-		ret = slim_alloc_txn_tid(ctrl, txn, txn->msg->num_bytes);
+		ret = slim_alloc_txn_tid(ctrl, txn, txn->msg->num_bytes,
+					 txn->msg->comp ? NULL : &reply_status);
 		if (ret)
 			goto slim_xfer_err;
 	}
@@ -176,8 +203,7 @@ int slim_do_transfer(struct slim_controller *ctrl, struct slim_msg_txn *txn)
 		unsigned long ms = txn->rl + HZ;
 
 		time_left = wait_for_completion_timeout(&done, msecs_to_jiffies(ms));
-		if (!time_left)
-			ret = -ETIMEDOUT;
+		ret = time_left ? reply_status : -ETIMEDOUT;
 	}
 	if (ret && need_tid)
 		slim_free_txn_tid(ctrl, txn);

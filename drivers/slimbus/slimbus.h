@@ -410,6 +410,7 @@ struct slim_controller {
 	struct list_head	devices;
 	struct idr		tid_idr;
 	spinlock_t		txn_lock;
+	bool			stopping;
 	struct slim_sched	sched;
 	int			(*xfer_msg)(struct slim_controller *ctrl,
 					    struct slim_msg_txn *tx);
@@ -430,7 +431,9 @@ int slim_unregister_controller(struct slim_controller *ctrl);
 void slim_msg_response(struct slim_controller *ctrl, u8 *reply, u8 tid, u8 l);
 int slim_do_transfer(struct slim_controller *ctrl, struct slim_msg_txn *txn);
 int slim_ctrl_clk_pause(struct slim_controller *ctrl, bool wakeup, u8 restart);
-int slim_alloc_txn_tid(struct slim_controller *ctrl, struct slim_msg_txn *txn, u8 capacity);
+int slim_alloc_txn_tid(struct slim_controller *ctrl, struct slim_msg_txn *txn,
+		       u8 capacity, int *status);
+void slim_abort_replies(struct slim_controller *ctrl);
 void slim_free_txn_tid(struct slim_controller *ctrl, struct slim_msg_txn *txn);
 
 static inline bool slim_tid_txn(u8 mt, u8 mc)
