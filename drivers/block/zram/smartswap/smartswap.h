@@ -74,7 +74,8 @@ extern ssize_t smartswap_swapd_pause_show(struct device *dev,
 static inline bool current_is_swapd(void)
 {
 #ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
-	return (strncmp(current->comm, "smartswapd:", sizeof("smartswapd:") - 1) == 0);
+	return (current->flags & PF_KTHREAD) &&
+		!strncmp(current->comm, "smartswapd:", sizeof("smartswapd:") - 1);
 #else
 	return false;
 #endif

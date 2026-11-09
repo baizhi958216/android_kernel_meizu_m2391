@@ -1584,6 +1584,23 @@ static inline u64 calc_shrink_ratio(pg_data_t *pgdat)
 	return total_can_reclaimed;
 }
 
+static unsigned long reclaim_swapd_memcg(struct mem_cgroup *memcg, unsigned long nr_pages)
+{
+	static atomic64_t scan_round = ATOMIC64_INIT(0);
+	u32 ratio = READ_ONCE(smartswap_shrink_af_ratio);
+	unsigned int options = MEMCG_RECLAIM_PROACTIVE;
+	int swappiness = 0;
+
+	/* Zero means anonymous-only. A nonzero ratio requests one file pass
+	 * after that many anonymous passes, with both legacy LRU and MGLRU.
+	 */
+	if (!ratio || (u64)atomic64_inc_return(&scan_round) % ((u64)ratio + 1)) {
+		options |= MEMCG_RECLAIM_MAY_SWAP;
+		swappiness = SWAPPINESS_ANON_ONLY;
+	}
+	return try_to_free_mem_cgroup_pages(memcg, nr_pages, GFP_KERNEL, options, &swappiness);
+}
+
 static unsigned long swapd_shrink_anon(pg_data_t *pgdat,
 		unsigned long nr_to_reclaim)
 {
@@ -1619,8 +1636,7 @@ static unsigned long swapd_shrink_anon(pg_data_t *pgdat,
 				continue;
 
 			memcg_to_reclaim = reclaim_size_per_cycle * hybs->can_reclaimed / total_can_reclaimed;
-			memcg_nr_reclaimed = try_to_free_mem_cgroup_pages(memcg,
-					memcg_to_reclaim, GFP_KERNEL, MEMCG_RECLAIM_MAY_SWAP, NULL);
+			memcg_nr_reclaimed = reclaim_swapd_memcg(memcg, memcg_to_reclaim);
 			reclaim_memcg_cnt++;
 			hybs->can_reclaimed -= min_t(unsigned long, hybs->can_reclaimed, memcg_nr_reclaimed);
 			log_info("memcg %s reclaim %lu want %lu\n", hybs->name,

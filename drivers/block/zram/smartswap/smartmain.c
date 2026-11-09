@@ -231,23 +231,11 @@ memcg_hybs_t *smartswap_cache_alloc(struct mem_cgroup *memcg, bool atomic)
 }
 
 #ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
-static atomic64_t meizu_scan_round = ATOMIC64_INIT(0);
-
 static void tune_scan_type_hook(void *data, enum scan_balance *scan_balance)
 {
-	/* Original matches the full worker prefix before checking core enable. */
-	if (!strncmp(current->comm, "smartswapd:", 11)) {
-		u32 ratio = READ_ONCE(smartswap_shrink_af_ratio);
-
-		*scan_balance = SCAN_ANON;
-		if (ratio) {
-			u64 round = (u64)atomic64_inc_return(&meizu_scan_round);
-
-			if (!(round % ((u64)ratio + 1)))
-				*scan_balance = SCAN_FILE;
-		}
+	/* The worker supplies an explicit native reclaim policy per pass. */
+	if (current_is_swapd())
 		return;
-	}
 #ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
 	if (smartswap_core_enabled()) {
 		struct zram *zram;
@@ -398,7 +386,7 @@ static void tune_swappiness_hook(void *unused, int *swappiness)
 {
 	if (!smartswap_core_enabled() || (current->flags & PF_KSWAPD))
 		return;
-	*swappiness = !strncmp(current->comm, "smartswapd", 10) ? 200 : 0;
+	*swappiness = current_is_swapd() ? MAX_SWAPPINESS : 0;
 }
 
 #ifdef CONFIG_ZRAM_MEIZU_SMARTSWAP
