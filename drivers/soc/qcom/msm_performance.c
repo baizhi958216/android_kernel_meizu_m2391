@@ -6,6 +6,7 @@
 #include <linux/cpuhotplug.h>
 #include <linux/math64.h>
 #include <linux/sched/topology.h>
+#include <linux/sched/walt.h>
 #include <soc/qcom/pmu_lib.h>
 #include <linux/meizu_thermal_boost.h>
 #include <linux/slab.h>
@@ -296,6 +297,119 @@ static struct kobj_attribute cpu_min_freq_attr = __ATTR_RW(cpu_min_freq);
 static struct kobj_attribute cpu_max_freq_attr = __ATTR_RW(cpu_max_freq);
 #endif
 
+#if IS_REACHABLE(CONFIG_SCHED_WALT)
+/* The QGPE ABI reports little, middle and prime cluster data over 25 windows. */
+#define PERF_CLUSTERS 3
+#define PERF_WINDOWS 25
+struct perf_load {
+	u32 big, top, util[PERF_CLUSTERS], cap[PERF_CLUSTERS];
+};
+static struct perf_load load_sum, published;
+static unsigned int windows;
+static bool listening;
+static DEFINE_SPINLOCK(load_lock);
+static DEFINE_MUTEX(listen_lock);
+
+static void notify_load(struct work_struct *work)
+{
+	sysfs_notify(perf_kobj, "notify", "aggr_big_nr");
+	sysfs_notify(perf_kobj, "notify", "aggr_top_load");
+	sysfs_notify(perf_kobj, "notify", "top_load_cluster");
+	sysfs_notify(perf_kobj, "notify", "curr_cap_cluster");
+}
+static DECLARE_WORK(notify_load_work, notify_load);
+
+static int sample_load(struct notifier_block *nb, unsigned long event, void *data)
+{
+	const struct core_ctl_notif_data *sample = data;
+	unsigned long flags;
+
+	spin_lock_irqsave(&load_lock, flags);
+	load_sum.big += sample->nr_big;
+	load_sum.top += sample->coloc_load_pct;
+	for (int i = 0; i < PERF_CLUSTERS; i++) {
+		load_sum.util[i] += sample->ta_util_pct[i];
+		load_sum.cap[i] += sample->cur_cap_pct[i];
+	}
+	if (++windows == PERF_WINDOWS) {
+		published.big = DIV_ROUND_UP(load_sum.big, PERF_WINDOWS);
+		published.top = load_sum.top / PERF_WINDOWS;
+		for (int i = 0; i < PERF_CLUSTERS; i++) {
+			published.util[i] = load_sum.util[i] / PERF_WINDOWS;
+			published.cap[i] = load_sum.cap[i] / PERF_WINDOWS;
+		}
+		windows = 0;
+		load_sum = (struct perf_load){};
+		schedule_work(&notify_load_work);
+	}
+	spin_unlock_irqrestore(&load_lock, flags);
+	return NOTIFY_OK;
+}
+static struct notifier_block load_notifier = { .notifier_call = sample_load };
+
+static void set_listening(bool enable)
+{
+	unsigned long flags;
+
+	guard(mutex)(&listen_lock);
+	if (enable == listening)
+		return;
+	if (enable) {
+		core_ctl_notifier_register(&load_notifier);
+	} else {
+		core_ctl_notifier_unregister(&load_notifier);
+		cancel_work_sync(&notify_load_work);
+		spin_lock_irqsave(&load_lock, flags);
+		windows = 0;
+		load_sum = (struct perf_load){};
+		spin_unlock_irqrestore(&load_lock, flags);
+	}
+	WRITE_ONCE(listening, enable);
+}
+
+static ssize_t core_ctl_register_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%c\n", READ_ONCE(listening) ? 'Y' : 'N');
+}
+
+static ssize_t core_ctl_register_store(struct kobject *kobj, struct kobj_attribute *attr,
+				       const char *buf, size_t count)
+{
+	bool enable;
+	int ret = kstrtobool(buf, &enable);
+
+	if (ret)
+		return ret;
+	set_listening(enable);
+	return count;
+}
+
+static struct kobj_attribute core_ctl_register_attr = __ATTR_RW(core_ctl_register);
+
+static ssize_t load_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static struct kobj_attribute big_nr_attr = __ATTR(aggr_big_nr, 0444, load_show, NULL);
+static struct kobj_attribute top_load_attr = __ATTR(aggr_top_load, 0444, load_show, NULL);
+static struct kobj_attribute cluster_load_attr = __ATTR(top_load_cluster, 0444, load_show, NULL);
+static struct kobj_attribute cluster_cap_attr = __ATTR(curr_cap_cluster, 0444, load_show, NULL);
+
+static ssize_t load_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	struct perf_load snapshot;
+	const u32 *v;
+	unsigned long flags;
+
+	spin_lock_irqsave(&load_lock, flags);
+	snapshot = published;
+	spin_unlock_irqrestore(&load_lock, flags);
+	if (attr == &big_nr_attr)
+		return sysfs_emit(buf, "%u\n", snapshot.big);
+	if (attr == &top_load_attr)
+		return sysfs_emit(buf, "%u\n", snapshot.top);
+	v = attr == &cluster_load_attr ? snapshot.util : snapshot.cap;
+	return sysfs_emit(buf, "%u %u %u\n", v[0], v[1], v[2]);
+}
+#endif
+
 static int hotplug_state;
 static DEFINE_MUTEX(instruction_lock);
 struct pmu_counts {
@@ -367,6 +481,9 @@ static struct kobj_attribute evnt_gplaf_pid_attr = __ATTR_RW(evnt_gplaf_pid);
 static struct kobj_attribute gfx_evt_attr = __ATTR_RO(gfx_evt);
 static struct attribute *parameters_attrs[] = {
 	&evnt_gplaf_pid_attr.attr,
+#if IS_REACHABLE(CONFIG_SCHED_WALT)
+	&core_ctl_register_attr.attr,
+#endif
 #if IS_REACHABLE(CONFIG_QCOM_PMU_LIB)
 	&inst_attr.attr,
 #endif
@@ -375,7 +492,13 @@ static struct attribute *parameters_attrs[] = {
 #endif
 	NULL
 };
-static struct attribute *notify_attrs[] = { &gfx_evt_attr.attr, NULL };
+static struct attribute *notify_attrs[] = {
+	&gfx_evt_attr.attr,
+#if IS_REACHABLE(CONFIG_SCHED_WALT)
+	&big_nr_attr.attr, &top_load_attr.attr, &cluster_load_attr.attr, &cluster_cap_attr.attr,
+#endif
+	NULL,
+};
 static struct attribute *events_attrs[] = { &cpu_hotplug_attr.attr, NULL };
 static const struct attribute_group hotplug = { .name = "events", .attrs = events_attrs };
 static const struct attribute_group parameters = { .name = "parameters", .attrs = parameters_attrs };
@@ -402,6 +525,9 @@ static int __init msm_perf_init(void)
 	if (ret) {
 		if (hotplug_state >= 0)
 			cpuhp_remove_state_nocalls(hotplug_state);
+#if IS_REACHABLE(CONFIG_SCHED_WALT)
+		set_listening(false);
+#endif
 #ifdef CONFIG_CPU_FREQ
 		cpufreq_unregister_notifier(&limits_nb, CPUFREQ_POLICY_NOTIFIER);
 #endif
@@ -416,6 +542,9 @@ static void __exit msm_perf_exit(void)
 	wake_up_interruptible_all(&event_wait);
 	cpuhp_remove_state_nocalls(hotplug_state);
 	sysfs_remove_groups(perf_kobj, groups);
+#if IS_REACHABLE(CONFIG_SCHED_WALT)
+	set_listening(false);
+#endif
 #ifdef CONFIG_CPU_FREQ
 	/* Serialize with REMOVE_POLICY until every request is detached. */
 	mutex_lock(&limits_lock);
