@@ -66,5 +66,7 @@ obj-$(CONFIG_QCOM_GLINK_PKT) += glink_pkt.o
 obj-$(CONFIG_MSM_BOOT_STATS) += boot_stats.o
 obj-$(CONFIG_QCOM_KALAMA_CDSPRM) += cdsprm.o
 obj-$(CONFIG_QCOM_SYSMON_SUBSYSTEM_STATS) += sysmon_subsystem_stats.o
+obj-$(CONFIG_QCOM_APSS_MINIDUMP) += minidump.o
+minidump-y := apss_minidump.o
 obj-$(CONFIG_QCOM_RIMPS_LOG) += rimps_log.o
 obj-$(CONFIG_QCOM_ADSP_SLEEPMON) += adsp_sleepmon.o

@@ -4,6 +4,13 @@
 #
 menu "Qualcomm SoC drivers"
 
+config QCOM_APSS_MINIDUMP
+	tristate "Qualcomm APSS firmware crash regions"
+	depends on ARM64 && OF && QCOM_SMEM
+	help
+	  Publish explicitly registered kernel diagnostic buffers to the
+	  bootloader's APSS minidump table in Qualcomm shared memory.
+
 config QCOM_SYSMON_SUBSYSTEM_STATS
 	tristate "Qualcomm DSP firmware statistics"
 	depends on ARM64 && QCOM_SMEM
