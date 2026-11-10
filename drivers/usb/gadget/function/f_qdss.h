@@ -66,7 +66,8 @@ struct f_qdss {
 	struct workqueue_struct *wq;
 
 	struct mutex mutex;
-	bool opened;	/* protected by 'mutex' */
+	bool opened;
+	bool closing;	/* protected by 'mutex' */
 	struct completion dequeue_done;
 };
 

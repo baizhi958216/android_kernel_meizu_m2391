@@ -14,6 +14,9 @@
 #include <linux/usb/dwc3-msm.h>
 
 #include "f_qdss.h"
+#include <linux/srcu.h>
+
+DEFINE_STATIC_SRCU(qdss_notifications);
 
 static void *_qdss_ipc_log;
 
@@ -233,6 +236,18 @@ struct usb_qdss_opts *to_fi_usb_qdss_opts(struct usb_function_instance *fi)
 
 /*----------------------------------------------------------------------*/
 
+static void qdss_notify_cable(struct f_qdss *qdss, enum qdss_state event)
+{
+	typeof(qdss->ch.notify) notify;
+	int idx = srcu_read_lock(&qdss_notifications);
+
+	notify = smp_load_acquire(&qdss->ch.notify);
+	if (notify)
+		notify(qdss->ch.priv, event, NULL,
+		       event == USB_QDSS_CONNECT ? &qdss->ch : NULL);
+	srcu_read_unlock(&qdss_notifications, idx);
+}
+
 static void qdss_write_complete(struct usb_ep *ep,
 	struct usb_request *req)
 {
@@ -240,15 +255,17 @@ static void qdss_write_complete(struct usb_ep *ep,
 	struct qdss_req *qreq = req->context;
 	struct qdss_request *d_req = qreq->qdss_req;
 	struct usb_ep *in;
-	enum qdss_state state;
+	typeof(qdss->ch.notify) notify;
+	int idx;
 	unsigned long flags;
 
 	in = qdss->port.data;
-	state = USB_QDSS_DATA_WRITE_DONE;
+	idx = srcu_read_lock(&qdss_notifications);
 
 	qdss_log("channel:%s ep:%s req:%pK req->status:%d req->length:%d\n",
 		qdss->ch.name, ep->name, req, req->status, req->length);
 	spin_lock_irqsave(&qdss->lock, flags);
+	notify = smp_load_acquire(&qdss->ch.notify);
 	list_move_tail(&qreq->list, &qdss->data_write_pool);
 
 	/*
@@ -267,8 +284,9 @@ static void qdss_write_complete(struct usb_ep *ep,
 	}
 	spin_unlock_irqrestore(&qdss->lock, flags);
 
-	if (qdss->ch.notify)
-		qdss->ch.notify(qdss->ch.priv, state, d_req, NULL);
+	if (notify)
+		notify(qdss->ch.priv, USB_QDSS_DATA_WRITE_DONE, d_req, NULL);
+	srcu_read_unlock(&qdss_notifications, idx);
 }
 
 static void qdss_free_reqs(struct f_qdss *qdss)
@@ -337,6 +355,10 @@ int usb_qdss_alloc_req(struct usb_qdss_ch *ch, int no_write_buf)
 
 	mutex_lock(&qdss->mutex);
 
+	if (!qdss->opened || !qdss->usb_connected || !qdss->port.data) {
+		mutex_unlock(&qdss->mutex);
+		return -ENODEV;
+	}
 	in = qdss->port.data;
 	list_pool = &qdss->data_write_pool;
 
@@ -549,11 +571,7 @@ static void usb_qdss_disconnect_work(struct work_struct *work)
 	qdss_log("channel:%s\n", qdss->ch.name);
 
 	/* Notify qdss to cancel all active transfers */
-	if (qdss->ch.notify)
-		qdss->ch.notify(qdss->ch.priv,
-			USB_QDSS_DISCONNECT,
-			NULL,
-			NULL);
+	qdss_notify_cable(qdss, USB_QDSS_DISCONNECT);
 
 	mutex_lock(&qdss->mutex);
 
@@ -601,9 +619,7 @@ static void usb_qdss_connect_work(struct work_struct *work)
 		goto unlock_out;
 
 	mutex_unlock(&qdss->mutex);
-	if (qdss->ch.notify)
-		qdss->ch.notify(qdss->ch.priv, USB_QDSS_CONNECT,
-						NULL, &qdss->ch);
+	qdss_notify_cable(qdss, USB_QDSS_CONNECT);
 	return;
 
 unlock_out:
@@ -868,14 +884,14 @@ retry:
 	}
 
 	mutex_lock(&qdss->mutex);
-	if (qdss->opened) {
+	if (qdss->opened || qdss->closing) {
 		mutex_unlock(&qdss->mutex);
 		kref_put(&qdss->ref, qdss_release);
 		return NULL;
 	}
 	qdss_log("qdss ctx found for channel:%s\n", name);
 	ch->priv = priv;
-	ch->notify = notify;
+	smp_store_release(&ch->notify, notify);
 	qdss->opened = true;
 	reinit_completion(&qdss->dequeue_done);
 
@@ -921,6 +937,7 @@ void usb_qdss_close(struct usb_qdss_ch *ch)
 
 	spin_lock_irqsave(&qdss->lock, flags);
 	qdss->opened = false;
+	qdss->closing = true;
 	/*
 	 * Some UDCs like DWC3 stop the endpoint transfer upon dequeue
 	 * of a request and retire all the previously *started* requests.
@@ -960,7 +977,12 @@ void usb_qdss_close(struct usb_qdss_ch *ch)
 	WARN_ON(!list_empty(&qdss->dequeued_data_pool));
 
 	qdss_free_reqs(qdss);
-	ch->notify = NULL;
+	smp_store_release(&ch->notify, NULL);
+	mutex_unlock(&qdss->mutex);
+	synchronize_srcu(&qdss_notifications);
+	mutex_lock(&qdss->mutex);
+	ch->priv = NULL;
+	qdss->closing = false;
 	mutex_unlock(&qdss->mutex);
 	kref_put(&qdss->ref, qdss_release);
 }
