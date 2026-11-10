@@ -11,6 +11,7 @@
 
 #include <trace/hooks/vendor_hooks.h>
 
+struct zone;
 struct shmem_inode_info;
 struct folio;
 struct folio_batch;
@@ -20,6 +21,10 @@ struct compact_control;
 struct cma;
 struct task_struct;
 
+DECLARE_HOOK(android_vh_extfrag_for_order,
+	TP_PROTO(struct zone *zone, unsigned int order, unsigned long *free_pages,
+		 unsigned long *suitable_blocks),
+	TP_ARGS(zone, order, free_pages, suitable_blocks));
 DECLARE_RESTRICTED_HOOK(android_rvh_shmem_get_folio,
 			TP_PROTO(struct shmem_inode_info *info, struct folio **folio, int order),
 			TP_ARGS(info, folio, order), 3);
