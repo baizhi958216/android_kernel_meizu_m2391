@@ -378,7 +378,8 @@ struct coresight_ops_sink {
 	unsigned long (*update_buffer)(struct coresight_device *csdev,
 			      struct perf_output_handle *handle,
 			      void *sink_config);
-	ANDROID_KABI_RESERVE(1);
+	ANDROID_KABI_USE(1, void (*filter_path)(struct coresight_device *sink,
+			struct coresight_device *source, u8 trace_id, bool enable));
 };
 
 /**

@@ -830,6 +830,9 @@ static int __tmc_probe(struct device *dev, struct resource *res)
 		dev_list = &etb_devs;
 		break;
 	case TMC_CONFIG_TYPE_ETR:
+		ret = tmc_kalama_csr_probe(dev, drvdata);
+		if (ret)
+			goto out;
 		desc.groups = coresight_etr_groups;
 		desc.type = CORESIGHT_DEV_TYPE_SINK;
 		desc.subtype.sink_subtype = CORESIGHT_DEV_SUBTYPE_SINK_SYSMEM;

@@ -245,6 +245,8 @@ struct tmc_resrv_buf {
  *		 Used by ETR/ETF.
  */
 struct tmc_drvdata {
+	struct kalama_trace_csr	*csr;
+	struct tmc_usb_stream	*usb;
 	struct clk		*atclk;
 	struct clk		*pclk;
 	void __iomem		*base;
@@ -317,6 +319,10 @@ struct tmc_sg_table {
 };
 
 /* Generic functions */
+int tmc_kalama_csr_probe(struct device *dev, struct tmc_drvdata *drvdata);
+void tmc_kalama_byte_count(struct tmc_drvdata *drvdata, u32 bytes);
+void tmc_kalama_filter_path(struct coresight_device *sink, struct coresight_device *source,
+			    u8 trace_id, bool enable);
 int tmc_wait_for_tmcready(struct tmc_drvdata *drvdata);
 void tmc_flush_and_stop(struct tmc_drvdata *drvdata);
 void tmc_enable_hw(struct tmc_drvdata *drvdata);

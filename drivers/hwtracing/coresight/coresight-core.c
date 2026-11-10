@@ -447,6 +447,9 @@ static void coresight_disable_path_from(struct coresight_path *path,
 
 		switch (type) {
 		case CORESIGHT_DEV_TYPE_SINK:
+			if (sink_ops(csdev)->filter_path)
+				sink_ops(csdev)->filter_path(csdev, coresight_get_source(path),
+							    path->trace_id, false);
 			coresight_disable_sink(csdev);
 			break;
 		case CORESIGHT_DEV_TYPE_SOURCE:
@@ -539,6 +542,8 @@ int coresight_enable_path(struct coresight_path *path, enum cs_mode mode,
 				coresight_disable_helpers(csdev, path);
 				goto out;
 			}
+			if (sink_ops(csdev)->filter_path)
+				sink_ops(csdev)->filter_path(csdev, source, path->trace_id, true);
 			break;
 		case CORESIGHT_DEV_TYPE_SOURCE:
 			/* sources are enabled from either sysFS or Perf */
