@@ -12,6 +12,8 @@
 #include <linux/panic_notifier.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/soc/qcom/apss_minidump.h>
+#include <linux/timekeeping.h>
 #include <linux/suspend.h>
 #include "kalama-watchdog.h"
 #include "mz_enhance_qcom_wdog.h"
@@ -20,6 +22,16 @@
 #define KALAMA_PET_MS	15360
 #define KALAMA_BARK_MS	23000
 #define KALAMA_BITE_MS	(KALAMA_BARK_MS + 3000)
+
+/* The bootloader copies just this pointer-free record on an APSS dump. */
+struct kalama_wdt_dump {
+	u32 version, size;
+	u32 pet_ms, bark_ms, bite_ms, irq;
+	u64 ping_started_ns, last_pet_ns, bark_ns;
+	u64 expected_cpus, acknowledged_cpus;
+	s32 last_pet_ret;
+	u32 bark_elapsed_ms;
+};
 
 struct kalama_wdt {
 	struct device *dev;
@@ -34,15 +46,27 @@ struct kalama_wdt {
 	bool armed, suspended, wakeup, pm_stopped, disabled;
 	int idle[NR_CPUS];
 	cpumask_t alive;
+	struct kalama_wdt_dump dump;
 };
 
 static int kalama_wdt_start(struct kalama_wdt *wdt);
+
+static int kalama_wdt_heartbeat(struct kalama_wdt *wdt)
+{
+	int ret = wdt->ops->pet();
+
+	WRITE_ONCE(wdt->dump.last_pet_ret, ret);
+	if (!ret)
+		WRITE_ONCE(wdt->dump.last_pet_ns, ktime_get_boottime_ns());
+	return ret;
+}
 
 static void kalama_wdt_ack(void *data)
 {
 	struct kalama_wdt *wdt = data;
 
 	cpumask_set_cpu(smp_processor_id(), &wdt->alive);
+	WRITE_ONCE(wdt->dump.acknowledged_cpus, cpumask_bits(&wdt->alive)[0]);
 }
 
 static void kalama_wdt_pet(struct kthread_work *work)
@@ -66,6 +90,9 @@ static void kalama_wdt_pet(struct kthread_work *work)
 	cpus_read_lock();
 	mz_get_cpu_ping_mask(&ping, wdt->idle);
 	cpumask_clear(&wdt->alive);
+	WRITE_ONCE(wdt->dump.acknowledged_cpus, 0);
+	WRITE_ONCE(wdt->dump.expected_cpus, cpumask_bits(&ping)[0]);
+	WRITE_ONCE(wdt->dump.ping_started_ns, ktime_get_boottime_ns());
 	for_each_cpu(cpu, &ping) {
 		ret = smp_call_function_single(cpu, kalama_wdt_ack, wdt, true);
 		if (ret)
@@ -74,7 +101,7 @@ static void kalama_wdt_pet(struct kthread_work *work)
 	cpus_read_unlock();
 
 	if (!ret)
-		ret = wdt->ops->pet();
+		ret = kalama_wdt_heartbeat(wdt);
 	requeue:
 	if (ret)
 		dev_err_ratelimited(wdt->dev, "heartbeat failed: %d\n", ret);
@@ -104,9 +131,12 @@ static irqreturn_t kalama_wdt_bark(int irq, void *data)
 	bool enabled;
 	u32 elapsed;
 
-	if (!wdt->ops->status(&enabled, &elapsed))
+	WRITE_ONCE(wdt->dump.bark_ns, ktime_get_boottime_ns());
+	if (!wdt->ops->status(&enabled, &elapsed)) {
+		WRITE_ONCE(wdt->dump.bark_elapsed_ms, elapsed);
 		dev_emerg(wdt->dev, "watchdog bark, enabled %d, elapsed %u ms\n",
 			  enabled, elapsed);
+	}
 	dev_emerg(wdt->dev, "last CPU acknowledgments %*pbl\n", cpumask_pr_args(&wdt->alive));
 	mz_dump_wdog_cpu(wdt->worker->task);
 	panic("Kalama Gunyah apps watchdog bark");
@@ -181,7 +211,7 @@ static int kalama_wdt_die(struct notifier_block *nb, unsigned long event, void *
 
 	if (READ_ONCE(wdt->armed)) {
 		wdt->ops->set_time(15000, 15000);
-		wdt->ops->pet();
+		kalama_wdt_heartbeat(wdt);
 	}
 	return NOTIFY_DONE;
 }
@@ -199,7 +229,7 @@ static int kalama_wdt_panic(struct notifier_block *nb, unsigned long event, void
 		/* 0xffff tells Gunyah to leave an individual timeout unchanged. */
 		timeout = min_t(u32, max(panic_timeout, 0), 55) * 1000 + 10000;
 		wdt->ops->set_time(timeout, timeout);
-		wdt->ops->pet();
+		kalama_wdt_heartbeat(wdt);
 	}
 	return NOTIFY_DONE;
 }
@@ -256,7 +286,7 @@ static int kalama_wdt_start(struct kalama_wdt *wdt)
 			return ret;
 	}
 	WRITE_ONCE(wdt->armed, true);
-	ret = wdt->ops->pet();
+	ret = kalama_wdt_heartbeat(wdt);
 	if (ret && !wdt->ops->enable(false))
 		WRITE_ONCE(wdt->armed, false);
 	return ret;
@@ -355,7 +385,7 @@ static int kalama_wdt_pause(struct device *dev, bool freeze)
 
 	mutex_lock(&wdt->lock);
 	if (wdt->armed) {
-		ret = wdt->ops->pet();
+		ret = kalama_wdt_heartbeat(wdt);
 		if (!ret && (!wdt->wakeup || freeze)) {
 			ret = wdt->ops->enable(false);
 			if (!ret) {
@@ -393,7 +423,7 @@ static int kalama_wdt_resume(struct device *dev)
 		if (!ret)
 			wdt->pm_stopped = false;
 	} else if (wdt->armed) {
-		ret = wdt->ops->pet();
+		ret = kalama_wdt_heartbeat(wdt);
 	}
 	wdt->suspended = false;
 	if (wdt->armed || wdt->pm_stopped)
@@ -435,6 +465,16 @@ int kalama_wdt_register(struct platform_device *pdev, const struct kalama_wdt_op
 	wdt->irq = platform_get_irq(pdev, 0);
 	if (wdt->irq < 0)
 		return wdt->irq;
+	wdt->dump.version = 1;
+	wdt->dump.size = sizeof(wdt->dump);
+	wdt->dump.pet_ms = KALAMA_PET_MS;
+	wdt->dump.bark_ms = KALAMA_BARK_MS;
+	wdt->dump.bite_ms = KALAMA_BITE_MS;
+	wdt->dump.irq = wdt->irq;
+	wdt->dump.bark_elapsed_ms = U32_MAX;
+	ret = qcom_devm_minidump_add(dev, "KWDOGDATA", &wdt->dump, sizeof(wdt->dump));
+	if (ret)
+		dev_warn(dev, "watchdog crash data unavailable: %d\n", ret);
 	mutex_init(&wdt->lock);
 	platform_set_drvdata(pdev, wdt);
 	wdt->worker = kthread_run_worker(0, "gh-watchdog");
