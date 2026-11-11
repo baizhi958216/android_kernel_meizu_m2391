@@ -59,6 +59,10 @@ config CORESIGHT_CATU
 	   To compile this driver as a module, choose M here: the
 	   module will be called coresight-catu.
 
+config CORESIGHT_REMOTE_ETM
+	tristate "Qualcomm remote ETM QMI trace sources"
+	depends on QCOM_QMI_HELPERS && NET && OF
+
 config CORESIGHT_KALAMA_USB
 	bool "Stream Qualcomm ETR trace over the QDSS USB gadget"
 	depends on CORESIGHT_LINK_AND_SINK_TMC && USB_F_QDSS
