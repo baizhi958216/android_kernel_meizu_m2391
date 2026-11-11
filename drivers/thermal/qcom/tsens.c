@@ -21,6 +21,7 @@
 #include <linux/thermal.h>
 #include "../thermal_hwmon.h"
 #include "tsens.h"
+#include "thermal_minidump.h"
 
 /**
  * struct tsens_irq_data - IRQ status and temperature violations
@@ -1080,8 +1081,13 @@ static int tsens_get_temp(struct thermal_zone_device *tz, int *temp)
 {
 	struct tsens_sensor *s = thermal_zone_device_priv(tz);
 	struct tsens_priv *priv = s->priv;
+	int ret;
 
-	return priv->ops->get_temp(s, temp);
+	ret = priv->ops->get_temp(s, temp);
+
+	if (!ret)
+		thermal_minidump_sample(priv->minidump, thermal_zone_device_type(tz), *temp);
+	return ret;
 }
 
 static int  __maybe_unused tsens_suspend(struct device *dev)
@@ -1359,6 +1365,8 @@ static int tsens_probe(struct platform_device *pdev)
 					     __func__);
 	}
 
+	if (np && of_machine_is_compatible("qcom,kalama"))
+		priv->minidump = devm_thermal_minidump_register(dev, np->name);
 	ret = tsens_register(priv);
 	if (!ret)
 		tsens_debug_init(pdev);

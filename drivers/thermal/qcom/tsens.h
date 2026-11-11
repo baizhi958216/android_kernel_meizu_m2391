@@ -552,6 +552,7 @@ struct tsens_context {
 
 /**
  * struct tsens_priv - private data for each instance of the tsens IP
+ * @minidump: thermal crash sample history
  * @dev: pointer to struct device
  * @num_sensors: number of sensors enabled on this device
  * @tm_map: pointer to TM register address space
@@ -570,6 +571,7 @@ struct tsens_context {
  * @sensor: list of sensors attached to this device
  */
 struct tsens_priv {
+	struct thermal_minidump *minidump;
 	struct device			*dev;
 	u32				num_sensors;
 	struct regmap			*tm_map;

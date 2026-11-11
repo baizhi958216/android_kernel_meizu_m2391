@@ -20,6 +20,7 @@
 #include <linux/unaligned.h>
 
 #include "../thermal_hwmon.h"
+#include "thermal_minidump.h"
 
 #define ADC_TM5_GEN3_CONFIG_REGS 12
 
@@ -51,12 +52,14 @@ struct adc_tm5_gen3_channel_props {
 
 /**
  * struct adc_tm5_gen3_chip - ADC Thermal Monitoring device structure
+ * @minidump: ADC thermal crash sample history.
  * @dev_data: Top-level ADC device data.
  * @chan_props: Array of ADC_TM channel structures.
  * @dev: SPMI ADC5 Gen3 device.
  * @nchannels: number of TM channels allocated
  */
 struct adc_tm5_gen3_chip {
+	struct thermal_minidump *minidump;
 	struct adc5_device_data *dev_data;
 	struct adc_tm5_gen3_channel_props *chan_props;
 	struct device *dev;
@@ -156,13 +159,17 @@ static int adc_tm5_gen3_get_temp(struct thermal_zone_device *tz, int *temp)
 {
 	struct adc_tm5_gen3_channel_props *prop = thermal_zone_device_priv(tz);
 	struct adc_tm5_gen3_chip *adc_tm5;
+	int ret;
 
 	if (!prop || !prop->chip)
 		return -EINVAL;
 
 	adc_tm5 = prop->chip;
 
-	return adc5_gen3_get_scaled_reading(adc_tm5->dev, &prop->common_props, temp);
+	ret = adc5_gen3_get_scaled_reading(adc_tm5->dev, &prop->common_props, temp);
+	if (!ret)
+		thermal_minidump_sample(adc_tm5->minidump, thermal_zone_device_type(tz), *temp);
+	return ret;
 }
 
 static int adc_tm5_gen3_disable_channel(struct adc_tm5_gen3_channel_props *prop)
@@ -409,6 +416,8 @@ static int adc_tm5_probe(struct auxiliary_device *aux_dev,
 	if (ret)
 		return ret;
 
+	if (of_machine_is_compatible("qcom,kalama"))
+		adc_tm5->minidump = devm_thermal_minidump_register(dev, "adc5_gen3");
 	ret = adc_tm5_register_tzd(adc_tm5);
 	if (ret)
 		return ret;

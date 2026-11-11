@@ -1,4 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
+config QTI_THERMAL_MINIDUMP
+	tristate "Qualcomm thermal crash history"
+	depends on QCOM_APSS_MINIDUMP
+
 config QCOM_TSENS
 	tristate "Qualcomm TSENS Temperature Alarm"
 	depends on NVMEM_QCOM_QFPROM
