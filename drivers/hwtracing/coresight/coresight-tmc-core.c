@@ -888,6 +888,13 @@ static int __tmc_probe(struct device *dev, struct resource *res)
 		goto out;
 	}
 
+	ret = tmc_qdss_init(drvdata);
+	if (ret) {
+		misc_deregister(&drvdata->miscdev);
+		coresight_unregister(drvdata->csdev);
+		goto out;
+	}
+
 out:
 	if (is_tmc_crashdata_valid(drvdata) &&
 	    !tmc_prepare_crashdata(drvdata))
@@ -937,6 +944,7 @@ static void __tmc_remove(struct device *dev)
 	 * etb fops in this case, device is there until last file
 	 * handler to this device is closed.
 	 */
+	tmc_qdss_remove(drvdata);
 	misc_deregister(&drvdata->miscdev);
 	if (drvdata->crashdev.fops)
 		misc_deregister(&drvdata->crashdev);

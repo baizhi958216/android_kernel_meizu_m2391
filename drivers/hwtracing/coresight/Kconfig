@@ -59,6 +59,12 @@ config CORESIGHT_CATU
 	   To compile this driver as a module, choose M here: the
 	   module will be called coresight-catu.
 
+config CORESIGHT_KALAMA_USB
+	bool "Stream Qualcomm ETR trace over the QDSS USB gadget"
+	depends on CORESIGHT_LINK_AND_SINK_TMC && USB_F_QDSS
+	depends on USB_F_QDSS=y || CORESIGHT_LINK_AND_SINK_TMC=m
+	depends on OF
+
 config CORESIGHT_SINK_TPIU
 	tristate "Coresight generic TPIU driver"
 	depends on CORESIGHT_LINKS_AND_SINKS

@@ -319,6 +319,19 @@ struct tmc_sg_table {
 };
 
 /* Generic functions */
+#ifdef CONFIG_CORESIGHT_KALAMA_USB
+int tmc_qdss_init(struct tmc_drvdata *drvdata);
+void tmc_qdss_remove(struct tmc_drvdata *drvdata);
+void tmc_qdss_start(struct tmc_drvdata *drvdata);
+void tmc_qdss_stop(struct tmc_drvdata *drvdata);
+long tmc_etr_live_offset(struct tmc_drvdata *drvdata);
+ssize_t tmc_etr_buf_get_data(struct etr_buf *etr_buf, u64 offset, size_t len, char **bufpp);
+#else
+static inline int tmc_qdss_init(struct tmc_drvdata *drvdata) { return 0; }
+static inline void tmc_qdss_remove(struct tmc_drvdata *drvdata) { }
+static inline void tmc_qdss_start(struct tmc_drvdata *drvdata) { }
+static inline void tmc_qdss_stop(struct tmc_drvdata *drvdata) { }
+#endif
 int tmc_kalama_csr_probe(struct device *dev, struct tmc_drvdata *drvdata);
 void tmc_kalama_byte_count(struct tmc_drvdata *drvdata, u32 bytes);
 void tmc_kalama_filter_path(struct coresight_device *sink, struct coresight_device *source,

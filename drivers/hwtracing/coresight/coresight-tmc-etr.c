@@ -998,7 +998,26 @@ static void tmc_free_etr_buf(struct etr_buf *etr_buf)
  * Returns: The size of the linear data available @pos, with *bufpp
  * updated to point to the buffer.
  */
-static ssize_t tmc_etr_buf_get_data(struct etr_buf *etr_buf,
+#ifdef CONFIG_CORESIGHT_KALAMA_USB
+long tmc_etr_live_offset(struct tmc_drvdata *drvdata)
+{
+	struct etr_buf *buf = drvdata->etr_buf;
+	u64 addr = tmc_read_rwp(drvdata);
+
+	if (buf->mode == ETR_MODE_ETR_SG) {
+		struct etr_sg_table *table = buf->private;
+
+		return tmc_sg_get_data_page_offset(table->sg_table, addr);
+	}
+	if ((buf->mode == ETR_MODE_FLAT || buf->mode == ETR_MODE_RESRV) &&
+	    addr >= buf->hwaddr && addr - buf->hwaddr <= buf->size)
+		return (addr - buf->hwaddr) % buf->size;
+	return -EINVAL;
+}
+#else
+static
+#endif
+ssize_t tmc_etr_buf_get_data(struct etr_buf *etr_buf,
 				    u64 offset, size_t len, char **bufpp)
 {
 	/* Adjust the length to limit this transaction to end of buffer */
@@ -1210,6 +1229,7 @@ static void tmc_etr_sync_sysfs_buf(struct tmc_drvdata *drvdata)
 
 static void __tmc_etr_disable_hw(struct tmc_drvdata *drvdata)
 {
+	tmc_qdss_stop(drvdata);
 	CS_UNLOCK(drvdata->base);
 
 	tmc_flush_and_stop(drvdata);
@@ -1332,6 +1352,7 @@ static int tmc_enable_etr_sink_sysfs(struct coresight_device *csdev)
 	ret = tmc_etr_enable_hw(drvdata, sysfs_buf);
 	if (!ret) {
 		coresight_set_mode(csdev, CS_MODE_SYSFS);
+		tmc_qdss_start(drvdata);
 		csdev->refcnt++;
 	}
 
@@ -1986,6 +2007,7 @@ int tmc_read_unprepare_etr(struct tmc_drvdata *drvdata)
 		 * be NULL.
 		 */
 		__tmc_etr_enable_hw(drvdata);
+		tmc_qdss_start(drvdata);
 	} else {
 		/*
 		 * The ETR is not tracing and the buffer was just read.
