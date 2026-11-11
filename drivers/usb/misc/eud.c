@@ -11,6 +11,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/power_supply.h>
+#include <linux/pm_wakeirq.h>
 #include <linux/serial_core.h>
 #include <linux/tty_flip.h>
 
@@ -124,7 +125,14 @@ static void eud_set_termios(struct uart_port *port, struct ktermios *new,
 			    const struct ktermios *old) { }
 static const char *eud_uart_type(struct uart_port *port) { return "EUD UART"; }
 
+static void eud_config_port(struct uart_port *port, int flags)
+{
+	if (flags & UART_CONFIG_TYPE)
+		port->type = PORT_MSM_EUD;
+}
+
 static const struct uart_ops eud_uart_ops = {
+	.config_port = eud_config_port,
 	.tx_empty = eud_tx_empty, .start_tx = eud_tx_start, .stop_tx = eud_tx_stop,
 	.stop_rx = eud_rx_stop, .startup = eud_uart_startup, .shutdown = eud_uart_shutdown,
 	.set_mctrl = eud_set_mctrl, .get_mctrl = eud_get_mctrl,
@@ -284,8 +292,13 @@ static int msm_eud_probe(struct platform_device *pdev)
 		return -EINVAL;
 	eud->mode_mgr = res->start;
 	ret = qcom_scm_io_readl(eud->mode_mgr, &secure_state);
-	if (ret)
-		return dev_err_probe(dev, ret, "firmware EUD state unavailable\n");
+	if (ret) {
+		/* The DWC3 cable provider remains available on retail firmware.
+		 * A later enable still requires a successful SCM command.
+		 */
+		dev_dbg(dev, "firmware EUD state unavailable: %d\n", ret);
+		secure_state = 0;
+	}
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "eud_base");
 	if (!res || resource_size(res) < EUD_ATTACH + sizeof(u32))
 		return -EINVAL;
@@ -317,6 +330,12 @@ static int msm_eud_probe(struct platform_device *pdev)
 					dev_name(dev), eud);
 	if (ret)
 		return ret;
+	ret = devm_device_init_wakeup(dev);
+	if (ret)
+		return ret;
+	ret = dev_pm_set_wake_irq(dev, eud->irq);
+	if (ret)
+		return ret;
 	platform_set_drvdata(pdev, eud);
 	guard(mutex)(&eud_lock);
 	if (secure_state & BIT(0)) {
@@ -333,6 +352,7 @@ static void msm_eud_remove(struct platform_device *pdev)
 
 	guard(mutex)(&eud_lock);
 	eud_device = NULL;
+	dev_pm_clear_wake_irq(&pdev->dev);
 	writel(0, eud->base + EUD_IRQ_ENABLE);
 	eud_cable_state(eud, false);
 }
