@@ -45,7 +45,7 @@ struct minidump_subsystem {
 	__le32	encryption_status;
 	__le32	encryption_required;
 	__le32	region_count;
-	__le64	regions_baseptr;
+	__le64	regions_baseptr __aligned(8);
 };
 
 /**
