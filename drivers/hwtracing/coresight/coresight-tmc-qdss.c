@@ -3,6 +3,10 @@
 #include <linux/coresight.h>
 #include <linux/dma-map-ops.h>
 #include <linux/interrupt.h>
+#include <linux/kref.h>
+#include <linux/miscdevice.h>
+#include <linux/poll.h>
+#include <linux/uaccess.h>
 #include <linux/of_irq.h>
 #include <linux/usb/usb_qdss.h>
 #include <linux/workqueue.h>
@@ -15,6 +19,13 @@
 struct tmc_usb_stream {
 	struct tmc_drvdata *tmc;
 	struct mutex mode_lock;
+	struct kref ref;
+	struct miscdevice bytes;
+	wait_queue_head_t wait;
+	atomic64_t generation;
+	struct etr_buf *final_buf;
+	u64 final_pos;
+	bool reader, removed, usb_capable;
 	struct usb_qdss_ch *channel;
 	struct delayed_work pump;
 	atomic64_t interrupts;
@@ -34,7 +45,10 @@ static irqreturn_t tmc_qdss_irq(int irq, void *data)
 
 	if (READ_ONCE(usb->running)) {
 		atomic64_inc(&usb->interrupts);
-		mod_delayed_work(system_wq, &usb->pump, 0);
+		atomic64_inc(&usb->generation);
+		wake_up_interruptible(&usb->wait);
+		if (READ_ONCE(usb->online))
+			mod_delayed_work(system_wq, &usb->pump, 0);
 	}
 	return IRQ_HANDLED;
 }
@@ -45,47 +59,34 @@ void tmc_qdss_start(struct tmc_drvdata *tmc)
 	struct tmc_usb_stream *usb = tmc->usb;
 	long offset;
 
-	if (!usb || !usb->selected || !tmc->etr_buf || usb->running)
+	if (!usb || (!usb->selected && !usb->reader) || !tmc->etr_buf || usb->running)
 		return;
 	offset = tmc_etr_live_offset(tmc);
 	if (offset < 0)
 		return;
+	usb->final_buf = NULL;
 	usb->origin = offset;
 	usb->consumed = 0;
-	usb->step = round_down(min_t(u32, usb->block, tmc->etr_buf->size / 4), 8);
+	usb->step = round_down(min_t(u32, usb->block ?: QDSS_DEFAULT_BLOCK, tmc->etr_buf->size / 4), 8);
 	if (!usb->step)
 		return;
 	atomic64_set(&usb->interrupts, 0);
 	WRITE_ONCE(usb->running, true);
 	tmc_kalama_byte_count(tmc, usb->step);
-	mod_delayed_work(system_wq, &usb->pump, 0);
+	if (usb->online)
+		mod_delayed_work(system_wq, &usb->pump, 0);
 }
 
-void tmc_qdss_stop(struct tmc_drvdata *tmc)
-{
-	if (tmc->usb && tmc->usb->running) {
-		tmc_kalama_byte_count(tmc, 0);
-		WRITE_ONCE(tmc->usb->running, false);
-	}
-}
-
-static ssize_t tmc_qdss_copy(struct tmc_usb_stream *usb, char *dst, u64 *next)
+static s64 tmc_qdss_produced(struct tmc_usb_stream *usb)
 {
 	struct tmc_drvdata *tmc = usb->tmc;
 	struct etr_buf *buf = tmc->etr_buf;
-	u64 ticks, produced, read;
-	unsigned long size, pos;
-	char *src;
-	ssize_t n;
-	long rwp;
+	u64 ticks, produced;
+	unsigned long pos, size = buf->size;
+	long rwp = tmc_etr_live_offset(tmc);
 
-	if (!usb->running || !usb->online || !buf)
-		return 0;
-	rwp = tmc_etr_live_offset(tmc);
 	if (rwp < 0)
 		return rwp;
-	size = buf->size;
-	/* Choose the write-pointer epoch closest to the CSR byte count. */
 	ticks = atomic64_read(&usb->interrupts) * usb->step;
 	pos = (rwp + size - usb->origin) % size;
 	produced = ticks - ticks % size + pos;
@@ -93,16 +94,58 @@ static ssize_t tmc_qdss_copy(struct tmc_usb_stream *usb, char *dst, u64 *next)
 		produced += size;
 	else if (produced >= size && produced > ticks + size / 2)
 		produced -= size;
+	return produced;
+}
+
+void tmc_qdss_stop(struct tmc_drvdata *tmc)
+{
+	struct tmc_usb_stream *usb = tmc->usb;
+	s64 produced;
+
+	if (!usb || !usb->running)
+		return;
+	tmc_kalama_byte_count(tmc, 0);
+	WRITE_ONCE(usb->running, false);
+	if (usb->reader && tmc->etr_buf) {
+		produced = tmc_qdss_produced(usb);
+		if (produced >= 0) {
+			usb->final_buf = tmc->etr_buf;
+			usb->final_pos = produced;
+		}
+	}
+	atomic64_inc(&usb->generation);
+	wake_up_interruptible(&usb->wait);
+}
+
+static ssize_t tmc_qdss_copy(struct tmc_usb_stream *usb, char *dst, size_t limit, u64 *next)
+{
+	struct tmc_drvdata *tmc = usb->tmc;
+	struct etr_buf *buf;
+	unsigned long size;
+	u64 read;
+	s64 produced;
+	char *src;
+	ssize_t n;
+
+	if (usb->running && tmc->etr_buf) {
+		buf = tmc->etr_buf;
+		produced = tmc_qdss_produced(usb);
+		if (produced < 0)
+			return produced;
+	} else if (usb->reader && usb->final_buf && tmc->sysfs_buf == usb->final_buf) {
+		buf = tmc->sysfs_buf;
+		produced = usb->final_pos;
+	} else {
+		return 0;
+	}
+	size = buf->size;
 	read = usb->consumed;
 	if (produced <= read)
 		return 0;
-	/* If the writer lapped USB, discard overwritten bytes and retain a
-	 * block of separation from the DMA engine during the CPU copy.
-	 */
 	if (produced - read > size - usb->step)
 		read = produced - (size - usb->step);
 	n = tmc_etr_buf_get_data(buf, (usb->origin + read) % size,
-				 min_t(u64, QDSS_PACKET, produced - read), &src);
+				 min_t(u64, limit, produced - read), &src);
 	if (n > 0) {
 		dma_rmb();
 		memcpy(dst, src, n);
@@ -131,7 +174,7 @@ static void tmc_qdss_pump(struct work_struct *work)
 		if (!packet)
 			break;
 		raw_spin_lock_irqsave(&tmc->spinlock, flags);
-		n = tmc_qdss_copy(usb, packet->data, &next);
+		n = tmc_qdss_copy(usb, packet->data, QDSS_PACKET, &next);
 		previous = usb->consumed;
 		if (n > 0)
 			usb->consumed = next;
@@ -217,11 +260,14 @@ static ssize_t out_mode_store(struct device *dev, struct device_attribute *attr,
 
 	guard(mutex)(&usb->mode_lock);
 	if (sysfs_streq(buf, "mem")) {
-		tmc_qdss_close(usb);
+		if (usb->selected)
+			tmc_qdss_close(usb);
 		return count;
 	}
-	if (!sysfs_streq(buf, "usb"))
+	if (!usb->usb_capable || !sysfs_streq(buf, "usb"))
 		return -EINVAL;
+	if (usb->reader)
+		return -EBUSY;
 	if (usb->selected)
 		return count;
 	channel = usb_qdss_open(USB_QDSS_CH_SW, usb, tmc_qdss_notify);
@@ -259,7 +305,7 @@ static ssize_t block_size_store(struct device *dev, struct device_attribute *att
 	if (tmc->usb->running)
 		ret = -EBUSY;
 	else
-		tmc->usb->block = size ?: QDSS_DEFAULT_BLOCK;
+		tmc->usb->block = size;
 	raw_spin_unlock_irqrestore(&tmc->spinlock, flags);
 	return ret ? ret : count;
 }
@@ -270,38 +316,184 @@ static struct attribute *tmc_qdss_attrs[] = {
 };
 ATTRIBUTE_GROUPS(tmc_qdss);
 
+static void tmc_bytes_free(struct kref *ref)
+{
+	kfree(container_of(ref, struct tmc_usb_stream, ref));
+}
+
+static void tmc_bytes_put(void *data)
+{
+	struct tmc_usb_stream *usb = data;
+
+	kref_put(&usb->ref, tmc_bytes_free);
+}
+
+static int tmc_bytes_open(struct inode *inode, struct file *file)
+{
+	struct tmc_usb_stream *usb = container_of(file->private_data, struct tmc_usb_stream, bytes);
+	struct tmc_drvdata *tmc;
+	unsigned long flags;
+	int ret = 0;
+
+	guard(mutex)(&usb->mode_lock);
+	if (usb->removed)
+		return -ENODEV;
+	if (usb->selected || usb->reader)
+		return -EBUSY;
+	tmc = usb->tmc;
+	raw_spin_lock_irqsave(&tmc->spinlock, flags);
+	if (coresight_get_mode(tmc->csdev) != CS_MODE_SYSFS || tmc->reading || !usb->block) {
+		ret = -EINVAL;
+	} else {
+		usb->reader = true;
+		tmc_qdss_start(tmc);
+		if (!usb->running) {
+			usb->reader = false;
+			ret = -EIO;
+		}
+	}
+	raw_spin_unlock_irqrestore(&tmc->spinlock, flags);
+	if (ret)
+		return ret;
+	kref_get(&usb->ref);
+	file->private_data = usb;
+	return nonseekable_open(inode, file);
+}
+
+static ssize_t tmc_bytes_read(struct file *file, char __user *dst, size_t count, loff_t *pos)
+{
+	struct tmc_usb_stream *usb = file->private_data;
+	struct tmc_drvdata *tmc;
+	unsigned long flags;
+	u64 next = 0, generation;
+	size_t limit = min_t(size_t, count, QDSS_PACKET);
+	char *buffer;
+	ssize_t ret;
+
+	if (!count)
+		return 0;
+	buffer = kmalloc(limit, GFP_KERNEL);
+	if (!buffer)
+		return -ENOMEM;
+	for (;;) {
+		ret = mutex_lock_interruptible(&usb->mode_lock);
+		if (ret)
+			break;
+		tmc = usb->tmc;
+		if (usb->removed) {
+			ret = -ENODEV;
+			goto unlock;
+		}
+		raw_spin_lock_irqsave(&tmc->spinlock, flags);
+		generation = atomic64_read(&usb->generation);
+		ret = tmc_qdss_copy(usb, buffer, limit, &next);
+		raw_spin_unlock_irqrestore(&tmc->spinlock, flags);
+		if (ret > 0) {
+			if (copy_to_user(dst, buffer, ret)) {
+				ret = -EFAULT;
+			} else {
+				raw_spin_lock_irqsave(&tmc->spinlock, flags);
+				usb->consumed = next;
+				raw_spin_unlock_irqrestore(&tmc->spinlock, flags);
+			}
+			goto unlock;
+		}
+		if (ret || !READ_ONCE(usb->running))
+			goto unlock;
+		if (file->f_flags & O_NONBLOCK) {
+			ret = -EAGAIN;
+			goto unlock;
+		}
+		mutex_unlock(&usb->mode_lock);
+		ret = wait_event_interruptible(usb->wait, READ_ONCE(usb->removed) ||
+					       atomic64_read(&usb->generation) != generation);
+		if (ret)
+			break;
+		continue;
+unlock:
+		mutex_unlock(&usb->mode_lock);
+		break;
+	}
+	kfree(buffer);
+	return ret;
+}
+
+static int tmc_bytes_release(struct inode *inode, struct file *file)
+{
+	struct tmc_usb_stream *usb = file->private_data;
+	unsigned long flags;
+
+	mutex_lock(&usb->mode_lock);
+	if (!usb->removed) {
+		raw_spin_lock_irqsave(&usb->tmc->spinlock, flags);
+		usb->reader = false;
+		tmc_qdss_stop(usb->tmc);
+		usb->final_buf = NULL;
+		raw_spin_unlock_irqrestore(&usb->tmc->spinlock, flags);
+	}
+	mutex_unlock(&usb->mode_lock);
+	tmc_bytes_put(usb);
+	return 0;
+}
+
+static const struct file_operations tmc_bytes_fops = {
+	.owner = THIS_MODULE,
+	.open = tmc_bytes_open,
+	.read = tmc_bytes_read,
+	.release = tmc_bytes_release,
+	.llseek = no_llseek,
+};
+
 int tmc_qdss_init(struct tmc_drvdata *tmc)
 {
 	struct device *dev = tmc->csdev->dev.parent;
 	struct tmc_usb_stream *usb;
 	int irq, ret;
+	const char *name;
 
-	if (!device_property_read_bool(dev, "qcom,sw-usb"))
+	if (device_property_read_string(dev, "byte-cntr-name", &name))
 		return 0;
 	if (!tmc->csr || !dev_is_dma_coherent(dev))
 		return -EINVAL;
 	irq = of_irq_get_byname(dev->of_node, "byte-cntr-irq");
 	if (irq <= 0)
 		return irq ?: -ENODEV;
-	usb = devm_kzalloc(dev, sizeof(*usb), GFP_KERNEL);
+	usb = kzalloc(sizeof(*usb), GFP_KERNEL);
 	if (!usb)
 		return -ENOMEM;
 	usb->tmc = tmc;
-	usb->block = QDSS_DEFAULT_BLOCK;
+	usb->usb_capable = device_property_read_bool(dev, "qcom,sw-usb");
+	kref_init(&usb->ref);
+	ret = devm_add_action_or_reset(dev, tmc_bytes_put, usb);
+	if (ret)
+		return ret;
+	init_waitqueue_head(&usb->wait);
 	mutex_init(&usb->mode_lock);
 	INIT_DELAYED_WORK(&usb->pump, tmc_qdss_pump);
 	tmc->usb = usb;
 	ret = devm_request_irq(dev, irq, tmc_qdss_irq, 0, dev_name(dev), usb);
 	if (ret)
 		return ret;
-	return sysfs_create_groups(&tmc->csdev->dev.kobj, tmc_qdss_groups);
+	ret = sysfs_create_groups(&tmc->csdev->dev.kobj, tmc_qdss_groups);
+	if (ret)
+		return ret;
+	usb->bytes = (struct miscdevice) {
+		.name = name, .parent = dev, .minor = MISC_DYNAMIC_MINOR, .fops = &tmc_bytes_fops,
+	};
+	ret = misc_register(&usb->bytes);
+	if (ret)
+		sysfs_remove_groups(&tmc->csdev->dev.kobj, tmc_qdss_groups);
+	return ret;
 }
 
 void tmc_qdss_remove(struct tmc_drvdata *tmc)
 {
 	if (!tmc->usb)
 		return;
+	misc_deregister(&tmc->usb->bytes);
 	sysfs_remove_groups(&tmc->csdev->dev.kobj, tmc_qdss_groups);
 	guard(mutex)(&tmc->usb->mode_lock);
+	tmc->usb->removed = true;
 	tmc_qdss_close(tmc->usb);
+	wake_up_interruptible(&tmc->usb->wait);
 }
