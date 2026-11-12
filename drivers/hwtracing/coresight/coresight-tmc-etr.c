@@ -1002,8 +1002,11 @@ static void tmc_free_etr_buf(struct etr_buf *etr_buf)
 long tmc_etr_live_offset(struct tmc_drvdata *drvdata)
 {
 	struct etr_buf *buf = drvdata->etr_buf;
-	u64 addr = tmc_read_rwp(drvdata);
+	u64 addr;
 
+	if (!buf || !buf->size)
+		return -EINVAL;
+	addr = tmc_read_rwp(drvdata);
 	if (buf->mode == ETR_MODE_ETR_SG) {
 		struct etr_sg_table *table = buf->private;
 
@@ -1229,10 +1232,10 @@ static void tmc_etr_sync_sysfs_buf(struct tmc_drvdata *drvdata)
 
 static void __tmc_etr_disable_hw(struct tmc_drvdata *drvdata)
 {
-	tmc_qdss_stop(drvdata);
 	CS_UNLOCK(drvdata->base);
 
 	tmc_flush_and_stop(drvdata);
+	tmc_qdss_stop(drvdata);
 	/*
 	 * When operating in sysFS mode the content of the buffer needs to be
 	 * read before the TMC is disabled.

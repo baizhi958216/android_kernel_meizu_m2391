@@ -30,7 +30,7 @@ struct tmc_usb_stream {
 	struct delayed_work pump;
 	atomic64_t interrupts;
 	bool online, selected, running;
-	u32 origin, step, block;
+	u32 origin, step, block, session;
 	u64 consumed;
 };
 
@@ -70,6 +70,7 @@ void tmc_qdss_start(struct tmc_drvdata *tmc)
 	usb->step = round_down(min_t(u32, usb->block ?: QDSS_DEFAULT_BLOCK, tmc->etr_buf->size / 4), 8);
 	if (!usb->step)
 		return;
+	usb->session++;
 	atomic64_set(&usb->interrupts, 0);
 	WRITE_ONCE(usb->running, true);
 	tmc_kalama_byte_count(tmc, usb->step);
@@ -166,6 +167,7 @@ static void tmc_qdss_pump(struct work_struct *work)
 		struct usb_qdss_ch *channel = READ_ONCE(usb->channel);
 		unsigned long flags;
 		u64 next = 0, previous;
+		u32 session;
 		ssize_t n;
 
 		if (!channel || !READ_ONCE(usb->online) || !READ_ONCE(usb->running))
@@ -176,6 +178,7 @@ static void tmc_qdss_pump(struct work_struct *work)
 		raw_spin_lock_irqsave(&tmc->spinlock, flags);
 		n = tmc_qdss_copy(usb, packet->data, QDSS_PACKET, &next);
 		previous = usb->consumed;
+		session = usb->session;
 		if (n > 0)
 			usb->consumed = next;
 		raw_spin_unlock_irqrestore(&tmc->spinlock, flags);
@@ -186,7 +189,7 @@ static void tmc_qdss_pump(struct work_struct *work)
 		packet->req = (struct qdss_request) { .buf = packet->data, .length = n };
 		if (usb_qdss_write(channel, &packet->req)) {
 			raw_spin_lock_irqsave(&tmc->spinlock, flags);
-			if (usb->consumed == next)
+			if (usb->session == session && usb->consumed == next)
 				usb->consumed = previous;
 			raw_spin_unlock_irqrestore(&tmc->spinlock, flags);
 			kfree(packet);
@@ -366,6 +369,7 @@ static ssize_t tmc_bytes_read(struct file *file, char __user *dst, size_t count,
 	struct tmc_drvdata *tmc;
 	unsigned long flags;
 	u64 next = 0, generation;
+	u32 session;
 	size_t limit = min_t(size_t, count, QDSS_PACKET);
 	char *buffer;
 	ssize_t ret;
@@ -386,6 +390,7 @@ static ssize_t tmc_bytes_read(struct file *file, char __user *dst, size_t count,
 		}
 		raw_spin_lock_irqsave(&tmc->spinlock, flags);
 		generation = atomic64_read(&usb->generation);
+		session = usb->session;
 		ret = tmc_qdss_copy(usb, buffer, limit, &next);
 		raw_spin_unlock_irqrestore(&tmc->spinlock, flags);
 		if (ret > 0) {
@@ -393,7 +398,8 @@ static ssize_t tmc_bytes_read(struct file *file, char __user *dst, size_t count,
 				ret = -EFAULT;
 			} else {
 				raw_spin_lock_irqsave(&tmc->spinlock, flags);
-				usb->consumed = next;
+				if (usb->session == session)
+					usb->consumed = next;
 				raw_spin_unlock_irqrestore(&tmc->spinlock, flags);
 			}
 			goto unlock;
@@ -493,7 +499,7 @@ void tmc_qdss_remove(struct tmc_drvdata *tmc)
 	misc_deregister(&tmc->usb->bytes);
 	sysfs_remove_groups(&tmc->csdev->dev.kobj, tmc_qdss_groups);
 	guard(mutex)(&tmc->usb->mode_lock);
-	tmc->usb->removed = true;
+	WRITE_ONCE(tmc->usb->removed, true);
 	tmc_qdss_close(tmc->usb);
 	wake_up_interruptible(&tmc->usb->wait);
 }

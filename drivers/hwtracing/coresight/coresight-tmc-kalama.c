@@ -75,7 +75,7 @@ void tmc_kalama_filter_path(struct coresight_device *sink, struct coresight_devi
 	unsigned long flags, id;
 	int count, i;
 
-	if (!csr)
+	if (!csr || !source)
 		return;
 	words = of_get_property(source->dev.parent->of_node, "atid", &count);
 	for (i = 0; words && i < count / sizeof(*words); i++) {
