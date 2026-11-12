@@ -1623,8 +1623,8 @@ static void mvneta_set_ucast_addr(struct mvneta_port *pp, u8 last_nibble,
 }
 
 /* Set mac address */
-static void mvneta_mac_addr_set(struct mvneta_port *pp, unsigned char *addr,
-				int queue)
+static void mvneta_mac_addr_set(struct mvneta_port *pp,
+				const unsigned char *addr, int queue)
 {
 	unsigned int mac_h;
 	unsigned int mac_l;
@@ -5516,6 +5516,9 @@ static int mvneta_resume(struct device *device)
 	mvneta_start_dev(pp);
 	rtnl_unlock();
 	mvneta_set_rx_mode(dev);
+
+	if (!pp->neta_armada3700)
+		on_each_cpu(mvneta_percpu_enable, pp, true);
 
 	return 0;
 }

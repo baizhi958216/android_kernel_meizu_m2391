@@ -42,6 +42,7 @@
 #include <rdma/ib_umem.h>
 #include <rdma/ib_umem_odp.h>
 #include <rdma/ib_verbs.h>
+#include <rdma/iter.h>
 #include "dm.h"
 #include "mlx5_ib.h"
 
@@ -916,12 +917,13 @@ static struct mlx5_cache_ent *mr_cache_ent_from_order(struct mlx5_ib_dev *dev,
 }
 
 static void set_mr_fields(struct mlx5_ib_dev *dev, struct mlx5_ib_mr *mr,
-			  u64 length, int access_flags)
+			  u64 length, int access_flags, u64 iova)
 {
 	mr->ibmr.lkey = mr->mmkey.key;
 	mr->ibmr.rkey = mr->mmkey.key;
 	mr->ibmr.length = length;
 	mr->ibmr.device = &dev->ib_dev;
+	mr->ibmr.iova = iova;
 	mr->access_flags = access_flags;
 }
 
@@ -979,11 +981,10 @@ static struct mlx5_ib_mr *alloc_cacheable_mr(struct ib_pd *pd,
 
 	mr->ibmr.pd = pd;
 	mr->umem = umem;
-	mr->mmkey.iova = iova;
 	mr->mmkey.size = umem->length;
 	mr->mmkey.pd = to_mpd(pd)->pdn;
 	mr->page_shift = order_base_2(page_size);
-	set_mr_fields(dev, mr, umem->length, access_flags);
+	set_mr_fields(dev, mr, umem->length, access_flags, iova);
 
 	return mr;
 }
@@ -1093,7 +1094,7 @@ static void *mlx5_ib_create_xlt_wr(struct mlx5_ib_mr *mr,
 	wr->pd = mr->ibmr.pd;
 	wr->mkey = mr->mmkey.key;
 	wr->length = mr->mmkey.size;
-	wr->virt_addr = mr->mmkey.iova;
+	wr->virt_addr = mr->ibmr.iova;
 	wr->access_flags = mr->access_flags;
 	wr->page_shift = mr->page_shift;
 	wr->xlt_size = sg->length;
@@ -1345,7 +1346,7 @@ static struct mlx5_ib_mr *reg_create(struct ib_pd *pd, struct ib_umem *umem,
 	}
 	mr->mmkey.type = MLX5_MKEY_MR;
 	mr->umem = umem;
-	set_mr_fields(dev, mr, umem->length, access_flags);
+	set_mr_fields(dev, mr, umem->length, access_flags, iova);
 	kvfree(in);
 
 	mlx5_ib_dbg(dev, "mkey = 0x%x\n", mr->mmkey.key);
@@ -1392,7 +1393,7 @@ static struct ib_mr *mlx5_ib_get_dm_mr(struct ib_pd *pd, u64 start_addr,
 
 	kfree(in);
 
-	set_mr_fields(dev, mr, length, acc);
+	set_mr_fields(dev, mr, length, acc, start_addr);
 
 	return &mr->ibmr;
 
@@ -1687,7 +1688,8 @@ static bool can_use_umr_rereg_access(struct mlx5_ib_dev *dev,
 	unsigned int diffs = current_access_flags ^ target_access_flags;
 
 	if (diffs & ~(IB_ACCESS_LOCAL_WRITE | IB_ACCESS_REMOTE_WRITE |
-		      IB_ACCESS_REMOTE_READ | IB_ACCESS_RELAXED_ORDERING))
+		      IB_ACCESS_REMOTE_READ | IB_ACCESS_RELAXED_ORDERING |
+		      IB_ACCESS_REMOTE_ATOMIC))
 		return false;
 	return mlx5_ib_can_reconfig_with_umr(dev, current_access_flags,
 					     target_access_flags);
@@ -1768,7 +1770,7 @@ static int umr_rereg_pas(struct mlx5_ib_mr *mr, struct ib_pd *pd,
 	}
 
 	mr->ibmr.length = new_umem->length;
-	mr->mmkey.iova = iova;
+	mr->ibmr.iova = iova;
 	mr->mmkey.size = new_umem->length;
 	mr->page_shift = order_base_2(page_size);
 	mr->umem = new_umem;
@@ -1813,6 +1815,21 @@ struct ib_mr *mlx5_ib_rereg_user_mr(struct ib_mr *ib_mr, int flags, u64 start,
 	if (!(flags & IB_MR_REREG_PD))
 		new_pd = ib_mr->pd;
 
+	if (mr->is_odp_implicit && !(flags & IB_MR_REREG_TRANS)) {
+		if (!(new_access_flags & IB_ACCESS_ON_DEMAND))
+			return ERR_PTR(-EOPNOTSUPP);
+
+		/*
+		 * Due to all the child mkeys we cannot actually change an
+		 * implicit MR in place. If the user did not specify a new
+		 * translation then force the fixed implicit MR values.
+		 */
+		start = 0;
+		iova = 0;
+		length = U64_MAX;
+		flags |= IB_MR_REREG_TRANS;
+	}
+
 	if (!(flags & IB_MR_REREG_TRANS)) {
 		struct ib_umem *umem;
 
@@ -1826,7 +1843,7 @@ struct ib_mr *mlx5_ib_rereg_user_mr(struct ib_mr *ib_mr, int flags, u64 start,
 		}
 		/* DM or ODP MR's don't have a normal umem so we can't re-use it */
 		if (!mr->umem || is_odp_mr(mr) || is_dmabuf_mr(mr))
-			goto recreate;
+			return ERR_PTR(-EOPNOTSUPP);
 
 		/*
 		 * Only one active MR can refer to a umem at one time, revoke
@@ -1839,7 +1856,7 @@ struct ib_mr *mlx5_ib_rereg_user_mr(struct ib_mr *ib_mr, int flags, u64 start,
 		mr->umem = NULL;
 		atomic_sub(ib_umem_num_pages(umem), &dev->mdev->priv.reg_pages);
 
-		return create_real_mr(new_pd, umem, mr->mmkey.iova,
+		return create_real_mr(new_pd, umem, mr->ibmr.iova,
 				      new_access_flags);
 	}
 

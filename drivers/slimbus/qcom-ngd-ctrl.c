@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 // Copyright (c) 2011-2017, 2020-2021, The Linux Foundation. All rights reserved.
 // Copyright (c) 2018, Linaro Limited
-// Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+// Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 
 #include <linux/irq.h>
 #include <linux/kernel.h>
@@ -85,7 +85,6 @@
 
 #define QCOM_SLIM_NGD_AUTOSUSPEND	(MSEC_PER_SEC / 10)
 #define SLIM_RX_MSGQ_TIMEOUT_VAL	0x10000
-#define SLIM_QMI_TIMEOUT_MS		1000
 
 #define SLIM_LA_MGR	0xFF
 #define SLIM_ROOT_FREQ	24576000
@@ -201,6 +200,9 @@ struct qcom_slim_ngd_ctrl {
 	struct work_struct ngd_up_work;
 	struct workqueue_struct *mwq;
 	struct completion qmi_up;
+	struct completion xfer_done;
+	struct completion sync_done;
+	struct completion tx_sent;
 	spinlock_t tx_buf_lock;
 	struct mutex tx_lock;
 	struct mutex suspend_resume_lock;
@@ -631,6 +633,7 @@ static void qcom_slim_ngd_tx_msg_dma_cb(void *args)
 		desc->comp = NULL;
 		return;
 	}
+
 	spin_lock_irqsave(&ctrl->tx_buf_lock, flags);
 
 	if (desc->comp) {
@@ -969,8 +972,6 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 				  struct slim_msg_txn *txn)
 {
 	struct qcom_slim_ngd_ctrl *ctrl = dev_get_drvdata(sctrl->dev);
-	DECLARE_COMPLETION_ONSTACK(tx_sent);
-	DECLARE_COMPLETION_ONSTACK(done);
 	int ret, timeout, i;
 	u8 wbuf[SLIM_MSGQ_BUF_LEN];
 	u8 rbuf[SLIM_MSGQ_BUF_LEN];
@@ -979,17 +980,22 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 	u8 la = txn->la;
 	bool usr_msg = false;
 
+	reinit_completion(&ctrl->xfer_done);
+	reinit_completion(&ctrl->tx_sent);
+
 	if (txn->mt == SLIM_MSG_MT_CORE &&
 		(txn->mc >= SLIM_MSG_MC_BEGIN_RECONFIGURATION &&
 		 txn->mc <= SLIM_MSG_MC_RECONFIGURE_NOW))
 		return 0;
 
-	if (txn->dt == SLIM_MSG_DEST_ENUMADDR)
+	if (txn->dt == SLIM_MSG_DEST_ENUMADDR) {
+		SLIM_ERR(ctrl, "%s: proto not supported\n", __func__);
 		return -EPROTONOSUPPORT;
+	}
 
 	if (txn->msg->num_bytes > SLIM_MSGQ_BUF_LEN ||
 			txn->rl > SLIM_MSGQ_BUF_LEN) {
-		SLIM_ERR(ctrl, "msg exceeds HW limit\n");
+		SLIM_ERR(ctrl, "%s: msg exceeds HW limit\n", __func__);
 		return -EINVAL;
 	}
 
@@ -998,28 +1004,26 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 	 * acquired and is waiting for ctrl_lock. While in parallel for
 	 * slim_get_logical_addr request from codecs ctrl_lock is acquired
 	 * first followed by qcom_slim_ngd_xfer_msg.
-	 * In qcom_slim_ngd_xfer_msg check if tx lock is already acquired
-	 * as part of SSR/PDR notify and ngd is going down to avoid deadlock
-	 * scenario if there is a get logical address request.
+	 * mutex_trylock will not wait to aquire lock if it is already been
+	 * acquired by SSR sequence hence it will unblock SSR to finish
+	 * gracefully
 	 */
-	if (mutex_is_locked(&ctrl->tx_lock) &&
-			    ctrl->state == QCOM_SLIM_NGD_CTRL_SSR_GOING_DOWN) {
-		SLIM_ERR(ctrl, "ngd going down due SSR/PDR, try again!\n");
+	if (!mutex_trylock(&ctrl->tx_lock)) {
+		SLIM_ERR(ctrl, "%s: ngd going down due SSR/PDR. skipping check hw state\n",
+			 __func__);
 		return -EAGAIN;
 	}
-
-	mutex_lock(&ctrl->tx_lock);
 	ret = check_hw_state(ctrl, txn);
 	if (ret) {
-		SLIM_WARN(ctrl, "ADSP slimbus not up MC:0x%x,mt:0x%x ret:%d\n",
-						txn->mc, txn->mt, ret);
+		SLIM_ERR(ctrl, "%s: ADSP slimbus not up MC:0x%x,mt:0x%x ret:%d\n",
+			 __func__, txn->mc, txn->mt, ret);
 		mutex_unlock(&ctrl->tx_lock);
 		return ret;
 	}
 
-	pbuf = qcom_slim_ngd_tx_msg_get(ctrl, txn->rl, &tx_sent);
+	pbuf = qcom_slim_ngd_tx_msg_get(ctrl, txn->rl, &ctrl->tx_sent);
 	if (!pbuf) {
-		SLIM_ERR(ctrl, "Message buffer unavailable\n");
+		SLIM_ERR(ctrl, "%s: Message buffer unavailable\n", __func__);
 		mutex_unlock(&ctrl->tx_lock);
 		return -ENOMEM;
 	}
@@ -1052,10 +1056,10 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 		if (txn->mc != SLIM_USR_MC_DISCONNECT_PORT)
 			wbuf[i++] = txn->msg->wbuf[1];
 
-		txn->comp = &done;
+		txn->comp = &ctrl->xfer_done;
 		ret = slim_alloc_txn_tid(sctrl, txn);
 		if (ret) {
-			SLIM_ERR(ctrl, "Unable to allocate TID\n");
+			SLIM_ERR(ctrl, "%s: Unable to allocate TID\n", __func__);
 			return ret;
 		}
 
@@ -1096,27 +1100,32 @@ static int qcom_slim_ngd_xfer_msg(struct slim_controller *sctrl,
 			memcpy(puc, txn->msg->wbuf, txn->msg->num_bytes);
 	}
 
-	mutex_lock(&ctrl->tx_lock);
+	if (!mutex_trylock(&ctrl->tx_lock)) {
+		SLIM_ERR(ctrl, "%s: ngd going down due SSR/PDR, skipping tx msg post\n",
+			 __func__);
+		txn->comp = NULL;
+		return -EAGAIN;
+	}
 	ret = qcom_slim_ngd_tx_msg_post(ctrl, pbuf, txn->rl);
 	if (ret) {
 		mutex_unlock(&ctrl->tx_lock);
 		return ret;
 	}
 
-	timeout = wait_for_completion_timeout(&tx_sent, 2*HZ);
+	timeout = wait_for_completion_timeout(&ctrl->tx_sent, 2*HZ);
 	if (!timeout) {
-		SLIM_WARN(ctrl, "TX timed out:MC:0x%x,mt:0x%x", txn->mc,
-					txn->mt);
+		SLIM_ERR(ctrl, "%s: TX timed out:MC:0x%x,mt:0x%x", txn->mc,
+			 __func__, txn->mt);
 		mutex_unlock(&ctrl->tx_lock);
 		ctrl->capability_timeout = true;
 		return -ETIMEDOUT;
 	}
 
 	if (usr_msg) {
-		timeout = wait_for_completion_timeout(&done, HZ);
+		timeout = wait_for_completion_timeout(&ctrl->xfer_done, HZ);
 		if (!timeout) {
-			SLIM_WARN(ctrl, "TX usr_msg timed out:MC:0x%x,mt:0x%x",
-				txn->mc, txn->mt);
+			SLIM_ERR(ctrl, "%s: TX usr_msg timed out:MC:0x%x,mt:0x%x",
+				 __func__, txn->mc, txn->mt);
 			ctrl->capability_timeout = true;
 			txn->comp = NULL;
 			mutex_unlock(&ctrl->tx_lock);
@@ -1133,8 +1142,9 @@ static int qcom_slim_ngd_xfer_msg_sync(struct slim_controller *ctrl,
 {
 	struct qcom_slim_ngd_ctrl *dev =
 		container_of(ctrl, struct qcom_slim_ngd_ctrl, ctrl);
-	DECLARE_COMPLETION_ONSTACK(done);
 	int ret, timeout;
+
+	reinit_completion(&dev->sync_done);
 
 	ret = pm_runtime_get_sync(ctrl->dev);
 	if (ret < 0) {
@@ -1144,21 +1154,21 @@ static int qcom_slim_ngd_xfer_msg_sync(struct slim_controller *ctrl,
 	}
 
 	SLIM_INFO(dev, "SLIM %s: PM get_sync count:%d TID:%d\n",
-		__func__, atomic_read(&ctrl->dev->power.usage_count), txn->tid);
+		 __func__, atomic_read(&ctrl->dev->power.usage_count), txn->tid);
 
-	txn->comp = &done;
+	txn->comp = &dev->sync_done;
 
 	ret = qcom_slim_ngd_xfer_msg(ctrl, txn);
 	if (ret) {
-		SLIM_INFO(dev, "SLIM %s: xfer_msg failed PM put count:%d TID:%d\n",
-			  __func__, atomic_read(&ctrl->dev->power.usage_count), txn->tid);
+		SLIM_ERR(dev, "SLIM %s: xfer_msg failed PM put count:%d TID:%d\n",
+			 __func__, atomic_read(&ctrl->dev->power.usage_count), txn->tid);
 		goto err;
 	}
 
-	timeout = wait_for_completion_timeout(&done, HZ);
+	timeout = wait_for_completion_timeout(&dev->sync_done, HZ);
 	if (!timeout) {
-		SLIM_WARN(dev, "TX sync timed out:MC:0x%x,mt:0x%x", txn->mc,
-				txn->mt);
+		SLIM_ERR(dev, "%s: TX sync timed out:MC:0x%x,mt:0x%x", txn->mc,
+			 __func__, txn->mt);
 		ret = -ETIMEDOUT;
 		goto err;
 	}
@@ -1274,12 +1284,13 @@ static int qcom_slim_ngd_enable_stream(struct slim_stream_runtime *rt)
 
 			ret = slim_alloc_txn_tid(ctrl, &txn);
 			if (ret) {
-				SLIM_ERR(dev, "Fail to allocate TID\n");
+				SLIM_ERR(dev, "%s: Fail to allocate TID\n", __func__);
 				return -ENXIO;
 			}
 			wbuf[txn.msg->num_bytes++] = txn.tid;
 		}
 		wbuf[txn.msg->num_bytes++] = port->ch.id;
+		SLIM_INFO(dev, "%s Channel ID %d\n", __func__, port->ch.id);
 	}
 
 	txn.mc = SLIM_USR_MC_DEF_ACT_CHAN;
@@ -1287,8 +1298,8 @@ static int qcom_slim_ngd_enable_stream(struct slim_stream_runtime *rt)
 	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn);
 	if (ret) {
 		slim_free_txn_tid(ctrl, &txn);
-		SLIM_WARN(dev, "TX ACT_CHAN timed out:MC:0x%x,mt:0x%x", txn.mc,
-				txn.mt);
+		SLIM_ERR(dev, "%s: TX ACT_CHAN timed out:MC:0x%x,mt:0x%x", __func__, txn.mc,
+			 txn.mt);
 		return ret;
 	}
 
@@ -1299,7 +1310,7 @@ static int qcom_slim_ngd_enable_stream(struct slim_stream_runtime *rt)
 
 	ret = slim_alloc_txn_tid(ctrl, &txn);
 	if (ret) {
-		SLIM_ERR(dev, "Fail to allocate TID\n");
+		SLIM_ERR(dev, "%s: Fail to allocate TID\n", __func__);
 		return ret;
 	}
 
@@ -1307,8 +1318,8 @@ static int qcom_slim_ngd_enable_stream(struct slim_stream_runtime *rt)
 	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn);
 	if (ret) {
 		slim_free_txn_tid(ctrl, &txn);
-		SLIM_INFO(dev, "TX RECONFIG timed out:MC:0x%x,mt:0x%x", txn.mc,
-				txn.mt);
+		SLIM_ERR(dev, "%s: TX RECONFIG timed out:MC:0x%x,mt:0x%x", __func__, txn.mc,
+			 txn.mt);
 	}
 
 	SLIM_INFO(dev, "%s End ret : %d\n", __func__, ret);
@@ -1354,6 +1365,7 @@ static int qcom_slim_ngd_disable_stream(struct slim_stream_runtime *rt)
 			wbuf[txn.msg->num_bytes++] = txn.tid;
 		}
 		wbuf[txn.msg->num_bytes++] = port->ch.id;
+		SLIM_INFO(dev, "%s Channel ID %d\n", __func__, port->ch.id);
 	}
 
 	txn.mc = SLIM_USR_MC_CHAN_CTRL;
@@ -1361,8 +1373,8 @@ static int qcom_slim_ngd_disable_stream(struct slim_stream_runtime *rt)
 	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn);
 	if (ret) {
 		slim_free_txn_tid(ctrl, &txn);
-		SLIM_WARN(dev, "TX CHAN_CTRL timed out:MC:0x%x,mt:0x%x ret:%d\n",
-				txn.mc,	txn.mt, ret);
+		SLIM_ERR(dev, "%s: TX CHAN_CTRL timed out:MC:0x%x,mt:0x%x ret:%d\n",
+			 __func__, txn.mc, txn.mt, ret);
 		return ret;
 	}
 
@@ -1373,7 +1385,7 @@ static int qcom_slim_ngd_disable_stream(struct slim_stream_runtime *rt)
 
 	ret = slim_alloc_txn_tid(ctrl, &txn);
 	if (ret) {
-		SLIM_ERR(dev, "Fail to allocate TID ret:%d\n", ret);
+		SLIM_ERR(dev, "%s: Fail to allocate TID ret:%d\n", __func__, ret);
 		return ret;
 	}
 
@@ -1381,8 +1393,8 @@ static int qcom_slim_ngd_disable_stream(struct slim_stream_runtime *rt)
 	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn);
 	if (ret) {
 		slim_free_txn_tid(ctrl, &txn);
-		SLIM_WARN(dev, "TX RECONFIG timed out:MC:0x%x,mt:0x%x ret:%d\n",
-				txn.mc,	txn.mt, ret);
+		SLIM_ERR(dev, "%s: TX RECONFIG timed out:MC:0x%x,mt:0x%x ret:%d\n",
+			 __func__, txn.mc, txn.mt, ret);
 	}
 
 	SLIM_INFO(dev, "%s End ret %d\n", __func__, ret);
@@ -1592,6 +1604,7 @@ static void qcom_slim_ngd_notify_slaves(struct qcom_slim_ngd_ctrl *ctrl)
 
 		if (slim_get_logical_addr(sbdev))
 			dev_err(ctrl->dev, "Failed to get logical address\n");
+		put_device(&sbdev->dev);
 	}
 }
 
@@ -1817,7 +1830,7 @@ static void qcom_slim_ngd_up_worker(struct work_struct *work)
 
 	/* Make sure qmi service is up before continuing */
 	if (!wait_for_completion_interruptible_timeout(&ctrl->qmi_up,
-		msecs_to_jiffies(SLIM_QMI_TIMEOUT_MS))) {
+							msecs_to_jiffies(MSEC_PER_SEC))) {
 		SLIM_INFO(ctrl, "QMI wait timeout\n");
 		return;
 	}
@@ -1838,9 +1851,7 @@ static int qcom_slim_ngd_ssr_pdr_notify(struct qcom_slim_ngd_ctrl *ctrl,
 			"QCOM_SSR_BEFORE_SHUTDOWN", "slim_ngd_ssr_pdr-enter");
 		SLIM_INFO(ctrl, "SLIM SSR Before Shutdown\n");
 		if (ctrl->state != QCOM_SLIM_NGD_CTRL_DOWN) {
-			/* Make sure the last dma xfer is finished */
 			mutex_lock(&ctrl->suspend_resume_lock);
-			mutex_lock(&ctrl->tx_lock);
 			ctrl->state = QCOM_SLIM_NGD_CTRL_SSR_GOING_DOWN;
 			/*
 			 * Mark capability_timeout to false here to handle
@@ -1856,7 +1867,6 @@ static int qcom_slim_ngd_ssr_pdr_notify(struct qcom_slim_ngd_ctrl *ctrl,
 			qcom_slim_ngd_exit_dma(ctrl);
 			ctrl->state = QCOM_SLIM_NGD_CTRL_DOWN;
 			SLIM_INFO(ctrl, "SLIM SSR down\n");
-			mutex_unlock(&ctrl->tx_lock);
 			mutex_unlock(&ctrl->suspend_resume_lock);
 		}
 
@@ -1975,6 +1985,13 @@ static ssize_t debug_mask_store(struct device *device,
 }
 
 static DEVICE_ATTR_RW(debug_mask);
+
+static void qcom_slim_ngd_unregister(struct qcom_slim_ngd_ctrl *ctrl)
+{
+	struct qcom_slim_ngd *ngd = ctrl->ngd;
+
+	platform_device_del(ngd->pdev);
+}
 
 static int qcom_slim_ngd_probe(struct platform_device *pdev)
 {
@@ -2155,37 +2172,30 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 	init_completion(&ctrl->ctrl_up);
 	init_completion(&ctrl->qmi.qmi_comp);
 	init_completion(&ctrl->qmi_up);
+	init_completion(&ctrl->xfer_done);
+	init_completion(&ctrl->sync_done);
+	init_completion(&ctrl->tx_sent);
 
 	ctrl->pdr = pdr_handle_alloc(slim_pd_status, ctrl);
 	if (IS_ERR(ctrl->pdr)) {
 		ret = PTR_ERR(ctrl->pdr);
 		dev_err(dev, "Failed to init PDR handle: %d\n", ret);
-		goto err_pdr_alloc;
+		goto err_unregister_ssr;
 	}
 
 	pds = pdr_add_lookup(ctrl->pdr, "avs/audio", "msm/adsp/audio_pd");
 	if (IS_ERR(pds) && PTR_ERR(pds) != -EALREADY) {
 		ret = PTR_ERR(pds);
 		dev_err(dev, "pdr add lookup failed: %d\n", ret);
-		goto err_pdr_lookup;
+		goto err_pdr_release;
 	}
 
-	ret = of_qcom_slim_ngd_register(dev, ctrl);
-	if (ret) {
-		SLIM_ERR(ctrl, "qcom_slim_ngd_register failed ret:%d\n", ret);
-		goto err_pdr_lookup;
-	}
+	return of_qcom_slim_ngd_register(dev, ctrl);
 
-	platform_driver_register(&qcom_slim_ngd_driver);
-	SLIM_INFO(ctrl, "NGD SB controller is up!\n");
-	return 0;
-
-err_pdr_lookup:
-        pdr_handle_release(ctrl->pdr);
-
-err_pdr_alloc:
-        qcom_unregister_ssr_notifier(ctrl->notifier, &ctrl->nb);
-
+err_pdr_release:
+	pdr_handle_release(ctrl->pdr);
+err_unregister_ssr:
+	qcom_unregister_ssr_notifier(ctrl->notifier, &ctrl->nb);
 remove_ipc_sysfs:
 	if (ctrl->ipc_slimbus_log)
 		ipc_log_context_destroy(ctrl->ipc_slimbus_log);
@@ -2201,7 +2211,10 @@ static int qcom_slim_ngd_ctrl_remove(struct platform_device *pdev)
 {
 	struct qcom_slim_ngd_ctrl *ctrl = platform_get_drvdata(pdev);
 
-	platform_driver_unregister(&qcom_slim_ngd_driver);
+	pdr_handle_release(ctrl->pdr);
+	qcom_unregister_ssr_notifier(ctrl->notifier, &ctrl->nb);
+
+	qcom_slim_ngd_unregister(ctrl);
 	if (ctrl->sysfs_created)
 		sysfs_remove_file(&pdev->dev.kobj,
 				  &dev_attr_debug_mask.attr);
@@ -2217,9 +2230,7 @@ static int qcom_slim_ngd_remove(struct platform_device *pdev)
 	struct qcom_slim_ngd_ctrl *ctrl = platform_get_drvdata(pdev);
 
 	pm_runtime_disable(&pdev->dev);
-	pdr_handle_release(ctrl->pdr);
-	qcom_unregister_ssr_notifier(ctrl->notifier, &ctrl->nb);
-	slim_unregister_controller(&ctrl->ctrl);
+	qcom_slim_ngd_enable(ctrl, false);
 	qcom_slim_ngd_exit_dma(ctrl);
 	qcom_slim_ngd_qmi_svc_event_deinit(&ctrl->qmi);
 	if (ctrl->mwq)
@@ -2303,6 +2314,28 @@ static struct platform_driver qcom_slim_ngd_driver = {
 	},
 };
 
-module_platform_driver(qcom_slim_ngd_ctrl_driver);
+static int qcom_slim_ngd_init(void)
+{
+	int ret;
+
+	ret = platform_driver_register(&qcom_slim_ngd_driver);
+	if (ret)
+		return ret;
+
+	ret = platform_driver_register(&qcom_slim_ngd_ctrl_driver);
+	if (ret)
+		platform_driver_unregister(&qcom_slim_ngd_driver);
+
+	return ret;
+}
+
+static void qcom_slim_ngd_exit(void)
+{
+	platform_driver_unregister(&qcom_slim_ngd_ctrl_driver);
+	platform_driver_unregister(&qcom_slim_ngd_driver);
+}
+
+module_init(qcom_slim_ngd_init);
+module_exit(qcom_slim_ngd_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Qualcomm SLIMBus NGD controller");

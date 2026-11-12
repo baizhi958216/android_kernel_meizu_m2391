@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -38,6 +39,7 @@ struct gh_sec_vm_dev {
 	const char *vm_name;
 	struct device *dev;
 	bool system_vm;
+	bool keep_running;
 	phys_addr_t fw_phys;
 	void *fw_virt;
 	ssize_t fw_size;
@@ -56,6 +58,8 @@ const static struct {
 	{GH_TRUSTED_VM, "trustedvm"},
 	{GH_CPUSYS_VM, "cpusys_vm"},
 	{GH_OEM_VM, "oemvm"},
+	{GH_ROBOTICS_VM1, "roboticsvm1"},
+	{GH_ROBOTICS_VM2, "rdcapvm"},
 };
 
 static DEFINE_SPINLOCK(gh_sec_vm_lock);
@@ -208,6 +212,8 @@ static int gh_vm_loader_sec_load(struct gh_sec_vm_dev *vm_dev,
 	ret = gh_provide_mem(vm, vm_dev->fw_phys,
 			vm_dev->fw_size, vm_dev->system_vm);
 
+	vm->keep_running = vm_dev->keep_running;
+
 	if (ret) {
 		dev_err(dev, "Failed to provide memory for %s, %d\n",
 						vm_dev->vm_name, ret);
@@ -304,6 +310,7 @@ long gh_vm_ioctl_set_fw_name(struct gh_vm *vm, unsigned long arg)
 	if (copy_from_user(&vm_fw_name, (void __user *)arg, sizeof(vm_fw_name)))
 		return -EFAULT;
 
+	vm_fw_name.name[GH_VM_FW_NAME_MAX - 1] = '\0';
 	mutex_lock(&vm->vm_lock);
 	if (strlen(vm->fw_name)) {
 		pr_err("Secure VM %s already loaded %ld\n",
@@ -503,6 +510,10 @@ static int gh_secure_vm_loader_probe(struct platform_device *pdev)
 	if (sec_vm_dev->system_vm)
 		dev_info(dev, "Vm with no shutdown attribute added\n");
 
+	sec_vm_dev->keep_running =
+		of_property_read_bool(dev->of_node, "qcom,keep-running");
+	if (sec_vm_dev->keep_running)
+		dev_info(dev, "VM with keep running attribute added\n");
 
 	ret = of_property_read_u32(dev->of_node,
 				"qcom,vmid", &sec_vm_dev->vmid);

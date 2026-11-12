@@ -11,6 +11,7 @@
 #include <linux/syscalls.h>
 #include <linux/mempolicy.h>
 #include <linux/page-isolation.h>
+#include <linux/pgsize_migration.h>
 #include <linux/page_idle.h>
 #include <linux/userfaultfd_k.h>
 #include <linux/hugetlb.h>
@@ -99,6 +100,7 @@ struct anon_vma_name *anon_vma_name(struct vm_area_struct *vma)
 
 	return vma->anon_name;
 }
+EXPORT_SYMBOL_GPL(anon_vma_name);
 
 /* mmap_lock should be write-locked */
 static int replace_anon_vma_name(struct vm_area_struct *vma,
@@ -181,7 +183,7 @@ success:
 	/*
 	 * vm_flags is protected by the mmap_lock held in write mode.
 	 */
-	vma->vm_flags = new_flags;
+	vma->vm_flags = vma_pad_fixup_flags(vma, new_flags);
 	if (!vma->vm_file) {
 		error = replace_anon_vma_name(vma, anon_name);
 		if (error)
@@ -329,6 +331,7 @@ static int madvise_cold_or_pageout_pte_range(pmd_t *pmd,
 	LIST_HEAD(page_list);
 	bool allow_shared = false;
 	bool abort_madvise = false;
+	bool skip = false;
 
 	trace_android_vh_madvise_cold_or_pageout_abort(vma, &abort_madvise);
 	if (fatal_signal_pending(current) || abort_madvise)
@@ -424,6 +427,10 @@ regular_page:
 		page = vm_normal_page(vma, addr, ptent);
 		if (!page)
 			continue;
+
+		trace_android_vh_should_end_madvise(mm, &skip, &pageout);
+		if (skip)
+			break;
 
 		/*
 		 * Creating a THP page is expensive so split it only if we
@@ -565,8 +572,7 @@ static inline bool can_do_file_pageout(struct vm_area_struct *vma)
 	 * otherwise we'd be including shared non-exclusive mappings, which
 	 * opens a side channel.
 	 */
-	return inode_owner_or_capable(&init_user_ns,
-				      file_inode(vma->vm_file)) ||
+	return file_owner_or_capable(vma->vm_file) ||
 	       file_permission(vma->vm_file, MAY_WRITE) == 0;
 }
 
@@ -792,6 +798,8 @@ static int madvise_free_single_vma(struct vm_area_struct *vma,
 static long madvise_dontneed_single_vma(struct vm_area_struct *vma,
 					unsigned long start, unsigned long end)
 {
+	madvise_vma_pad_pages(vma, start, end);
+
 	zap_page_range(vma, start, end - start);
 	return 0;
 }
@@ -935,7 +943,7 @@ static long madvise_remove(struct vm_area_struct *vma,
 			return -EINVAL;
 	}
 
-	if ((vma->vm_flags & (VM_SHARED|VM_WRITE)) != (VM_SHARED|VM_WRITE))
+	if (!vma_is_shared_maywrite(vma))
 		return -EACCES;
 
 	offset = (loff_t)(start - vma->vm_start)
@@ -1418,7 +1426,7 @@ SYSCALL_DEFINE5(process_madvise, int, pidfd, const struct iovec __user *, vec,
 		goto out;
 	}
 
-	ret = import_iovec(READ, vec, vlen, ARRAY_SIZE(iovstack), &iov, &iter);
+	ret = import_iovec(ITER_DEST, vec, vlen, ARRAY_SIZE(iovstack), &iov, &iter);
 	if (ret < 0)
 		goto out;
 

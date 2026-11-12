@@ -223,7 +223,7 @@ void page_cache_ra_unbounded(struct readahead_control *ractl,
 			i = ractl->_index + ractl->_nr_pages - index - 1;
 			continue;
 		}
-
+		trace_android_vh_io_statistics(mapping, index + i, 1, true, false);
 		page = __page_cache_alloc(gfp_mask);
 		if (!page)
 			break;
@@ -570,6 +570,8 @@ void page_cache_sync_ra(struct readahead_control *ractl,
 {
 	bool do_forced_ra = ractl->file && (ractl->file->f_mode & FMODE_RANDOM);
 
+	trace_android_vh_page_cache_read(ractl->mapping->host,
+			readahead_index(ractl), req_count);
 	/*
 	 * Even if read-ahead is disabled, issue this request as read-ahead
 	 * as we'll need it to satisfy the requested range. The forced
@@ -599,6 +601,8 @@ EXPORT_SYMBOL_GPL(page_cache_sync_ra);
 void page_cache_async_ra(struct readahead_control *ractl,
 		struct page *page, unsigned long req_count)
 {
+	trace_android_vh_page_cache_read(ractl->mapping->host,
+			readahead_index(ractl), req_count);
 	/* no read-ahead */
 	if (!ractl->ra->ra_pages)
 		return;
@@ -642,7 +646,8 @@ ssize_t ksys_readahead(int fd, loff_t offset, size_t count)
 	 */
 	ret = -EINVAL;
 	if (!f.file->f_mapping || !f.file->f_mapping->a_ops ||
-	    !S_ISREG(file_inode(f.file)->i_mode))
+	    (!S_ISREG(file_inode(f.file)->i_mode) &&
+	    !S_ISBLK(file_inode(f.file)->i_mode)))
 		goto out;
 
 	ret = vfs_fadvise(f.file, offset, count, POSIX_FADV_WILLNEED);

@@ -38,6 +38,7 @@ obj-$(CONFIG_QCOM_MEM_BUF) += mem_buf/
 obj-$(CONFIG_QCOM_SOCINFO)	+= socinfo.o
 obj-$(CONFIG_QCOM_SOCINFO_DT)	+= socinfo_dt.o
 obj-$(CONFIG_QCOM_SOC_SLEEP_STATS)	+= soc_sleep_stats.o
+obj-$(CONFIG_QCOM_SUBSYS_STATUS)	+= subsystem_status.o
 obj-$(CONFIG_QTI_RPM_STATS_LOG) += rpm_master_stat.o
 obj-$(CONFIG_QCOM_CDSP_RM) += cdsprm.o
 obj-$(CONFIG_QCOM_SYSMON_SUBSYSTEM_STATS) += sysmon_subsystem_stats.o
@@ -115,6 +116,7 @@ minidump-y   += msm_minidump.o minidump_log.o
 minidump-$(CONFIG_QCOM_MINIDUMP_RM) += minidump_rm.o
 minidump-$(CONFIG_QCOM_MINIDUMP_SMEM) += minidump_smem.o
 minidump-$(CONFIG_QCOM_MINIDUMP_MMIO) += minidump_mmio.o
+minidump-$(CONFIG_QCOM_MINIDUMP_VIRTIO) += minidump_virtio.o
 minidump-$(CONFIG_QCOM_MINIDUMP_PANIC_DUMP) += minidump_memory.o
 # M2391's stock minidump supplies the real watchdog panic/memory collector
 # and ftrace/pstore capture even when absent from GKI autoconf.
@@ -159,3 +161,4 @@ wcd_usbss_i2c-y += wcd-usbss-utils.o
 wcd_usbss_i2c-y += wcd939x-i2c.o
 
 obj-$(CONFIG_MEIZU_DEVICE_INFO) += mz_info.o
+obj-$(CONFIG_QCOM_SAIL_MAILBOX) += qcom-sail-mbox.o

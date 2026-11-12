@@ -208,8 +208,14 @@ static int mmc_mq_init_request(struct blk_mq_tag_set *set, struct request *req,
 	struct mmc_queue *mq = set->driver_data;
 	struct mmc_card *card = mq->card;
 	struct mmc_host *host = card->host;
+	u16 sg_len = mmc_get_max_segments(host);
 
-	mq_rq->sg = mmc_alloc_sg(mmc_get_max_segments(host), GFP_KERNEL);
+	if (!sg_len) {
+		dev_err(mmc_dev(host), "Wrong max_segs assigned\n");
+		return -EINVAL;
+	}
+
+	mq_rq->sg = mmc_alloc_sg(sg_len, GFP_KERNEL);
 	if (!mq_rq->sg)
 		return -ENOMEM;
 
@@ -430,6 +436,7 @@ struct gendisk *mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card)
 			min_t(int, card->ext_csd.cmdq_depth, host->cqe_qdepth);
 	else
 		mq->tag_set.queue_depth = MMC_QUEUE_DEPTH;
+	trace_android_vh_mmc_init_queue(mq, card);
 	mq->tag_set.numa_node = NUMA_NO_NODE;
 	mq->tag_set.flags = BLK_MQ_F_SHOULD_MERGE | BLK_MQ_F_BLOCKING;
 	mq->tag_set.nr_hw_queues = 1;

@@ -69,6 +69,7 @@
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(mm_vmscan_direct_reclaim_begin);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mm_vmscan_direct_reclaim_end);
+EXPORT_TRACEPOINT_SYMBOL_GPL(mm_vmscan_kswapd_wake);
 
 #undef CREATE_TRACE_POINTS
 #include <trace/hooks/vmscan.h>
@@ -598,7 +599,14 @@ unsigned long zone_reclaimable_pages(struct zone *zone)
 	if (can_reclaim_anon_pages(NULL, zone_to_nid(zone), NULL))
 		nr += zone_page_state_snapshot(zone, NR_ZONE_INACTIVE_ANON) +
 			zone_page_state_snapshot(zone, NR_ZONE_ACTIVE_ANON);
-
+	/*
+	 * If there are no reclaimable file-backed or anonymous pages,
+	 * ensure zones with sufficient free pages are not skipped.
+	 * This prevents zones like DMA32 from being ignored in reclaim
+	 * scenarios where they can still help alleviate memory pressure.
+	 */
+	if (nr == 0)
+		nr = zone_page_state_snapshot(zone, NR_FREE_PAGES);
 	return nr;
 }
 
@@ -1199,8 +1207,16 @@ static int __remove_mapping(struct address_space *mapping, struct page *page,
 		 * same address_space.
 		 */
 		if (reclaimed && page_is_file_lru(page) &&
-		    !mapping_exiting(mapping) && !dax_mapping(mapping))
+		    !mapping_exiting(mapping) && !dax_mapping(mapping)) {
+			bool keep = false;
+
+			trace_android_vh_keep_reclaimed_page(page, refcount, &keep);
+			if (keep)
+				goto cannot_free;
+
 			shadow = workingset_eviction(page, target_memcg);
+		}
+		trace_android_vh_clear_reclaimed_page(page, reclaimed);
 		__delete_from_page_cache(page, shadow);
 		xa_unlock_irq(&mapping->i_pages);
 
@@ -1433,6 +1449,8 @@ retry:
 		enum page_references references = PAGEREF_RECLAIM;
 		bool dirty, writeback, may_enter_fs;
 		unsigned int nr_pages;
+		bool activate = false;
+		bool keep = false;
 
 		cond_resched();
 
@@ -1441,6 +1459,8 @@ retry:
 
 		if (!trylock_page(page))
 			goto keep;
+
+		trace_android_vh_shrink_page_lock_owner_set(page);
 
 		VM_BUG_ON_PAGE(PageActive(page), page);
 
@@ -1470,6 +1490,15 @@ retry:
 		 * is all dirty unqueued pages.
 		 */
 		page_check_dirty_writeback(page, &dirty, &writeback);
+
+		trace_android_vh_shrink_page_list(page, dirty, writeback,
+				&activate, &keep);
+		if (activate)
+			goto activate_locked;
+
+		if (keep)
+			goto keep_locked;
+
 		if (dirty || writeback)
 			stat->nr_dirty++;
 
@@ -1558,6 +1587,7 @@ retry:
 
 			/* Case 3 above */
 			} else {
+				trace_android_vh_shrink_page_lock_owner_clear(page);
 				unlock_page(page);
 				wait_on_page_writeback(page);
 				/* then go back and try same page again */
@@ -1587,6 +1617,7 @@ retry:
 		if (do_demote_pass &&
 		    (thp_migration_supported() || !PageTransHuge(page))) {
 			list_add(&page->lru, &demote_pages);
+			trace_android_vh_shrink_page_lock_owner_clear(page);
 			unlock_page(page);
 			continue;
 		}
@@ -1766,6 +1797,7 @@ retry:
 			if (!try_to_release_page(page, sc->gfp_mask))
 				goto activate_locked;
 			if (!mapping && page_count(page) == 1) {
+				trace_android_vh_shrink_page_lock_owner_clear(page);
 				unlock_page(page);
 				if (put_page_testzero(page))
 					goto free_it;
@@ -1802,6 +1834,7 @@ retry:
 							 sc->target_mem_cgroup))
 			goto keep_locked;
 
+		trace_android_vh_shrink_page_lock_owner_clear(page);
 		unlock_page(page);
 free_it:
 		/*
@@ -1860,6 +1893,7 @@ keep_locked:
 		 * usage here, which is to clear the try-lock bit.
 		 */
 		trace_android_vh_page_trylock_get_result(page, &page_trylock_result);
+		trace_android_vh_shrink_page_lock_owner_clear(page);
 		unlock_page(page);
 keep:
 		list_add(&page->lru, &ret_pages);
@@ -2998,6 +3032,7 @@ static struct lruvec *get_lruvec(struct mem_cgroup *memcg, int nid)
 
 static int get_swappiness(struct lruvec *lruvec, struct scan_control *sc)
 {
+	int swappiness;
 	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
@@ -3005,7 +3040,10 @@ static int get_swappiness(struct lruvec *lruvec, struct scan_control *sc)
 		mem_cgroup_get_nr_swap_pages(memcg) <= 0)
 		return 0;
 
-	return mem_cgroup_swappiness(memcg);
+	swappiness = mem_cgroup_swappiness(memcg);
+	trace_android_vh_tune_swappiness(&swappiness);
+
+	return swappiness;
 }
 
 static int get_nr_gens(struct lruvec *lruvec, int type)
@@ -4200,6 +4238,8 @@ restart:
 	smp_store_release(&lrugen->max_seq, lrugen->max_seq + 1);
 
 	spin_unlock_irq(&lruvec->lru_lock);
+
+	trace_android_vh_mglru_new_gen(NULL);
 }
 
 static bool try_to_inc_max_seq(struct lruvec *lruvec, unsigned long max_seq,
@@ -4606,7 +4646,7 @@ static bool sort_page(struct lruvec *lruvec, struct page *page, struct scan_cont
 	return false;
 }
 
-static bool isolate_page(struct lruvec *lruvec, struct page *page, struct scan_control *sc)
+bool isolate_page(struct lruvec *lruvec, struct page *page, struct scan_control *sc)
 {
 	bool success;
 
@@ -4643,6 +4683,7 @@ static bool isolate_page(struct lruvec *lruvec, struct page *page, struct scan_c
 
 	return true;
 }
+EXPORT_SYMBOL_GPL(isolate_page);
 
 /* Keep the M2391 SmartSwap isolation inside the native VM implementation.
  * The original module duplicated scan_control and MGLRU helpers. Reusing the
@@ -4899,6 +4940,12 @@ retry:
 	sc->nr_reclaimed += reclaimed;
 
 	list_for_each_entry_safe_reverse(page, next, &list, lru) {
+		bool bypass = false;
+
+		trace_android_vh_evict_pages_bypass(page, &bypass);
+		if (bypass)
+			continue;
+
 		if (!page_evictable(page)) {
 			list_del(&page->lru);
 			putback_lru_page(page);
@@ -5001,6 +5048,7 @@ static bool should_abort_scan(struct lruvec *lruvec, unsigned long seq,
 	int i;
 	DEFINE_MAX_SEQ(lruvec);
 
+	trace_android_vh_mglru_should_abort_scan(&sc->nr_reclaimed);
 	if (!current_is_kswapd()) {
 		/* age each memcg at most once to ensure fairness */
 		if (max_seq - seq > 1)
@@ -5815,7 +5863,7 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 			}
 		}
 
-		cond_resched();
+		cond_resched_tasks_rcu_qs();
 
 		if (nr_reclaimed < nr_to_reclaim || proportional_reclaim)
 			continue;
@@ -5885,7 +5933,7 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 /* Use reclaim/compaction for costly allocs or under memory pressure */
 static bool in_reclaim_compaction(struct scan_control *sc)
 {
-	if (IS_ENABLED(CONFIG_COMPACTION) && sc->order &&
+	if (gfp_compaction_allowed(sc->gfp_mask) && sc->order &&
 			(sc->order > PAGE_ALLOC_COSTLY_ORDER ||
 			 sc->priority < DEF_PRIORITY - 2))
 		return true;
@@ -6129,6 +6177,9 @@ static inline bool compaction_ready(struct zone *zone, struct scan_control *sc)
 {
 	unsigned long watermark;
 	enum compact_result suitable;
+
+	if (!gfp_compaction_allowed(sc->gfp_mask))
+		return false;
 
 	suitable = compaction_suitable(zone, sc->order, 0, sc->reclaim_idx);
 	if (suitable == COMPACT_SUCCESS)
@@ -6419,6 +6470,7 @@ static bool throttle_direct_reclaim(gfp_t gfp_mask, struct zonelist *zonelist,
 	struct zoneref *z;
 	struct zone *zone;
 	pg_data_t *pgdat = NULL;
+	bool bypass = false;
 
 	/*
 	 * Kernel threads should not be throttled as they may be indirectly
@@ -6467,6 +6519,10 @@ static bool throttle_direct_reclaim(gfp_t gfp_mask, struct zonelist *zonelist,
 	if (!pgdat)
 		goto out;
 
+	trace_android_vh_throttle_direct_reclaim_bypass(&bypass);
+	if (bypass)
+		goto out;
+
 	/* Account for the throttling */
 	count_vm_event(PGSCAN_DIRECT_THROTTLE);
 
@@ -6508,6 +6564,7 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 		.may_unmap = 1,
 		.may_swap = 1,
 	};
+	int prio = 0;
 
 	/*
 	 * scan_control uses s8 fields for order, priority, and reclaim_idx.
@@ -6527,9 +6584,11 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 
 	set_task_reclaim_state(current, &sc.reclaim_state);
 	trace_mm_vmscan_direct_reclaim_begin(order, sc.gfp_mask);
+	trace_android_vh_direct_reclaim_begin(&prio);
 
 	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
 
+	trace_android_vh_direct_reclaim_end(prio);
 	trace_mm_vmscan_direct_reclaim_end(nr_reclaimed);
 	set_task_reclaim_state(current, NULL);
 
@@ -6774,6 +6833,7 @@ static bool kswapd_shrink_node(pg_data_t *pgdat,
 
 		sc->nr_to_reclaim += max(high_wmark_pages(zone), SWAP_CLUSTER_MAX);
 	}
+	trace_android_rvh_kswapd_shrink_node(&sc->nr_to_reclaim);
 
 	/*
 	 * Historically care was taken to put equal pressure on all zones but
@@ -7230,6 +7290,8 @@ kswapd_try_sleep:
 						alloc_order);
 		reclaim_order = balance_pgdat(pgdat, alloc_order,
 						highest_zoneidx);
+		trace_android_vh_vmscan_kswapd_done(pgdat->node_id, highest_zoneidx,
+						alloc_order, reclaim_order);
 		if (reclaim_order < alloc_order)
 			goto kswapd_try_sleep;
 	}
@@ -7550,7 +7612,7 @@ int node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
 		return NODE_RECLAIM_NOSCAN;
 
 	ret = __node_reclaim(pgdat, gfp_mask, order);
-	clear_bit(PGDAT_RECLAIM_LOCKED, &pgdat->flags);
+	clear_bit_unlock(PGDAT_RECLAIM_LOCKED, &pgdat->flags);
 
 	if (!ret)
 		count_vm_event(PGSCAN_ZONE_RECLAIM_FAILED);

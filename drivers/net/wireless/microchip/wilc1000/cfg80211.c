@@ -215,7 +215,12 @@ static void cfg_connect_result(enum conn_event conn_disconn_evt, u8 mac_status,
 				reason = 1;
 		}
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 		cfg80211_disconnected(dev, reason, NULL, 0, false, GFP_KERNEL);
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+		cfg80211_disconnected(dev, reason, NULL, 0, false,
+				      NL80211_MLO_INVALID_LINK_ID, GFP_KERNEL);
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 	}
 }
 
@@ -466,7 +471,12 @@ static int disconnect(struct wiphy *wiphy, struct net_device *dev,
 
 	if (wilc->close) {
 		/* already disconnected done */
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 		cfg80211_disconnected(dev, 0, NULL, 0, true, GFP_KERNEL);
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+		cfg80211_disconnected(dev, 0, NULL, 0, true,
+				      NL80211_MLO_INVALID_LINK_ID, GFP_KERNEL);
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 		return 0;
 	}
 
@@ -1042,6 +1052,13 @@ void wilc_wfi_p2p_rx(struct wilc_vif *vif, u8 *buff, u32 size)
 	if (!ieee80211_is_public_action((struct ieee80211_hdr *)buff, size))
 		goto out_rx_mgmt;
 
+	/* ieee80211_is_public_action() only validates up to the category
+	 * byte, so reject frames too short for the P2P public action header
+	 * before dereferencing it or computing size - ie_offset.
+	 */
+	if (size < ie_offset)
+		goto out_rx_mgmt;
+
 	d = (struct wilc_p2p_pub_act_frame *)(&mgmt->u.action);
 	if (d->oui_subtype != GO_NEG_REQ && d->oui_subtype != GO_NEG_RSP &&
 	    d->oui_subtype != P2P_INV_REQ && d->oui_subtype != P2P_INV_RSP)
@@ -1184,6 +1201,13 @@ static int mgmt_tx(struct wiphy *wiphy,
 	}
 
 	if (!ieee80211_is_public_action((struct ieee80211_hdr *)buf, len))
+		goto out_set_timeout;
+
+	/* ieee80211_is_public_action() only validates up to the category
+	 * byte, so reject frames too short for the P2P public action header
+	 * before dereferencing it or computing len - ie_offset.
+	 */
+	if (len < ie_offset)
 		goto out_set_timeout;
 
 	d = (struct wilc_p2p_pub_act_frame *)(&mgmt->u.action);
@@ -1399,8 +1423,13 @@ static int change_beacon(struct wiphy *wiphy, struct net_device *dev,
 	return wilc_add_beacon(vif, 0, 0, beacon);
 }
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 static int stop_ap(struct wiphy *wiphy, struct net_device *dev,
 		   unsigned int link_id)
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+static int stop_ap(struct wiphy *wiphy, struct net_device *dev,
+		   struct cfg80211_ap_settings *settings)
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 {
 	int ret;
 	struct wilc_vif *vif = netdev_priv(dev);
@@ -1566,7 +1595,6 @@ static int del_virtual_intf(struct wiphy *wiphy, struct wireless_dev *wdev)
 	cfg80211_unregister_netdevice(vif->ndev);
 	vif->monitor_flag = 0;
 
-	wilc_set_operation_mode(vif, 0, 0, 0);
 	mutex_lock(&wl->vif_mutex);
 	list_del_rcu(&vif->list);
 	wl->vif_num--;

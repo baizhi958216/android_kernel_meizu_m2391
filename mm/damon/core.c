@@ -634,7 +634,7 @@ static void damon_do_apply_schemes(struct damon_ctx *c,
 			quota->charged_sz += sz;
 			if (quota->esz && quota->charged_sz >= quota->esz) {
 				quota->charge_target_from = t;
-				quota->charge_addr_from = r->ar.end + 1;
+				quota->charge_addr_from = r->ar.end;
 			}
 		}
 		if (s->action != DAMOS_STAT)
@@ -661,8 +661,8 @@ static void damos_set_effective_quota(struct damos_quota *quota)
 	}
 
 	if (quota->total_charged_ns)
-		throughput = quota->total_charged_sz * 1000000 /
-			quota->total_charged_ns;
+		throughput = mult_frac(quota->total_charged_sz, 1000000,
+						quota->total_charged_ns);
 	else
 		throughput = PAGE_SIZE * 1024;
 	esz = throughput * quota->ms;
@@ -689,8 +689,15 @@ static void kdamond_apply_schemes(struct damon_ctx *c)
 		if (!quota->ms && !quota->sz)
 			continue;
 
+		/* First charge window */
+		if (!quota->total_charged_sz && !quota->charged_from) {
+			quota->charged_from = jiffies;
+			damos_set_effective_quota(quota);
+		}
+
 		/* New charge window starts */
-		if (time_after_eq(jiffies, quota->charged_from +
+		if (!time_in_range_open(jiffies, quota->charged_from,
+					quota->charged_from +
 					msecs_to_jiffies(
 						quota->reset_interval))) {
 			if (quota->esz && quota->charged_sz >= quota->esz)
@@ -791,14 +798,36 @@ static void damon_merge_regions_of(struct damon_target *t, unsigned int thres,
  * access frequencies are similar.  This is for minimizing the monitoring
  * overhead under the dynamically changeable access pattern.  If a merge was
  * unnecessarily made, later 'kdamond_split_regions()' will revert it.
+ *
+ * The total number of regions could be higher than the user-defined limit,
+ * max_nr_regions for some cases.  For example, the user can update
+ * max_nr_regions to a number that lower than the current number of regions
+ * while DAMON is running.  For such a case, repeat merging until the limit is
+ * met while increasing @threshold up to possible maximum level.
  */
 static void kdamond_merge_regions(struct damon_ctx *c, unsigned int threshold,
 				  unsigned long sz_limit)
 {
 	struct damon_target *t;
+	unsigned int nr_regions;
+	unsigned int max_thres;
 
-	damon_for_each_target(t, c)
-		damon_merge_regions_of(t, threshold, sz_limit);
+	max_thres = c->aggr_interval /
+		(c->sample_interval ?  c->sample_interval : 1);
+	while (true) {
+		nr_regions = 0;
+		damon_for_each_target(t, c) {
+			damon_merge_regions_of(t, threshold, sz_limit);
+			nr_regions += damon_nr_regions(t);
+		}
+		if (nr_regions <= c->max_nr_regions ||
+				max_thres <= threshold)
+			break;
+		if (threshold < max_thres / 2)
+			threshold = max(1, threshold * 2);
+		else
+			threshold = max_thres;
+	}
 }
 
 /*

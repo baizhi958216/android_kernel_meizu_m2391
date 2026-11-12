@@ -262,7 +262,6 @@
 #define GCC_VIDEO_AHB_CLK					251
 #define GCC_VIDEO_XO_CLK					252
 #define GCC_UFS_MEM_CLKREF_CLK					254
-
 #define GCC_EMAC_BCR						0
 #define GCC_GPU_BCR						1
 #define GCC_MMSS_BCR						2
@@ -325,5 +324,10 @@
 #define USB30_MP_GDSC						8
 #define USB30_PRIM_GDSC						9
 #define USB30_SEC_GDSC						10
+#define HLOS1_VOTE_MMNOC_MMU_TBU_HF0_GDSC		11
+#define HLOS1_VOTE_MMNOC_MMU_TBU_HF1_GDSC		12
+#define HLOS1_VOTE_MMNOC_MMU_TBU_SF_GDSC		13
+#define HLOS1_VOTE_TURING_MMU_TBU0_GDSC			14
+#define HLOS1_VOTE_TURING_MMU_TBU1_GDSC			15
 
 #endif

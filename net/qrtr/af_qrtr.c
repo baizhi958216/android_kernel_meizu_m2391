@@ -138,11 +138,14 @@ u32 qrtr_ports_next = QRTR_MIN_EPH_SOCKET;
 static DEFINE_SPINLOCK(qrtr_port_lock);
 
 /* backup buffers */
-#define QRTR_BACKUP_HI_NUM	5
+#define QRTR_BACKUP_HI_NUM	10
 #define QRTR_BACKUP_HI_SIZE	SZ_16K
+#define QRTR_BACKUP_MD_NUM	20
+#define QRTR_BACKUP_MD_SIZE	SZ_1K
 #define QRTR_BACKUP_LO_NUM	20
-#define QRTR_BACKUP_LO_SIZE	SZ_1K
+#define QRTR_BACKUP_LO_SIZE	SZ_256
 static struct sk_buff_head qrtr_backup_lo;
+static struct sk_buff_head qrtr_backup_md;
 static struct sk_buff_head qrtr_backup_hi;
 static struct work_struct qrtr_backup_work;
 
@@ -934,6 +937,16 @@ static void qrtr_alloc_backup(struct work_struct *work)
 			break;
 		skb_queue_tail(&qrtr_backup_lo, skb);
 	}
+
+	while (skb_queue_len(&qrtr_backup_md) < QRTR_BACKUP_MD_NUM) {
+		skb = alloc_skb_with_frags(sizeof(struct qrtr_hdr_v1),
+					   QRTR_BACKUP_MD_SIZE, 0, &errcode,
+					   GFP_KERNEL);
+		if (!skb)
+			break;
+		skb_queue_tail(&qrtr_backup_md, skb);
+	}
+
 	while (skb_queue_len(&qrtr_backup_hi) < QRTR_BACKUP_HI_NUM) {
 		skb = alloc_skb_with_frags(sizeof(struct qrtr_hdr_v1),
 					   QRTR_BACKUP_HI_SIZE, 0, &errcode,
@@ -950,6 +963,8 @@ static struct sk_buff *qrtr_get_backup(size_t len)
 
 	if (len < QRTR_BACKUP_LO_SIZE)
 		skb = skb_dequeue(&qrtr_backup_lo);
+	else if (len < QRTR_BACKUP_MD_SIZE)
+		skb = skb_dequeue(&qrtr_backup_md);
 	else if (len < QRTR_BACKUP_HI_SIZE)
 		skb = skb_dequeue(&qrtr_backup_hi);
 
@@ -962,6 +977,7 @@ static struct sk_buff *qrtr_get_backup(size_t len)
 static void qrtr_backup_init(void)
 {
 	skb_queue_head_init(&qrtr_backup_lo);
+	skb_queue_head_init(&qrtr_backup_md);
 	skb_queue_head_init(&qrtr_backup_hi);
 	INIT_WORK(&qrtr_backup_work, qrtr_alloc_backup);
 	queue_work(system_unbound_wq, &qrtr_backup_work);
@@ -971,6 +987,7 @@ static void qrtr_backup_deinit(void)
 {
 	cancel_work_sync(&qrtr_backup_work);
 	skb_queue_purge(&qrtr_backup_lo);
+	skb_queue_purge(&qrtr_backup_md);
 	skb_queue_purge(&qrtr_backup_hi);
 }
 
@@ -1058,7 +1075,7 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
 	if (cb->dst_port == QRTR_PORT_CTRL_LEGACY)
 		cb->dst_port = QRTR_PORT_CTRL;
 
-	if (!size || len != ALIGN(size, 4) + hdrlen)
+	if (!size || size > len || len != ALIGN(size, 4) + hdrlen)
 		goto err;
 
 	if ((cb->type == QRTR_TYPE_NEW_SERVER ||
@@ -1504,13 +1521,13 @@ void qrtr_endpoint_unregister(struct qrtr_endpoint *ep)
 		if (*slot != node)
 			continue;
 		src.sq_node = iter.index;
-		skb = qrtr_alloc_ctrl_packet(&pkt, GFP_ATOMIC);
+		spin_unlock_irqrestore(&qrtr_nodes_lock, flags);
+		skb = qrtr_alloc_ctrl_packet(&pkt, GFP_KERNEL);
 		if (skb) {
 			pkt->cmd = cpu_to_le32(QRTR_TYPE_BYE);
 			qrtr_local_enqueue(NULL, skb, QRTR_TYPE_BYE, &src, &dst, 0);
 		}
 
-		spin_unlock_irqrestore(&qrtr_nodes_lock, flags);
 		qrtr_fwd_del_proc(node, iter.index);
 		spin_lock_irqsave(&qrtr_nodes_lock, flags);
 	}
@@ -1614,11 +1631,11 @@ static void qrtr_port_remove(struct qrtr_sock *ipc)
 	if (port == QRTR_PORT_CTRL)
 		port = 0;
 
-	__sock_put(&ipc->sk);
-
 	spin_lock_irqsave(&qrtr_port_lock, flags);
 	xa_erase(&qrtr_ports, port);
 	spin_unlock_irqrestore(&qrtr_port_lock, flags);
+
+	__sock_put(&ipc->sk);
 }
 
 /* Assign port number to socket.
@@ -1809,7 +1826,7 @@ static int qrtr_bcast_enqueue(struct qrtr_node *node, struct sk_buff *skb,
 		if (node->nid == QRTR_EP_NID_AUTO && type != QRTR_TYPE_HELLO)
 			continue;
 
-		skbn = skb_clone(skb, GFP_KERNEL);
+		skbn = pskb_copy(skb, GFP_KERNEL);
 		if (!skbn)
 			break;
 		skb_set_owner_w(skbn, skb->sk);
@@ -2286,6 +2303,14 @@ static int qrtr_create(struct net *net, struct socket *sock,
 
 	if (sock->type != SOCK_DGRAM)
 		return -EPROTOTYPE;
+
+	/* QRTR keeps its port and node state in module-global variables that
+	 * are not partitioned per network namespace, and the in-kernel name
+	 * service only operates in init_net. Confine the family to init_net so
+	 * a socket in another namespace cannot reach the global control plane.
+	 */
+	if (!net_eq(net, &init_net))
+		return -EAFNOSUPPORT;
 
 	sk = sk_alloc(net, AF_QIPCRTR, GFP_KERNEL, &qrtr_proto, kern);
 	if (!sk)

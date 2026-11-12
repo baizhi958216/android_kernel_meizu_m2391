@@ -1236,6 +1236,7 @@ void page_add_new_anon_rmap(struct page *page,
 	}
 	__mod_lruvec_page_state(page, NR_ANON_MAPPED, nr);
 	__page_set_anon_rmap(page, vma, address, 1);
+	trace_android_vh_page_add_new_anon_rmap(page, vma, address);
 }
 
 /**
@@ -2272,7 +2273,7 @@ static bool page_make_device_exclusive(struct page *page, struct mm_struct *mm,
 	 * issues. Also tail pages shouldn't be passed to rmap_walk so skip
 	 * those.
 	 */
-	if (!PageAnon(page) || PageTail(page))
+	if (!PageAnon(page) || PageTail(page) || PageHuge(page))
 		return false;
 
 	rmap_walk(page, &rwc);

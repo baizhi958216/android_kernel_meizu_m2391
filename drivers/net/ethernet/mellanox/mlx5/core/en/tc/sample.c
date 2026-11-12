@@ -5,6 +5,7 @@
 #include <net/psample.h>
 #include "en/mapping.h"
 #include "en/tc/post_act.h"
+#include "en/mod_hdr.h"
 #include "sample.h"
 #include "eswitch.h"
 #include "en_tc.h"
@@ -255,12 +256,12 @@ sample_modify_hdr_get(struct mlx5_core_dev *mdev, u32 obj_id,
 		goto err_modify_hdr;
 	}
 
-	dealloc_mod_hdr_actions(&mod_acts);
+	mlx5e_mod_hdr_dealloc(&mod_acts);
 	return modify_hdr;
 
 err_modify_hdr:
 err_post_act:
-	dealloc_mod_hdr_actions(&mod_acts);
+	mlx5e_mod_hdr_dealloc(&mod_acts);
 err_set_regc0:
 	return ERR_PTR(err);
 }
@@ -334,12 +335,15 @@ err_alloc:
 static void
 sample_restore_put(struct mlx5e_tc_psample *tc_psample, struct mlx5e_sample_restore *restore)
 {
+	bool last;
+
 	mutex_lock(&tc_psample->restore_lock);
-	if (--restore->count == 0)
+	last = --restore->count == 0;
+	if (last)
 		hash_del(&restore->hlist);
 	mutex_unlock(&tc_psample->restore_lock);
 
-	if (!restore->count) {
+	if (last) {
 		mlx5_del_flow_rules(restore->rule);
 		mlx5_modify_header_dealloc(tc_psample->esw->dev, restore->modify_hdr);
 		kfree(restore);

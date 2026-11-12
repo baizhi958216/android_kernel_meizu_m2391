@@ -79,7 +79,7 @@ static struct dentry *ntfs_lookup(struct inode *dir, struct dentry *dentry,
 		if (err < 0)
 			inode = ERR_PTR(err);
 		else {
-			ni_lock(ni);
+			ni_lock_dir(ni);
 			inode = dir_search_u(dir, uni, NULL);
 			ni_unlock(ni);
 		}
@@ -218,7 +218,7 @@ static int ntfs_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
 }
 
 /*
- * ntfs_rmdir - inode_operations::rm_dir
+ * ntfs_rmdir - inode_operations::rmdir
  */
 static int ntfs_rmdir(struct inode *dir, struct dentry *dentry)
 {
@@ -335,7 +335,7 @@ static int ntfs_rename(struct user_namespace *mnt_userns, struct inode *dir,
 			ntfs_sync_inode(dir);
 
 		if (IS_DIRSYNC(new_dir))
-			ntfs_sync_inode(inode);
+			ntfs_sync_inode(new_dir);
 	}
 
 	ni_unlock(ni);

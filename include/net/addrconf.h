@@ -31,16 +31,41 @@ struct prefix_info {
 	__u8			length;
 	__u8			prefix_len;
 
+/*
+ * ANDROID: crc fix for commit 9354e0acdb74 ("net: ipv6: support
+ * reporting otherwise unknown prefix * flags in RTM_NEWPREFIX")
+ */
+#ifndef __GENKSYMS__
+	union __packed {
+		__u8		flags;
+		struct __packed {
+#endif
 #if defined(__BIG_ENDIAN_BITFIELD)
-	__u8			onlink : 1,
-			 	autoconf : 1,
+			__u8	onlink : 1,
+				autoconf : 1,
+# ifdef __GENKSYMS__
 				reserved : 6;
+# else
+				routeraddr : 1,
+				preferpd : 1,
+				reserved : 4;
+# endif
 #elif defined(__LITTLE_ENDIAN_BITFIELD)
-	__u8			reserved : 6,
+# ifdef __GENKSYMS__
+			__u8	reserved : 6,
+# else
+			__u8	reserved : 4,
+				preferpd : 1,
+				routeraddr : 1,
+# endif
 				autoconf : 1,
 				onlink : 1;
 #else
 #error "Please fix <asm/byteorder.h>"
+#endif
+#ifndef __GENKSYMS__
+		};
+	};
 #endif
 	__be32			valid;
 	__be32			prefered;
@@ -48,6 +73,9 @@ struct prefix_info {
 
 	struct in6_addr		prefix;
 };
+
+/* rfc4861 4.6.2: IPv6 PIO is 32 bytes in size */
+static_assert(sizeof(struct prefix_info) == 32);
 
 #include <linux/ipv6.h>
 #include <linux/netdevice.h>
@@ -336,8 +364,11 @@ static inline struct inet6_dev *__in6_dev_get(const struct net_device *dev)
 static inline struct inet6_dev *__in6_dev_stats_get(const struct net_device *dev,
 						    const struct sk_buff *skb)
 {
-	if (netif_is_l3_master(dev))
+	if (netif_is_l3_master(dev)) {
 		dev = dev_get_by_index_rcu(dev_net(dev), inet6_iif(skb));
+		if (!dev)
+			return NULL;
+	}
 	return __in6_dev_get(dev);
 }
 
@@ -369,8 +400,8 @@ static inline struct inet6_dev *in6_dev_get(const struct net_device *dev)
 
 	rcu_read_lock();
 	idev = rcu_dereference(dev->ip6_ptr);
-	if (idev)
-		refcount_inc(&idev->refcnt);
+	if (idev && !refcount_inc_not_zero(&idev->refcnt))
+		idev = NULL;
 	rcu_read_unlock();
 	return idev;
 }
@@ -410,6 +441,11 @@ static inline void in6_dev_hold(struct inet6_dev *idev)
 	refcount_inc(&idev->refcnt);
 }
 
+static inline bool in6_dev_hold_safe(struct inet6_dev *idev)
+{
+	return refcount_inc_not_zero(&idev->refcnt);
+}
+
 /* called with rcu_read_lock held */
 static inline bool ip6_ignore_linkdown(const struct net_device *dev)
 {
@@ -439,6 +475,10 @@ static inline void in6_ifa_hold(struct inet6_ifaddr *ifp)
 	refcount_inc(&ifp->refcnt);
 }
 
+static inline bool in6_ifa_hold_safe(struct inet6_ifaddr *ifp)
+{
+	return refcount_inc_not_zero(&ifp->refcnt);
+}
 
 /*
  *	compute link-local solicited-node multicast address

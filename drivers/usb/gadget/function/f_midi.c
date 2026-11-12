@@ -282,7 +282,7 @@ f_midi_complete(struct usb_ep *ep, struct usb_request *req)
 			/* Our transmit completed. See if there's more to go.
 			 * f_midi_transmit eats req, don't queue it again. */
 			req->length = 0;
-			f_midi_transmit(midi);
+			queue_work(system_highpri_wq, &midi->work);
 			return;
 		}
 		break;
@@ -419,6 +419,7 @@ static void f_midi_disable(struct usb_function *f)
 	struct f_midi *midi = func_to_midi(f);
 	struct usb_composite_dev *cdev = f->config->cdev;
 	struct usb_request *req = NULL;
+	unsigned long flags;
 
 	DBG(cdev, "disable\n");
 
@@ -430,8 +431,10 @@ static void f_midi_disable(struct usb_function *f)
 	usb_ep_disable(midi->out_ep);
 
 	/* release IN requests */
+	spin_lock_irqsave(&midi->transmit_lock, flags);
 	while (kfifo_get(&midi->in_req_fifo, &req))
 		free_ep_req(midi->in_ep, req);
+	spin_unlock_irqrestore(&midi->transmit_lock, flags);
 
 	f_midi_drop_out_substreams(midi);
 }
@@ -660,6 +663,7 @@ static int f_midi_do_transmit(struct f_midi *midi, struct usb_ep *ep)
 		ERROR(midi, "%s failed to queue req: %d\n",
 		      midi->in_ep->name, err);
 		req->length = 0; /* Re-use request next time. */
+		return err;
 	} else {
 		/* Upon success, put request at the back of the queue. */
 		kfifo_skip(&midi->in_req_fifo);
@@ -906,6 +910,15 @@ static int f_midi_bind(struct usb_configuration *c, struct usb_function *f)
 
 	status = -ENODEV;
 
+	/*
+	 * Reset wMaxPacketSize with maximum packet size of FS bulk transfer before
+	 * endpoint claim. This ensures that the wMaxPacketSize does not exceed the
+	 * limit during bind retries where configured dwc3 TX/RX FIFO's maxpacket
+	 * size of 512 bytes for IN/OUT endpoints in support HS speed only.
+	 */
+	bulk_in_desc.wMaxPacketSize = cpu_to_le16(64);
+	bulk_out_desc.wMaxPacketSize = cpu_to_le16(64);
+
 	/* allocate instance-specific endpoints */
 	midi->in_ep = usb_ep_autoconfig(cdev->gadget, &bulk_in_desc);
 	if (!midi->in_ep)
@@ -999,11 +1012,11 @@ static int f_midi_bind(struct usb_configuration *c, struct usb_function *f)
 	}
 
 	/* configure the endpoint descriptors ... */
-	ms_out_desc.bLength = USB_DT_MS_ENDPOINT_SIZE(midi->in_ports);
-	ms_out_desc.bNumEmbMIDIJack = midi->in_ports;
+	ms_out_desc.bLength = USB_DT_MS_ENDPOINT_SIZE(midi->out_ports);
+	ms_out_desc.bNumEmbMIDIJack = midi->out_ports;
 
-	ms_in_desc.bLength = USB_DT_MS_ENDPOINT_SIZE(midi->out_ports);
-	ms_in_desc.bNumEmbMIDIJack = midi->out_ports;
+	ms_in_desc.bLength = USB_DT_MS_ENDPOINT_SIZE(midi->in_ports);
+	ms_in_desc.bNumEmbMIDIJack = midi->in_ports;
 
 	/* ... and add them to the list */
 	endpoint_descriptor_index = i;
@@ -1023,40 +1036,30 @@ static int f_midi_bind(struct usb_configuration *c, struct usb_function *f)
 	if (!f->fs_descriptors)
 		goto fail_f_midi;
 
-	if (gadget_is_dualspeed(c->cdev->gadget)) {
-		bulk_in_desc.wMaxPacketSize = cpu_to_le16(512);
-		bulk_out_desc.wMaxPacketSize = cpu_to_le16(512);
-		f->hs_descriptors = usb_copy_descriptors(midi_function);
-		if (!f->hs_descriptors)
-			goto fail_f_midi;
-	}
+	bulk_in_desc.wMaxPacketSize = cpu_to_le16(512);
+	bulk_out_desc.wMaxPacketSize = cpu_to_le16(512);
+	f->hs_descriptors = usb_copy_descriptors(midi_function);
+	if (!f->hs_descriptors)
+		goto fail_f_midi;
 
-	if (gadget_is_superspeed(c->cdev->gadget)) {
-		bulk_in_desc.wMaxPacketSize = cpu_to_le16(1024);
-		bulk_out_desc.wMaxPacketSize = cpu_to_le16(1024);
-		i = endpoint_descriptor_index;
-		midi_function[i++] = (struct usb_descriptor_header *)
-				     &bulk_out_desc;
-		midi_function[i++] = (struct usb_descriptor_header *)
-				     &bulk_out_ss_comp_desc;
-		midi_function[i++] = (struct usb_descriptor_header *)
-				     &ms_out_desc;
-		midi_function[i++] = (struct usb_descriptor_header *)
-				     &bulk_in_desc;
-		midi_function[i++] = (struct usb_descriptor_header *)
-				     &bulk_in_ss_comp_desc;
-		midi_function[i++] = (struct usb_descriptor_header *)
-				     &ms_in_desc;
-		f->ss_descriptors = usb_copy_descriptors(midi_function);
-		if (!f->ss_descriptors)
-			goto fail_f_midi;
-
-		if (gadget_is_superspeed_plus(c->cdev->gadget)) {
-			f->ssp_descriptors = usb_copy_descriptors(midi_function);
-			if (!f->ssp_descriptors)
-				goto fail_f_midi;
-		}
-	}
+	bulk_in_desc.wMaxPacketSize = cpu_to_le16(1024);
+	bulk_out_desc.wMaxPacketSize = cpu_to_le16(1024);
+	i = endpoint_descriptor_index;
+	midi_function[i++] = (struct usb_descriptor_header *)
+			     &bulk_out_desc;
+	midi_function[i++] = (struct usb_descriptor_header *)
+			     &bulk_out_ss_comp_desc;
+	midi_function[i++] = (struct usb_descriptor_header *)
+			     &ms_out_desc;
+	midi_function[i++] = (struct usb_descriptor_header *)
+			     &bulk_in_desc;
+	midi_function[i++] = (struct usb_descriptor_header *)
+			     &bulk_in_ss_comp_desc;
+	midi_function[i++] = (struct usb_descriptor_header *)
+			     &ms_in_desc;
+	f->ss_descriptors = usb_copy_descriptors(midi_function);
+	if (!f->ss_descriptors)
+		goto fail_f_midi;
 
 	kfree(midi_function);
 
@@ -1322,6 +1325,7 @@ static void f_midi_free(struct usb_function *f)
 	opts = container_of(f->fi, struct f_midi_opts, func_inst);
 	mutex_lock(&opts->lock);
 	if (!--midi->free_ref) {
+		cancel_work_sync(&midi->work);
 		kfree(midi->id);
 		kfifo_free(&midi->in_req_fifo);
 		kfree(midi);
