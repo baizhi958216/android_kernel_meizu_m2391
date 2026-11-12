@@ -447,7 +447,6 @@ static const struct file_operations tmc_bytes_fops = {
 	.open = tmc_bytes_open,
 	.read = tmc_bytes_read,
 	.release = tmc_bytes_release,
-	.llseek = no_llseek,
 };
 
 int tmc_qdss_init(struct tmc_drvdata *tmc)
