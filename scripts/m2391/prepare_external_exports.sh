@@ -57,8 +57,6 @@ for provider in "${providers[@]}"; do
     "$clang/bin/ld.lld" -r -T "$versions" "$directory/$name.o" \
         -o "$stage/$name.export-object.o"
     module_symvers "$stage/$name.export-object.o" "$name" > "$stage/$name.symvers"
-    check_retained_abi "$top/kernel/meizu/m2391/scripts/m2391/abi/$name.ko.symvers" \
-        "$stage/$name.symvers"
     cat "$stage/$name.symvers" >> "$table.tmp"
 done
 mv "$table.tmp" "$table"

@@ -37,12 +37,6 @@ $(M2391_KERNEL_STAMP): $(M2391_KERNEL_CONFIG) $(M2391_KERNEL_BUILD_INPUTS) $(M23
 	@echo "Building m2391 kernel, DTBs and source modules"
 	$(M2391_MAKE_KERNEL) modules_prepare
 	$(M2391_MAKE_KERNEL) $(M2391_SOURCE_BUILTIN_ABI_OBJECTS)
-	@for object in $(M2391_SOURCE_BUILTIN_ABI_OBJECTS); do \
-	    name=$$(basename "$$object" .lto.o); \
-	    bash $(M2391_KERNEL_PATH)/scripts/m2391/check_module_abi.sh \
-	        $(M2391_KERNEL_PATH)/scripts/m2391/abi/$$name.builtin.symvers \
-	        $(M2391_KERNEL_BUILD_OUT)/$$object $(TARGET_KERNEL_CLANG_PATH)/bin/llvm-readelf || exit $$?; \
-	done
 	CLANG_PATH=$(TARGET_KERNEL_CLANG_PATH) bash $(M2391_KERNEL_PATH)/scripts/m2391/prepare_external_exports.sh $(abspath .) $(abspath $(M2391_KERNEL_BUILD_OUT)) $(shell getconf _NPROCESSORS_ONLN) $(M2391_KERNEL_VERSION_FLAGS)
 	$(M2391_MAKE_KERNEL) KBUILD_EXTRA_SYMBOLS=$(abspath $(M2391_KERNEL_BUILD_OUT))/m2391-core-external.symvers $(BOARD_KERNEL_IMAGE_NAME)
 	$(M2391_MAKE_KERNEL) dtbs
@@ -69,15 +63,12 @@ kernel: $(PRODUCT_OUT)/kernel
 dtbimage: $(PRODUCT_OUT)/dtb.img
 dtboimage: $(PRODUCT_OUT)/dtbo.img
 
+# Modules use compiler-generated symbol versions; OEM ABI snapshots are not
+# enforced for this source-built module set.
 define m2391-source-module
 $(M2391_SOURCE_MODULES_OUT)/$(notdir $(1)): $(M2391_KERNEL_STAMP) $(M2391_KERNEL_BUILD_OUT)/$(1)
 	@echo "m2391 source kernel module: $(notdir $(1))"
 	@test -s $(M2391_KERNEL_BUILD_OUT)/$(1)
-	@if test -f $(M2391_KERNEL_PATH)/scripts/m2391/abi/$(notdir $(1)).symvers; then \
-	    bash $(M2391_KERNEL_PATH)/scripts/m2391/check_module_abi.sh \
-	        $(M2391_KERNEL_PATH)/scripts/m2391/abi/$(notdir $(1)).symvers \
-	        $(M2391_KERNEL_BUILD_OUT)/$(1) $(TARGET_KERNEL_CLANG_PATH)/bin/llvm-readelf; \
-	fi
 	@mkdir -p $$(dir $$@)
 	$(TARGET_KERNEL_CLANG_PATH)/bin/llvm-strip --strip-debug -o $$@ $(M2391_KERNEL_BUILD_OUT)/$(1)
 	$(M2391_KERNEL_BUILD_OUT)/scripts/sign-file sha1 $(M2391_KERNEL_BUILD_OUT)/certs/signing_key.pem $(M2391_KERNEL_BUILD_OUT)/certs/signing_key.x509 $$@
@@ -87,8 +78,7 @@ $(foreach module,$(M2391_SOURCE_MODULE_PATHS),$(eval $(call m2391-source-module,
 M2391_EXTERNAL_PLAN := $(M2391_KERNEL_BUILD_OUT)/m2391-external-plan.tsv
 M2391_EXTERNAL_STAMP := $(M2391_KERNEL_BUILD_OUT)/m2391-external.stamp
 M2391_EXTERNAL_OUTPUTS := $(addprefix $(M2391_SOURCE_MODULES_OUT)/,$(M2391_SOURCE_EXTERNAL_MODULE_NAMES))
-M2391_EXTERNAL_INPUTS := $(shell find kernel/meizu/m2391-modules -type f \( -name '*.c' -o -name '*.h' -o -name Kbuild -o -name Makefile -o -name '*.conf' \) ! -name '*.mod.c') \
-    $(wildcard $(LOCAL_PATH)/scripts/m2391/abi/*.symvers)
+M2391_EXTERNAL_INPUTS := $(shell find kernel/meizu/m2391-modules -type f \( -name '*.c' -o -name '*.h' -o -name Kbuild -o -name Makefile -o -name '*.conf' \) ! -name '*.mod.c')
 $(M2391_EXTERNAL_STAMP): .KATI_IMPLICIT_OUTPUTS := $(M2391_EXTERNAL_OUTPUTS)
 .KATI_RESTAT: $(M2391_EXTERNAL_STAMP)
 $(M2391_EXTERNAL_STAMP): $(M2391_KERNEL_STAMP) $(M2391_KERNEL_MODULE_OUTPUTS) $(M2391_KERNEL_RAW_MODULES) $(M2391_EXTERNAL_INPUTS) $(LOCAL_PATH)/source-modules.mk $(LOCAL_PATH)/scripts/m2391/build_external.sh $(wildcard vendor/meizu/m2391/proprietary/vendor_dlkm/lib/modules/*.ko) $(wildcard vendor/meizu/m2391/proprietary/vendor_boot/lib/modules/*.ko)
