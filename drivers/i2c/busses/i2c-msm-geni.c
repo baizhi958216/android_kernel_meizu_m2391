@@ -272,6 +272,11 @@ static struct geni_i2c_clk_fld geni_i2c_clk_map[] = {
 	{KHz(1000), 1, 2,  8, 18},
 };
 
+/* The I2C HUB needs the longer SCL pulses at 1 MHz. */
+static const struct geni_i2c_clk_fld geni_i2c_hub_1mhz = {
+	KHz(1000), 1, 3, 9, 18
+};
+
 static int geni_i2c_clk_map_idx(struct geni_i2c_dev *gi2c)
 {
 	int i;
@@ -371,7 +376,10 @@ void geni_i2c_se_dump_dbg_regs(struct geni_se *se, void __iomem *base,
 
 static inline void qcom_geni_i2c_conf(struct geni_i2c_dev *gi2c, int dfs)
 {
-	struct geni_i2c_clk_fld *itr = geni_i2c_clk_map + gi2c->clk_fld_idx;
+	const struct geni_i2c_clk_fld *itr = geni_i2c_clk_map + gi2c->clk_fld_idx;
+
+	if (gi2c->is_i2c_hub && gi2c->clk_freq_out == KHz(1000))
+		itr = &geni_i2c_hub_1mhz;
 
 	/* do not configure the dfs index for i2c hub master */
 	if (!gi2c->is_i2c_hub)
