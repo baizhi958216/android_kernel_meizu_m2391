@@ -157,9 +157,18 @@ static int tpda_enable_port(struct tpda_drvdata *drvdata, int port)
 	u32 val;
 	int rc;
 
+	if (port < 0 || port >= TPDA_MAX_INPORTS)
+		return -EINVAL;
 	val = readl_relaxed(drvdata->base + TPDA_Pn_CR(port));
 	tpda_clear_element_size(drvdata->csdev);
-	rc = tpda_get_element_size(drvdata, drvdata->csdev, port);
+	if (drvdata->kalama) {
+		drvdata->dsb_esize = drvdata->port_dsb[port];
+		drvdata->cmb_esize = drvdata->port_cmb[port];
+		val = (val & ~GENMASK(3, 1)) | FIELD_PREP(GENMASK(3, 1), 5);
+		rc = drvdata->dsb_esize || drvdata->cmb_esize ? 0 : -ENOENT;
+	} else {
+		rc = tpda_get_element_size(drvdata, drvdata->csdev, port);
+	}
 	if (!rc && (drvdata->dsb_esize || drvdata->cmb_esize)) {
 		tpda_set_element_size(drvdata, &val);
 		/* Enable the port */
@@ -265,6 +274,28 @@ static const struct coresight_ops tpda_cs_ops = {
 	.link_ops	= &tpda_link_ops,
 };
 
+static int tpda_read_ports(struct device *dev, const char *property, u8 *widths, bool cmb)
+{
+	const __be32 *data;
+	int len, i;
+
+	data = of_get_property(dev->of_node, property, &len);
+	if (!data)
+		return 0;
+	if (len % (2 * sizeof(*data)))
+		return -EINVAL;
+	for (i = 0; i < len / sizeof(*data); i += 2) {
+		u32 port = be32_to_cpu(data[i]);
+		u32 bits = be32_to_cpu(data[i + 1]);
+
+		if (port >= TPDA_MAX_INPORTS || widths[port] ||
+		    (bits != 32 && bits != 64 && !(cmb && bits == 8)))
+			return -EINVAL;
+		widths[port] = bits;
+	}
+	return 0;
+}
+
 static int tpda_init_default_data(struct tpda_drvdata *drvdata)
 {
 	int atid;
@@ -275,7 +306,27 @@ static int tpda_init_default_data(struct tpda_drvdata *drvdata)
 	 * same trace-id. When TPDA does packetization, different
 	 * port will have unique channel number for decoding.
 	 */
-	atid = coresight_trace_id_get_system_id();
+	if (drvdata->kalama) {
+		u32 id;
+		u32 auth = readl(drvdata->base + CORESIGHT_AUTHSTATUS);
+		int i, ret;
+
+		for (i = 0; i < 8; i += 2)
+			if (((auth >> i) & 3) == 2)
+				return -EPERM;
+		ret = tpda_read_ports(drvdata->dev, "qcom,dsb-elem-size", drvdata->port_dsb, false);
+		if (ret)
+			return ret;
+		ret = tpda_read_ports(drvdata->dev, "qcom,cmb-elem-size", drvdata->port_cmb, true);
+		if (ret)
+			return ret;
+		ret = device_property_read_u32(drvdata->dev, "qcom,tpda-atid", &id);
+		if (ret || !IS_VALID_CS_TRACE_ID(id))
+			return -EINVAL;
+		atid = coresight_trace_id_get_static_system_id(id);
+	} else {
+		atid = coresight_trace_id_get_system_id();
+	}
 	if (atid < 0)
 		return atid;
 
@@ -308,6 +359,7 @@ static int tpda_probe(struct amba_device *adev, const struct amba_id *id)
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 	drvdata->base = base;
+	drvdata->kalama = id->id == 0x0003b969;
 
 	spin_lock_init(&drvdata->spinlock);
 
@@ -316,8 +368,10 @@ static int tpda_probe(struct amba_device *adev, const struct amba_id *id)
 		return ret;
 
 	desc.name = coresight_alloc_device_name(&tpda_devs, dev);
-	if (!desc.name)
+	if (!desc.name) {
+		coresight_trace_id_put_system_id(drvdata->atid);
 		return -ENOMEM;
+	}
 	desc.type = CORESIGHT_DEV_TYPE_LINK;
 	desc.subtype.link_subtype = CORESIGHT_DEV_SUBTYPE_LINK_MERG;
 	desc.ops = &tpda_cs_ops;
@@ -325,8 +379,10 @@ static int tpda_probe(struct amba_device *adev, const struct amba_id *id)
 	desc.dev = &adev->dev;
 	desc.access = CSDEV_ACCESS_IOMEM(base);
 	drvdata->csdev = coresight_register(&desc);
-	if (IS_ERR(drvdata->csdev))
+	if (IS_ERR(drvdata->csdev)) {
+		coresight_trace_id_put_system_id(drvdata->atid);
 		return PTR_ERR(drvdata->csdev);
+	}
 
 	pm_runtime_put(&adev->dev);
 
@@ -347,6 +403,7 @@ static void tpda_remove(struct amba_device *adev)
  * The difference is 0-7 bits' value. So ignore 0-7 bits.
  */
 static const struct amba_id tpda_ids[] = {
+	{ .id = 0x0003b969, .mask = 0x0003ffff },
 	{
 		.id     = 0x000f0f00,
 		.mask   = 0x000fff00,

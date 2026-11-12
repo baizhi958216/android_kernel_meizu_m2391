@@ -14,6 +14,7 @@
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/of.h>
 
 #include "coresight-priv.h"
@@ -1351,6 +1352,17 @@ static int tpdm_probe(struct amba_device *adev, const struct amba_id *id)
 	struct coresight_desc desc = { 0 };
 	int ret;
 
+	if (device_property_read_bool(dev, "qcom,hw-enable-check")) {
+		u32 state = 0;
+
+		if (!IS_REACHABLE(CONFIG_QCOM_SCM))
+			return -EACCES;
+		if (!qcom_scm_is_available())
+			return -EPROBE_DEFER;
+		ret = qcom_scm_get_sec_dump_state(&state);
+		if (ret || !state)
+			return ret ?: -EACCES;
+	}
 	pdata = coresight_get_platform_data(dev);
 	if (IS_ERR(pdata))
 		return PTR_ERR(pdata);
@@ -1416,6 +1428,7 @@ static void tpdm_remove(struct amba_device *adev)
  * The difference is 0-7 bits' value. So ignore 0-7 bits.
  */
 static const struct amba_id tpdm_ids[] = {
+	{ .id = 0x0003b968, .mask = 0x0003ffff },
 	{
 		.id	= 0x001f0e00,
 		.mask	= 0x00ffff00,
