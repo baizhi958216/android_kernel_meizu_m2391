@@ -280,6 +280,7 @@ obj-$(CONFIG_MFD_ROHM_BD96801)	+= rohm-bd96801.o
 obj-$(CONFIG_MFD_STMFX) 	+= stmfx.o
 obj-$(CONFIG_MFD_KHADAS_MCU) 	+= khadas-mcu.o
 obj-$(CONFIG_MFD_ACER_A500_EC)	+= acer-ec-a500.o
+obj-$(CONFIG_MFD_QCOM_I2C_PMIC) += qcom-i2c-pmic.o
 obj-$(CONFIG_MFD_QCOM_PM8008)	+= qcom-pm8008.o
 
 obj-$(CONFIG_SGI_MFD_IOC3)	+= ioc3.o

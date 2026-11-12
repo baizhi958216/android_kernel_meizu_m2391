@@ -2378,6 +2378,11 @@ config MFD_ACER_A500_EC
 	  The controller itself is ENE KB930, it is running firmware
 	  customized for the specific needs of the Acer A500 hardware.
 
+config MFD_QCOM_I2C_PMIC
+	tristate "Qualcomm split-address I2C PMIC register banks"
+	depends on I2C && OF
+	select REGMAP_I2C
+
 config MFD_QCOM_PM8008
 	tristate "QCOM PM8008 Power Management IC"
 	depends on I2C && OF
