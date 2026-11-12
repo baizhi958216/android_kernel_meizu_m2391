@@ -349,11 +349,15 @@ static int msm_eud_probe(struct platform_device *pdev)
 static void msm_eud_remove(struct platform_device *pdev)
 {
 	struct msm_eud *eud = platform_get_drvdata(pdev);
+	unsigned long flags;
 
 	guard(mutex)(&eud_lock);
 	eud_device = NULL;
 	dev_pm_clear_wake_irq(&pdev->dev);
+	uart_port_lock_irqsave(&eud->port, &flags);
+	eud->enabled = false;
 	writel(0, eud->base + EUD_IRQ_ENABLE);
+	uart_port_unlock_irqrestore(&eud->port, flags);
 	eud_cable_state(eud, false);
 }
 
