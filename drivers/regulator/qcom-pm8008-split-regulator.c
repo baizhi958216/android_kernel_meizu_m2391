@@ -734,6 +734,23 @@ static int pm8008_register_ldo(struct pm8008_regulator *pm8008_reg,
 		return -EINVAL;
 	}
 
+	/*
+	 * The core initially applies an out-of-range voltage by requesting
+	 * the nearest constraint endpoint exactly. Advertise only endpoints
+	 * that this LDO can program within the board's voltage window.
+	 */
+	if (init_data->constraints.min_uV && init_data->constraints.max_uV) {
+		struct regulation_constraints *c = &init_data->constraints;
+		int low = max(c->min_uV, reg_data[i].min_uv);
+		int high = rounddown(min(c->max_uV, reg_data[i].max_uv),
+				     VSET_STEP_UV);
+
+		if (low > high)
+			return -EINVAL;
+		c->min_uV = roundup(low, VSET_STEP_UV);
+		c->max_uV = high;
+	}
+
 	/* configure the initial voltage for the regulator */
 	if (init_voltage > 0) {
 		rc = pm8008_write_voltage(pm8008_reg, init_voltage,
