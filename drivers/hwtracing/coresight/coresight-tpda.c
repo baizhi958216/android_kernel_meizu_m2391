@@ -411,6 +411,8 @@ static const struct amba_id tpda_ids[] = {
 	{ 0, 0, NULL },
 };
 
+MODULE_DEVICE_TABLE(amba, tpda_ids);
+
 static struct amba_driver tpda_driver = {
 	.drv = {
 		.name   = "coresight-tpda",
