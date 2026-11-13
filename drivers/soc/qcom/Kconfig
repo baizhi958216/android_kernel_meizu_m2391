@@ -205,6 +205,14 @@ config QCOM_RPM_MASTER_STATS
 
 	  Say y here if you intend to debug or monitor platform sleep.
 
+config QCOM_RUN_QUEUE_STATS
+	tristate "Qualcomm deferred tick notification for IRQ balancing"
+	depends on SMP && SYSFS && ANDROID_VENDOR_HOOKS
+	help
+	  Provide the CPU0 rq-stats/def_timer_ms sysfs interface used by
+	  Qualcomm's userspace IRQ balancer. Pollers are notified as jiffies
+	  advance, allowing idle CPUs to stay asleep.
+
 config QCOM_RPMH
 	tristate "Qualcomm RPM-Hardened (RPMH) Communication"
 	depends on ARCH_QCOM || COMPILE_TEST
