@@ -658,6 +658,13 @@ config BSD_PROCESS_ACCT_V3
 	  for processing it. A preliminary version of these tools is available
 	  at <http://www.gnu.org/software/acct/>.
 
+config MSM_SYSSTATS
+	tristate "Qualcomm system statistics over Generic Netlink"
+	depends on NET && MMU && DMA_SHARED_BUFFER
+	help
+	  Expose the SYSSTATS v2 task, memory and PID queries used by Qualcomm
+	  performance clients.
+
 config TASKSTATS
 	bool "Export task/process statistics through netlink"
 	depends on NET
