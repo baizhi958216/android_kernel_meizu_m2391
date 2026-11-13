@@ -30,6 +30,7 @@ STOCK_REPLACEMENTS = {
     "phy_msm_snps_eusb2": "phy_snps_eusb2",
     "phy_msm_ssusb_qmp": "phy_qcom_qmp_combo",
     "qcom_glink_spss": "qcom_glink_smem",
+    "qcom_pm8008_regulator": "qcom_pm8008_split_regulator",
     "qnoc_kalama": "qnoc_sm8550",
     "qti_fixed_regulator": "fixed",
     "repeater_qti_pmic_eusb2": "phy_qcom_eusb2_repeater",
