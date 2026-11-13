@@ -43,6 +43,7 @@ extbuild qcom/opensource/touch-drivers/mz_gesture \
 extbuild meizu/power-notify
 extbuild meizu/storage
 extbuild meizu/bootloader-log
+extbuild meizu/key-value KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/storage/Module.symvers"
 extbuild meizu/reset-info KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/storage/Module.symvers"
 extbuild meizu/reclaim-opt
 extbuild meizu/compaction-opt
