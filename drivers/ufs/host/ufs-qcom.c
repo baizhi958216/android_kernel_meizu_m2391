@@ -494,6 +494,12 @@ static void ufs_qcom_config_ice_allocator(struct ufs_qcom_host *host)
 
 #endif
 
+static bool ufs_qcom_is_kalama_phy(struct phy *phy)
+{
+	return IS_REACHABLE(CONFIG_PHY_QCOM_KALAMA_UFS) && phy &&
+	       of_device_is_compatible(phy->dev.parent->of_node, "qcom,ufs-phy-qmp-v4-kalama");
+}
+
 static void ufs_qcom_disable_lane_clks(struct ufs_qcom_host *host)
 {
 	if (!host->is_lane_clks_enabled)
@@ -725,6 +731,15 @@ static int ufs_qcom_power_up_sequence(struct ufs_hba *hba)
 		goto out_disable_phy;
 	}
 
+	if (ufs_qcom_is_kalama_phy(phy) && host->h8_mux_error) {
+		ret = ufs_qcom_phy_set_src_clk_h8_exit(phy);
+		if (ret) {
+			phy_power_off(phy);
+			goto out_disable_phy;
+		}
+		host->h8_mux_error = 0;
+	}
+
 	ufs_qcom_select_unipro_mode(host);
 
 	return 0;
@@ -745,11 +760,16 @@ out_disable_phy:
  */
 static void ufs_qcom_enable_hw_clk_gating(struct ufs_hba *hba)
 {
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
 	int err;
 
 	/* Enable UTP internal clock gating */
 	ufshcd_rmwl(hba, REG_UFS_CFG2_CGC_EN_ALL, REG_UFS_CFG2_CGC_EN_ALL,
 		    REG_UFS_CFG2);
+
+	if (ufs_qcom_is_kalama_phy(host->generic_phy) && host->hw_ver.major == 5)
+		ufshcd_rmwl(hba, KALAMA_UNUSED_UNIPRO_CGC_EN,
+			    KALAMA_UNUSED_UNIPRO_CGC_EN, UFS_AH8_CFG);
 
 	/* Ensure that HW clock gating is enabled before next operations */
 	ufshcd_readl(hba, REG_UFS_CFG2);
@@ -885,8 +905,7 @@ static int ufs_qcom_link_startup_notify(struct ufs_hba *hba,
 {
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
 	struct phy *phy = host->generic_phy;
-	bool kalama_phy = IS_REACHABLE(CONFIG_PHY_QCOM_KALAMA_UFS) && phy &&
-		of_device_is_compatible(phy->dev.parent->of_node, "qcom,ufs-phy-qmp-v4-kalama");
+	bool kalama_phy = ufs_qcom_is_kalama_phy(phy);
 	int err = 0;
 
 	switch (status) {
@@ -1099,7 +1118,9 @@ static int ufs_qcom_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op,
 	if (err)
 		return err;
 
-	if (!ufs_qcom_is_link_active(hba))
+	/* Kalama needs its lane votes until the clock-off callback selects XO. */
+	if (ufs_qcom_is_link_off(hba) ||
+	    (!ufs_qcom_is_link_active(hba) && !ufs_qcom_is_kalama_phy(host->generic_phy)))
 		ufs_qcom_disable_lane_clks(host);
 
 	/* reset the connected UFS device during power down */
@@ -1745,6 +1766,57 @@ static void ufs_qcom_set_caps(struct ufs_hba *hba)
 	ufs_qcom_set_host_caps(hba);
 }
 
+/* Update the same vote that the UFS core walks between the variant callbacks. */
+static int ufs_qcom_set_core_clk(struct ufs_clk_info *clki, bool on)
+{
+	int ret;
+
+	if (clki->enabled == on)
+		return 0;
+
+	if (on) {
+		ret = clk_prepare_enable(clki->clk);
+		if (ret)
+			return ret;
+	} else {
+		clk_disable_unprepare(clki->clk);
+	}
+
+	clki->enabled = on;
+	return 0;
+}
+
+static int ufs_qcom_kalama_clks_on(struct ufs_qcom_host *host)
+{
+	bool hibern8 = ufs_qcom_is_link_hibern8(host->hba);
+	bool lanes_on = host->is_lane_clks_enabled;
+	bool ref_on = host->ref_clki->enabled;
+	int ret;
+
+	if (hibern8) {
+		ret = ufs_qcom_enable_lane_clks(host);
+		if (ret)
+			return ret;
+		/* Let the core restore the bus clocks before reporting a mux error. */
+		host->h8_mux_error = ufs_qcom_phy_set_src_clk_h8_exit(host->generic_phy);
+	}
+	ret = ufs_qcom_set_core_clk(host->ref_clki, true);
+	if (ret)
+		goto restore_mux;
+	ret = ufs_qcom_set_core_clk(host->unipro_clki, true);
+	if (!ret)
+		return 0;
+
+	if (!ref_on)
+		ufs_qcom_set_core_clk(host->ref_clki, false);
+restore_mux:
+	if (hibern8 && !host->h8_mux_error)
+		ufs_qcom_phy_set_src_clk_h8_enter(host->generic_phy);
+	if (!lanes_on)
+		ufs_qcom_disable_lane_clks(host);
+	return ret;
+}
+
 /**
  * ufs_qcom_setup_clocks - enables/disable clocks
  * @hba: host controller instance
@@ -1764,6 +1836,7 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 {
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
 	struct phy *phy;
+	bool kalama;
 	int err;
 
 	/*
@@ -1775,6 +1848,7 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 		return 0;
 
 	phy = host->generic_phy;
+	kalama = ufs_qcom_is_kalama_phy(phy);
 
 	switch (status) {
 	case PRE_CHANGE:
@@ -1782,6 +1856,9 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 			err = ufs_qcom_icc_update_bw(host);
 			if (err)
 				return err;
+			if (kalama)
+				return ufs_qcom_kalama_clks_on(host);
+
 			if (ufs_qcom_is_link_hibern8(hba)) {
 				err = ufs_qcom_enable_lane_clks(host);
 				if (err) {
@@ -1790,6 +1867,20 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 				}
 			}
 		} else {
+			if (kalama) {
+				if (ufs_qcom_is_link_active(hba))
+					return 0;
+
+				ufs_qcom_set_core_clk(host->unipro_clki, false);
+				err = phy_power_off(phy);
+				if (err) {
+					ufs_qcom_set_core_clk(host->unipro_clki, true);
+					return err;
+				}
+				ufs_qcom_dev_ref_clk_ctrl(host, false);
+				return ufs_qcom_set_core_clk(host->ref_clki, false);
+			}
+
 			if (!ufs_qcom_is_link_active(hba)) {
 				/* disable device ref_clk */
 				ufs_qcom_dev_ref_clk_ctrl(host, false);
@@ -1804,18 +1895,28 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 		break;
 	case POST_CHANGE:
 		if (on) {
-			err = phy_power_on(phy);
-			if (err) {
-				dev_err(hba->dev, "phy power on failed, ret = %d\n", err);
-				return err;
+			if (!kalama || !phy->power_count) {
+				err = phy_power_on(phy);
+				if (err) {
+					dev_err(hba->dev, "phy power on failed, ret = %d\n", err);
+					return err;
+				}
 			}
 
 			/* enable the device ref clock for HS mode*/
 			if (ufshcd_is_hs_mode(&hba->pwr_info))
 				ufs_qcom_dev_ref_clk_ctrl(host, true);
+			if (kalama)
+				return host->h8_mux_error;
 		} else {
-			if (ufs_qcom_is_link_hibern8(hba))
+			if (ufs_qcom_is_link_hibern8(hba)) {
+				if (kalama) {
+					err = ufs_qcom_phy_set_src_clk_h8_enter(phy);
+					if (err)
+						return err;
+				}
 				ufs_qcom_disable_lane_clks(host);
+			}
 
 			return ufs_qcom_icc_set_bw(host, MODE_MIN, 0, 0);
 		}
@@ -1956,8 +2057,17 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 	host->dev_ref_clk_en_mask = BIT(26);
 
 	list_for_each_entry(clki, &hba->clk_list_head, list) {
-		if (!strcmp(clki->name, "core_clk_unipro"))
+		if (!strcmp(clki->name, "core_clk_unipro")) {
 			clki->keep_link_active = true;
+			host->unipro_clki = clki;
+		} else if (!strcmp(clki->name, "ref_clk")) {
+			host->ref_clki = clki;
+		}
+	}
+
+	if (ufs_qcom_is_kalama_phy(host->generic_phy) && (!host->unipro_clki || !host->ref_clki)) {
+		err = dev_err_probe(dev, -EINVAL, "Missing UniPro or reference clock\n");
+		goto out_variant_clear;
 	}
 
 	err = ufs_qcom_init_kalama_rails(host);

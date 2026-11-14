@@ -177,6 +177,7 @@ enum {
 
 /* System, ICE, UniPro and auxiliary clock requests during Auto-Hibern8. */
 #define KALAMA_UFS_AH8_CLK_REQ_MASK	GENMASK(5, 2)
+#define KALAMA_UNUSED_UNIPRO_CGC_EN	GENMASK(12, 11)
 
 /* bit definitions for REG_UFS_CFG2 register */
 #define UAWM_HW_CGC_EN		BIT(0)
@@ -330,6 +331,9 @@ struct ufs_qcom_host {
 	struct clk_bulk_data *clks;
 	u32 num_clks;
 	bool is_lane_clks_enabled;
+	struct ufs_clk_info *unipro_clki;
+	struct ufs_clk_info *ref_clki;
+	int h8_mux_error;
 
 	struct icc_path *icc_ddr;
 	struct icc_path *icc_cpu;
