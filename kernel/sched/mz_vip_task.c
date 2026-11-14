@@ -89,7 +89,7 @@ static struct task_struct *vip_task(struct list_head *entry)
 	return (struct task_struct *)((char *)entry -
 		offsetof(struct task_struct, android_oem_data1));
 }
-static void enqueue_vip_task(struct rq *rq, struct task_struct *p)
+static void enqueue_vip_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct mz_task_struct *v = vip(p);
 
@@ -97,7 +97,11 @@ static void enqueue_vip_task(struct rq *rq, struct task_struct *p)
 		return;
 	if (!v->vip_entry.next && !v->vip_entry.prev)
 		INIT_LIST_HEAD(&v->vip_entry);
-	if (!test_task_vip(p) || READ_ONCE(p->__state))
+	/* Both a normal wakeup and an EEVDF delayed wake enqueue the task
+	 * before ttwu_do_wakeup() publishes TASK_RUNNING.
+	 */
+	if (!test_task_vip(p) ||
+	    (READ_ONCE(p->__state) && !(flags & (ENQUEUE_WAKEUP | ENQUEUE_DELAYED))))
 		return;
 	get_task_struct(p);
 	list_add_tail(&v->vip_entry, vip_list(rq));
@@ -287,7 +291,7 @@ static void enqueue_hook(void *unused, struct rq *rq, struct task_struct *p,
 			 int flags)
 {
 	if (feature(4))
-		enqueue_vip_task(rq, p);
+		enqueue_vip_task(rq, p, flags);
 }
 static void dequeue_hook(void *unused, struct rq *rq, struct task_struct *p,
 			 int flags)
