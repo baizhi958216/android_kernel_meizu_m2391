@@ -10,10 +10,11 @@ system_certificate_list:
 __cert_list_start:
 __module_cert_start:
 	.incbin "certs/signing_key.x509"
-	.balign 8 /* hack to pad in case of short serial number */
 __module_cert_end:
 	.incbin "certs/x509_certificate_list"
 __cert_list_end:
+	/* Keep subsequent objects aligned without counting padding as DER. */
+	.balign 8
 
 #ifdef CONFIG_SYSTEM_EXTRA_CERTIFICATE
 	.globl system_extra_cert
