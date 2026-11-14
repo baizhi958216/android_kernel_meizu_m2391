@@ -304,6 +304,17 @@ static inline int ufs_qcom_ice_enable(struct ufs_qcom_host *host)
 
 static const struct blk_crypto_ll_ops ufs_qcom_crypto_ops; /* forward decl */
 
+static int ufs_qcom_vdd_hba_event(struct notifier_block *nb,
+				  unsigned long event, void *data)
+{
+	struct ufs_qcom_host *host = container_of(nb, struct ufs_qcom_host, vdd_hba_nb);
+
+	if (event & REGULATOR_EVENT_DISABLE && ufs_qcom_is_link_hibern8(host->hba))
+		WRITE_ONCE(host->ice_sync_reset_pending, true);
+
+	return NOTIFY_OK;
+}
+
 static int ufs_qcom_ice_init(struct ufs_qcom_host *host)
 {
 	struct ufs_hba *hba = host->hba;
@@ -328,6 +339,16 @@ static int ufs_qcom_ice_init(struct ufs_qcom_host *host)
 	err = ufs_qcom_parse_ice_allocator(host);
 	if (err)
 		return dev_err_probe(dev, err, "invalid shared ICE allocator configuration\n");
+
+	if (host->ice_alloc && host->ice_alloc->mode != KALAMA_ICE_STATIC &&
+	    of_machine_is_compatible("qcom,kalama") &&
+	    hba->vreg_info.vdd_hba && hba->vreg_info.vdd_hba->reg) {
+		host->vdd_hba_nb.notifier_call = ufs_qcom_vdd_hba_event;
+		err = devm_regulator_register_notifier(hba->vreg_info.vdd_hba->reg,
+						       &host->vdd_hba_nb);
+		if (err)
+			return dev_err_probe(dev, err, "cannot monitor ICE power collapse\n");
+	}
 
 	/* Initialize the blk_crypto_profile */
 
@@ -659,6 +680,7 @@ static int ufs_qcom_host_reset(struct ufs_hba *hba)
 		return ret;
 	}
 
+	WRITE_ONCE(host->ice_sync_reset_pending, false);
 	usleep_range(1000, 1100);
 
 	if (reenable_intr)
@@ -1143,11 +1165,33 @@ static int ufs_qcom_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op,
 	return ufs_qcom_ice_suspend(host);
 }
 
+static void ufs_qcom_pulse_ice_sync_reset(struct ufs_hba *hba)
+{
+	u32 mask = UFS_ICE_SYNC_RST_SEL | UFS_ICE_SYNC_RST_SW;
+	u32 value;
+
+	ufshcd_writel(hba, mask, UFS_MEM_ICE_CFG);
+	value = ufshcd_readl(hba, UFS_MEM_ICE_CFG);
+	usleep_range(50, 100);
+	ufshcd_writel(hba, value & ~mask, UFS_MEM_ICE_CFG);
+	ufshcd_readl(hba, UFS_MEM_ICE_CFG);
+}
+
+static void ufs_qcom_hibern8_notify(struct ufs_hba *hba, enum uic_cmd_dme cmd,
+				   enum ufs_notify_change_status status)
+{
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+
+	/* Clock gating can collapse the host without calling variant resume. */
+	if (cmd == UIC_CMD_DME_HIBER_EXIT && status == POST_CHANGE &&
+	    xchg(&host->ice_sync_reset_pending, false))
+		ufs_qcom_pulse_ice_sync_reset(hba);
+}
+
 static int ufs_qcom_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 {
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
 	int err;
-	u32 reg_val;
 
 	err = ufs_qcom_set_kalama_rail_state(host, true);
 	if (err)
@@ -1157,22 +1201,9 @@ static int ufs_qcom_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	if (err)
 		return err;
 
-	if ((!ufs_qcom_is_link_active(hba)) &&
-	    host->hw_ver.major == 5 &&
-	    host->hw_ver.minor == 0 &&
-	    host->hw_ver.step == 0) {
-		ufshcd_writel(hba, UFS_ICE_SYNC_RST_SEL | UFS_ICE_SYNC_RST_SW, UFS_MEM_ICE_CFG);
-		reg_val = ufshcd_readl(hba, UFS_MEM_ICE_CFG);
-		reg_val &= ~(UFS_ICE_SYNC_RST_SEL | UFS_ICE_SYNC_RST_SW);
-		/*
-		 * HW documentation doesn't recommend any delay between the
-		 * reset set and clear. But we are enforcing an arbitrary delay
-		 * to give flops enough time to settle in.
-		 */
-		usleep_range(50, 100);
-		ufshcd_writel(hba, reg_val, UFS_MEM_ICE_CFG);
-		ufshcd_readl(hba, UFS_MEM_ICE_CFG);
-	}
+	if (!ufs_qcom_is_link_active(hba) && !READ_ONCE(host->ice_sync_reset_pending) &&
+	    host->hw_ver.major == 5 && host->hw_ver.minor == 0 && host->hw_ver.step == 0)
+		ufs_qcom_pulse_ice_sync_reset(hba);
 
 	return ufs_qcom_ice_resume(host);
 }
@@ -3294,6 +3325,7 @@ static const struct ufs_hba_variant_ops ufs_hba_qcom_vops = {
 	.clk_scale_notify	= ufs_qcom_clk_scale_notify,
 	.setup_clocks           = ufs_qcom_setup_clocks,
 	.hce_enable_notify      = ufs_qcom_hce_enable_notify,
+	.hibern8_notify         = ufs_qcom_hibern8_notify,
 	.link_startup_notify    = ufs_qcom_link_startup_notify,
 	.negotiate_pwr_mode	= ufs_qcom_negotiate_pwr_mode,
 	.pwr_change_notify	= ufs_qcom_pwr_change_notify,

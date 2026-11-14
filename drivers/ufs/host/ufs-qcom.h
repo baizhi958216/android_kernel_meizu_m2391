@@ -5,6 +5,7 @@
 #ifndef UFS_QCOM_H_
 #define UFS_QCOM_H_
 
+#include <linux/notifier.h>
 #include <linux/reset-controller.h>
 #include <linux/reset.h>
 #include <soc/qcom/ice.h>
@@ -343,8 +344,10 @@ struct ufs_qcom_host {
 #ifdef CONFIG_SCSI_UFS_CRYPTO
 	struct qcom_ice *ice;
 	struct kalama_ice_allocator *ice_alloc;
+	struct notifier_block vdd_hba_nb;
 	u8 ice_cap_idx[8];
 #endif
+	bool ice_sync_reset_pending;
 	u32 caps;
 	void __iomem *dev_ref_clk_ctrl_mmio;
 	bool is_dev_ref_clk_enabled;
