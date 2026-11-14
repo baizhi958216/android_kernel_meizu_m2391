@@ -18,6 +18,24 @@
 #include <trace/hooks/sched.h>
 #include <trace/hooks/sys.h>
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/meizu_vip.h>
+
+static DEFINE_MUTEX(vip_debug_lock);
+
+static __printf(1, 2) void vip_debug(const char *fmt, ...)
+{
+	struct va_format vaf;
+	va_list args;
+
+	if (!trace_vip_debug_enabled())
+		return;
+	va_start(args, fmt);
+	vaf.fmt = fmt;
+	vaf.va = &args;
+	trace_vip_debug(&vaf);
+	va_end(args);
+}
 
 struct mz_task_struct {
 	struct list_head vip_entry;
@@ -86,7 +104,7 @@ static void enqueue_vip_task(struct rq *rq, struct task_struct *p)
 	if (!v->total_exec) {
 		v->sum_exec_baseline = p->se.sum_exec_runtime;
 		if (READ_ONCE(global_debug_enabled))
-			trace_printk("[mvt] enqueue %s : %d, tsk->__state:0x%x, pid_alive(p):%d, p->cpu %d, mts->sum_exec_baseline: %llu\n",
+			vip_debug("[mvt] enqueue %s : %d, tsk->__state:0x%x, pid_alive(p):%d, p->cpu %d, mts->sum_exec_baseline: %llu\n",
 				p->comm, p->pid, READ_ONCE(p->__state), pid_alive(p),
 				task_cpu(p), v->sum_exec_baseline);
 	}
@@ -98,7 +116,7 @@ static void dequeue_vip_task(struct rq *rq, struct task_struct *p)
 	if (linked(v)) {
 		list_del_init(&v->vip_entry);
 		if (READ_ONCE(global_debug_enabled))
-			trace_printk("[mvt] dequeue %s : %d, p->on_cpu %d p->cpu:%d\n",
+			vip_debug("[mvt] dequeue %s : %d, p->on_cpu %d p->cpu:%d\n",
 				p->comm, p->pid, p->on_cpu, task_cpu(p));
 		/* The rq and scheduler own a task reference throughout this hook. */
 		put_task_struct(p);
@@ -114,7 +132,7 @@ static void account_vip_runtime(struct rq *rq, struct task_struct *p)
 	update_rq_clock(rq);
 	delta = p->se.sum_exec_runtime - v->sum_exec_baseline;
 	if (READ_ONCE(global_debug_enabled))
-		trace_printk("[mvt] vip task: %s, pid:%d, cpu:%d, delta:%lld, curr->se.sum_exec_runtime:%llu, mts->sum_exec_baseline:%llu\n",
+		vip_debug("[mvt] vip task: %s, pid:%d, cpu:%d, delta:%lld, curr->se.sum_exec_runtime:%llu, mts->sum_exec_baseline:%llu\n",
 			p->comm, p->pid, task_cpu(p), delta,
 			p->se.sum_exec_runtime, v->sum_exec_baseline);
 	if (delta < 0)
@@ -122,24 +140,24 @@ static void account_vip_runtime(struct rq *rq, struct task_struct *p)
 	else
 		delta += rq_clock_task(rq) - p->se.exec_start;
 	if (READ_ONCE(global_debug_enabled))
-		trace_printk("[mvt] delta: %lld \n", delta);
+		vip_debug("[mvt] delta: %lld \n", delta);
 	if (delta < 4000000)
 		return;
 	v->sum_exec_baseline += delta;
 	v->total_exec += delta;
 	if (READ_ONCE(global_debug_enabled))
-		trace_printk("[mvt] vip task: %s, pid:%d, cpu:%d, total_exec:%llu\n",
+		vip_debug("[mvt] vip task: %s, pid:%d, cpu:%d, total_exec:%llu\n",
 			p->comm, p->pid, task_cpu(p), v->total_exec);
 	if (v->total_exec > 8000000) {
 		if (READ_ONCE(global_debug_enabled))
-			trace_printk("[mvt] expire total_exec, vip task: %s, pid:%d, cpu:%d, total_exec:%llu\n",
+			vip_debug("[mvt] expire total_exec, vip task: %s, pid:%d, cpu:%d, total_exec:%llu\n",
 				p->comm, p->pid, task_cpu(p), v->total_exec);
 		list_del_init(&v->vip_entry);
 		put_task_struct(p);
 	} else {
 		list_move_tail(&v->vip_entry, vip_list(rq));
 		if (READ_ONCE(global_debug_enabled))
-			trace_printk("%s, requeue to exec, vip task: %s, pid:%d, cpu:%d\n",
+			vip_debug("%s, requeue to exec, vip task: %s, pid:%d, cpu:%d\n",
 				"account_vip_runtime", p->comm, p->pid, task_cpu(p));
 	}
 }
@@ -158,7 +176,7 @@ void mz_check_preempt_wakeup(struct rq *rq, struct task_struct *p,
 	if (p_static && !c_static) {
 		*preempt = true;
 		if (READ_ONCE(global_debug_enabled))
-			trace_printk("[mvt] vip wakeup preempt task: %s, pid: %d, state: 0x%x, curr task: %s, pid: %d, state: 0x%x, rq->cpu: %d\n",
+			vip_debug("[mvt] vip wakeup preempt task: %s, pid: %d, state: 0x%x, curr task: %s, pid: %d, state: 0x%x, rq->cpu: %d\n",
 				p->comm, p->pid, READ_ONCE(p->__state),
 				curr->comm, curr->pid, READ_ONCE(curr->__state), cpu_of(rq));
 		return;
@@ -206,7 +224,7 @@ void mz_replace_next_task_fair(struct rq *rq, struct task_struct **p)
 		*p = candidate;
 		list_move_tail(entry, vip_list(rq));
 		if (READ_ONCE(global_debug_enabled))
-			trace_printk("[mvt] PICK vip task: %s, pid: %d, state: 0x%x, is_vip:%d, se->on_rq: %d, rq->cpu:%d, task cpu:%d\n",
+			vip_debug("[mvt] PICK vip task: %s, pid: %d, state: 0x%x, is_vip:%d, se->on_rq: %d, rq->cpu:%d, task cpu:%d\n",
 				candidate->comm, candidate->pid, READ_ONCE(candidate->__state),
 				test_task_vip(candidate), candidate->se.on_rq,
 				cpu_of(rq), task_cpu(candidate));
@@ -298,11 +316,11 @@ static void mutex_hook(void *unused, struct mutex *lock,
 	    !static_vip(current))
 		return;
 	if (READ_ONCE(global_debug_enabled)) {
-		trace_printk("[mvt mutex] comm:%s, pid:%d, cpu:%d\n",
+		vip_debug("[mvt mutex] comm:%s, pid:%d, cpu:%d\n",
 			current->comm, current->pid, task_cpu(current));
 		list_for_each_entry(other, head, list)
 			length++;
-		trace_printk("[mvt mutex] mutex list length: %d\n", length);
+		vip_debug("[mvt mutex] mutex list length: %d\n", length);
 	}
 	list_for_each_entry(other, head, list) {
 		if (other->ww_ctx)
@@ -326,11 +344,11 @@ static void rwsem_hook(void *unused, struct rwsem_waiter *waiter,
 	if (*added || !feature(2) || !waiter || !static_vip(waiter->task))
 		return;
 	if (READ_ONCE(global_debug_enabled)) {
-		trace_printk("[mvt rwsem] comm:%s, pid:%d, cpu:%d\n",
+		vip_debug("[mvt rwsem] comm:%s, pid:%d, cpu:%d\n",
 			waiter->task->comm, waiter->task->pid, task_cpu(waiter->task));
 		list_for_each_entry(other, head, list)
 			length++;
-		trace_printk("[mvt rwsem] rwsem list length: %d\n", length);
+		vip_debug("[mvt rwsem] rwsem list length: %d\n", length);
 	}
 	list_for_each_entry(other, head, list) {
 		if (other->handoff_set || time_after_eq(jiffies, other->timeout))
@@ -351,7 +369,7 @@ static void migrate_hook(void *unused, struct task_struct *p, int dst,
 	    READ_ONCE(vip_list(cpu_rq(dst))->next) != vip_list(cpu_rq(dst))) {
 		*can_migrate = 0;
 		if (READ_ONCE(global_debug_enabled))
-			trace_printk("[mvt] non-vip task=%-12s pid=%d can not migrate vip_cpu=%d\n",
+			vip_debug("[mvt] non-vip task=%-12s pid=%d can not migrate vip_cpu=%d\n",
 				p->comm, p->pid, dst);
 	}
 }
@@ -395,10 +413,18 @@ static ssize_t mask_write(const char __user *buf, size_t count, bool debug)
 	ret = kstrtoint(strim(text), debug ? 10 : 16, &value);
 	if (ret)
 		return ret;
-	if (debug)
+	if (debug) {
+		guard(mutex)(&vip_debug_lock);
+		if (IS_ENABLED(CONFIG_EVENT_TRACING) &&
+		    !!value != !!READ_ONCE(global_debug_enabled)) {
+			ret = trace_set_clr_event("meizu_vip", "vip_debug", !!value);
+			if (ret)
+				return ret;
+		}
 		WRITE_ONCE(global_debug_enabled, value);
-	else
+	} else {
 		WRITE_ONCE(global_vip_task_enabled, (long)value);
+	}
 	return copied;
 }
 static ssize_t debug_write(struct file *file, const char __user *buf,
