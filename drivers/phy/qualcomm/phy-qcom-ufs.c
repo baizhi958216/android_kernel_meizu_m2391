@@ -210,6 +210,59 @@ int ufs_qcom_phy_get_reset(struct ufs_qcom_phy *phy_common)
 }
 EXPORT_SYMBOL(ufs_qcom_phy_get_reset);
 
+static int ufs_qcom_phy_init_symbol_clks(struct ufs_qcom_phy *phy)
+{
+	static const struct {
+		const char *mux;
+		const char *signal;
+	} clocks[] = {
+		{ "rx_sym0_mux_clk", "ufs_phy_rx_symbol_0_clk" },
+		{ "rx_sym1_mux_clk", "ufs_phy_rx_symbol_1_clk" },
+		{ "tx_sym0_mux_clk", "ufs_phy_tx_symbol_0_clk" },
+	};
+	struct device *dev = phy->dev;
+	struct of_phandle_args gcc;
+	int index, ret, i;
+
+	/*
+	 * The Kalama PHY node names the branch outputs downstream of each
+	 * mux. Read the actual signal and XO inputs from the GCC node.
+	 * ref_clk_src on the PHY is the separate, voted CXO pad clock.
+	 */
+	index = of_property_match_string(dev->of_node, "clock-names", clocks[0].mux);
+	if (index < 0)
+		return index;
+	ret = of_parse_phandle_with_args(dev->of_node, "clocks", "#clock-cells",
+					 index, &gcc);
+	if (ret)
+		return ret;
+
+	phy->symbol_xo = devm_get_clk_from_child(dev, gcc.np, "bi_tcxo");
+	if (IS_ERR(phy->symbol_xo)) {
+		ret = dev_err_probe(dev, PTR_ERR(phy->symbol_xo), "missing symbol clock XO\n");
+		goto out;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(clocks); i++) {
+		struct clk *clk = devm_clk_get(dev, clocks[i].mux);
+
+		if (IS_ERR(clk)) {
+			ret = dev_err_probe(dev, PTR_ERR(clk), "missing %s\n", clocks[i].mux);
+			break;
+		}
+		phy->symbol[i].mux = clk;
+		clk = devm_get_clk_from_child(dev, gcc.np, clocks[i].signal);
+		if (IS_ERR(clk)) {
+			ret = dev_err_probe(dev, PTR_ERR(clk), "missing %s\n", clocks[i].signal);
+			break;
+		}
+		phy->symbol[i].signal = clk;
+	}
+out:
+	of_node_put(gcc.np);
+	return ret;
+}
+
 int ufs_qcom_phy_init_clks(struct ufs_qcom_phy *phy)
 {
 	struct {
@@ -219,12 +272,6 @@ int ufs_qcom_phy_init_clks(struct ufs_qcom_phy *phy)
 		{ "ref_clk_src", &phy->ref_clk_src },
 		{ "ref_aux_clk", &phy->ref_aux_clk },
 		{ "qref_clk", &phy->qref_clk },
-		{ "rx_sym0_mux_clk", &phy->rx_sym0_mux_clk },
-		{ "rx_sym1_mux_clk", &phy->rx_sym1_mux_clk },
-		{ "tx_sym0_mux_clk", &phy->tx_sym0_mux_clk },
-		{ "rx_sym0_phy_clk", &phy->rx_sym0_phy_clk },
-		{ "rx_sym1_phy_clk", &phy->rx_sym1_phy_clk },
-		{ "tx_sym0_phy_clk", &phy->tx_sym0_phy_clk },
 	};
 	int i;
 
@@ -237,7 +284,7 @@ int ufs_qcom_phy_init_clks(struct ufs_qcom_phy *phy)
 		*clocks[i].clk = clk;
 	}
 
-	return 0;
+	return ufs_qcom_phy_init_symbol_clks(phy);
 }
 EXPORT_SYMBOL(ufs_qcom_phy_init_clks);
 
@@ -611,44 +658,45 @@ int ufs_qcom_phy_save_controller_version(struct phy *generic_phy,
 }
 EXPORT_SYMBOL(ufs_qcom_phy_save_controller_version);
 
-void ufs_qcom_phy_set_src_clk_h8_enter(struct phy *generic_phy)
+static int ufs_qcom_phy_switch_symbol_clks(struct ufs_qcom_phy *phy, bool use_xo)
 {
-	struct ufs_qcom_phy *ufs_qcom_phy = get_ufs_qcom_phy(generic_phy);
+	struct clk *previous[ARRAY_SIZE(phy->symbol)];
+	int i, ret;
 
-	if (!ufs_qcom_phy->rx_sym0_mux_clk || !ufs_qcom_phy->rx_sym1_mux_clk ||
-		!ufs_qcom_phy->tx_sym0_mux_clk || !ufs_qcom_phy->ref_clk_src)
-		return;
-	/*
-	 * Before entering hibernate, select xo as source of symbol
-	 * clocks according to the UFS Host Controller Hardware
-	 * Programming Guide's "Hibernate enter with power collapse".
-	 */
-	clk_set_parent(ufs_qcom_phy->rx_sym0_mux_clk, ufs_qcom_phy->ref_clk_src);
-	clk_set_parent(ufs_qcom_phy->rx_sym1_mux_clk, ufs_qcom_phy->ref_clk_src);
-	clk_set_parent(ufs_qcom_phy->tx_sym0_mux_clk, ufs_qcom_phy->ref_clk_src);
+	for (i = 0; i < ARRAY_SIZE(phy->symbol); i++) {
+		struct clk *mux = phy->symbol[i].mux;
+		struct clk *parent = use_xo ? phy->symbol_xo : phy->symbol[i].signal;
+
+		previous[i] = clk_get_parent(mux);
+		if (!previous[i]) {
+			ret = -ENODEV;
+			goto restore;
+		}
+		ret = clk_set_parent(mux, parent);
+		if (ret)
+			goto restore;
+	}
+	return 0;
+
+restore:
+	dev_err(phy->dev, "failed to switch symbol mux %d to %s: %d\n",
+		i, use_xo ? "XO" : "PHY", ret);
+	while (i-- > 0) {
+		if (clk_set_parent(phy->symbol[i].mux, previous[i]))
+			dev_err(phy->dev, "failed to restore symbol mux %d\n", i);
+	}
+	return ret;
+}
+
+int ufs_qcom_phy_set_src_clk_h8_enter(struct phy *generic_phy)
+{
+	return ufs_qcom_phy_switch_symbol_clks(get_ufs_qcom_phy(generic_phy), true);
 }
 EXPORT_SYMBOL(ufs_qcom_phy_set_src_clk_h8_enter);
 
-void ufs_qcom_phy_set_src_clk_h8_exit(struct phy *generic_phy)
+int ufs_qcom_phy_set_src_clk_h8_exit(struct phy *generic_phy)
 {
-	struct ufs_qcom_phy *ufs_qcom_phy = get_ufs_qcom_phy(generic_phy);
-
-	if (!ufs_qcom_phy->rx_sym0_mux_clk ||
-		!ufs_qcom_phy->rx_sym1_mux_clk ||
-		!ufs_qcom_phy->tx_sym0_mux_clk ||
-		!ufs_qcom_phy->rx_sym0_phy_clk ||
-		!ufs_qcom_phy->rx_sym1_phy_clk ||
-		!ufs_qcom_phy->tx_sym0_phy_clk)
-		return;
-
-	/*
-	 * Refer to the UFS Host Controller Hardware Programming Guide's
-	 * section "Hibernate exit from power collapse". Select phy clocks
-	 * as source of the PHY symbol clocks.
-	 */
-	clk_set_parent(ufs_qcom_phy->rx_sym0_mux_clk, ufs_qcom_phy->rx_sym0_phy_clk);
-	clk_set_parent(ufs_qcom_phy->rx_sym1_mux_clk, ufs_qcom_phy->rx_sym1_phy_clk);
-	clk_set_parent(ufs_qcom_phy->tx_sym0_mux_clk, ufs_qcom_phy->tx_sym0_phy_clk);
+	return ufs_qcom_phy_switch_symbol_clks(get_ufs_qcom_phy(generic_phy), false);
 }
 EXPORT_SYMBOL(ufs_qcom_phy_set_src_clk_h8_exit);
 
