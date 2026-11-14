@@ -185,7 +185,9 @@ static void fill_memory(struct sysstats_mem *stats)
 	stats->kernelstack = global_node_page_state(NR_KERNEL_STACK_KB);
 	stats->pagetable = pages_kb(global_node_page_state(NR_PAGETABLE));
 	stats->shmem = pages_kb(info.sharedram);
+#if IS_ENABLED(CONFIG_ZSMALLOC)
 	stats->zram_compressed = pages_kb(global_zone_page_state(NR_ZSPAGES));
+#endif
 	while ((p = next_leader(&init_pid_ns, &cursor))) {
 		dma += task_dma_bytes(p);
 		put_task_struct(p);
