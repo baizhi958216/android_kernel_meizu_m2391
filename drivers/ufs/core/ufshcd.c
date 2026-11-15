@@ -1948,20 +1948,15 @@ static void ufshcd_ungate_work(struct work_struct *work)
 	ret = ufshcd_hba_vreg_set_hpm(hba);
 	if (!ret)
 		ret = __ufshcd_setup_clocks(hba, true, &core_clks_on);
-	if (ret) {
-		dev_err_ratelimited(hba->dev, "failed to ungate clocks: %d\n", ret);
-		if (!core_clks_on) {
-			/*
-			 * No register access is safe. Let the outstanding hold
-			 * retry the power/clock vote without spinning on its worker.
-			 */
-			msleep(20);
-			guard(spinlock_irqsave)(&hba->clk_gating.lock);
-			hba->clk_gating.state = CLKS_OFF;
-			return;
-		}
-
+	if (ret && !core_clks_on) {
+		/* Retry a transient provider failure once in this transition. */
+		ret = ufshcd_hba_vreg_set_hpm(hba);
+		if (!ret)
+			ret = __ufshcd_setup_clocks(hba, true, &core_clks_on);
+	}
+	if (ret && core_clks_on) {
 		/* The HCI is accessible, but the link clocks failed to resume. */
+		dev_err_ratelimited(hba->dev, "failed to restore link clocks: %d\n", ret);
 		scoped_guard(spinlock_irqsave, hba->host->host_lock) {
 			ufshcd_set_link_broken(hba);
 			ufshcd_schedule_eh_work(hba);
@@ -10595,6 +10590,7 @@ out:
  */
 static int ufshcd_suspend(struct ufs_hba *hba)
 {
+	struct ufs_clk_info *clki;
 	bool core_clks_off = false;
 	int ret, restore;
 
@@ -10626,7 +10622,13 @@ static int ufshcd_suspend(struct ufs_hba *hba)
 	return 0;
 
 restore_clocks:
-	/* PRE_CHANGE failures have not dropped the core clock votes. */
+	/* The variant may already have released one of the shared clock votes. */
+	list_for_each_entry(clki, &hba->clk_list_head, list) {
+		if (!IS_ERR_OR_NULL(clki->clk) && !clki->enabled) {
+			core_clks_off = true;
+			break;
+		}
+	}
 	if (core_clks_off) {
 		restore = ufshcd_setup_clocks(hba, true);
 		if (restore) {
