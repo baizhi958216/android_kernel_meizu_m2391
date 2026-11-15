@@ -417,7 +417,9 @@ static int ufs_qcom_ice_keyslot_program(struct blk_crypto_profile *profile,
 	if (!is_power_of_2(data_unit) || data_unit > BIT(7))
 		return -EOPNOTSUPP;
 
-	ufshcd_hold(hba);
+	err = ufshcd_hold_checked(hba);
+	if (err)
+		return err;
 	err = qcom_ice_program_ufs_key(host->ice, slot, key,
 				       host->ice_cap_idx[ilog2(data_unit)]);
 	ufshcd_release(hba);
@@ -432,7 +434,9 @@ static int ufs_qcom_ice_keyslot_evict(struct blk_crypto_profile *profile,
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
 	int err;
 
-	ufshcd_hold(hba);
+	err = ufshcd_hold_checked(hba);
+	if (err)
+		return err;
 	err = qcom_ice_evict_key(host->ice, slot);
 	ufshcd_release(hba);
 	return err;

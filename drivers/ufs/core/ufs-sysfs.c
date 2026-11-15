@@ -248,20 +248,26 @@ static u32 ufshcd_us_to_ahit(unsigned int timer)
 
 static int ufshcd_read_hci_reg(struct ufs_hba *hba, u32 *val, unsigned int reg)
 {
+	int ret;
+
 	down(&hba->host_sem);
 	if (!ufshcd_is_user_access_allowed(hba)) {
 		up(&hba->host_sem);
 		return -EBUSY;
 	}
 
-	ufshcd_rpm_get_sync(hba);
-	ufshcd_hold(hba);
-	*val = ufshcd_readl(hba, reg);
-	ufshcd_release(hba);
+	ret = ufshcd_rpm_get_sync(hba);
+	if (ret >= 0) {
+		ret = ufshcd_hold_checked(hba);
+		if (!ret) {
+			*val = ufshcd_readl(hba, reg);
+			ufshcd_release(hba);
+		}
+	}
 	ufshcd_rpm_put_sync(hba);
 
 	up(&hba->host_sem);
-	return 0;
+	return ret;
 }
 
 static ssize_t auto_hibern8_show(struct device *dev,

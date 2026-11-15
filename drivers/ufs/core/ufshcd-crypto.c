@@ -20,13 +20,15 @@ static const struct ufs_crypto_alg_entry {
 	},
 };
 
-static void ufshcd_program_key(struct ufs_hba *hba,
+static int ufshcd_program_key(struct ufs_hba *hba,
 			       const union ufs_crypto_cfg_entry *cfg, int slot)
 {
-	int i;
+	int i, ret;
 	u32 slot_offset = hba->crypto_cfg_register + slot * sizeof(*cfg);
 
-	ufshcd_hold(hba);
+	ret = ufshcd_hold_checked(hba);
+	if (ret)
+		return ret;
 
 	/* Ensure that CFGE is cleared before programming the key */
 	ufshcd_writel(hba, 0, slot_offset + 16 * sizeof(cfg->reg_val[0]));
@@ -41,6 +43,7 @@ static void ufshcd_program_key(struct ufs_hba *hba,
 	ufshcd_writel(hba, le32_to_cpu(cfg->reg_val[16]),
 		      slot_offset + 16 * sizeof(cfg->reg_val[0]));
 	ufshcd_release(hba);
+	return 0;
 }
 
 static int ufshcd_crypto_keyslot_program(struct blk_crypto_profile *profile,
@@ -52,7 +55,7 @@ static int ufshcd_crypto_keyslot_program(struct blk_crypto_profile *profile,
 	const struct ufs_crypto_alg_entry *alg =
 			&ufs_crypto_algs[key->crypto_cfg.crypto_mode];
 	u8 data_unit_mask = key->crypto_cfg.data_unit_size / 512;
-	int i;
+	int i, ret;
 	int cap_idx = -1;
 	union ufs_crypto_cfg_entry cfg = {};
 
@@ -82,10 +85,10 @@ static int ufshcd_crypto_keyslot_program(struct blk_crypto_profile *profile,
 		memcpy(cfg.crypto_key, key->bytes, key->size);
 	}
 
-	ufshcd_program_key(hba, &cfg, slot);
+	ret = ufshcd_program_key(hba, &cfg, slot);
 
 	memzero_explicit(&cfg, sizeof(cfg));
-	return 0;
+	return ret;
 }
 
 static int ufshcd_crypto_keyslot_evict(struct blk_crypto_profile *profile,
@@ -99,8 +102,7 @@ static int ufshcd_crypto_keyslot_evict(struct blk_crypto_profile *profile,
 	 */
 	union ufs_crypto_cfg_entry cfg = {};
 
-	ufshcd_program_key(hba, &cfg, slot);
-	return 0;
+	return ufshcd_program_key(hba, &cfg, slot);
 }
 
 /*

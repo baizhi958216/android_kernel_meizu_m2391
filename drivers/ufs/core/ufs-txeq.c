@@ -1429,7 +1429,9 @@ int ufshcd_retrain_tx_eq(struct ufs_hba *hba, u32 gear)
 	if (gear < adaptive_txeq_gear)
 		return -ERANGE;
 
-	ufshcd_hold(hba);
+	ret = ufshcd_hold_checked(hba);
+	if (ret)
+		return ret;
 
 	ret = ufshcd_pause_command_processing(hba, 1 * USEC_PER_SEC);
 	if (ret) {
