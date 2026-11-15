@@ -334,6 +334,7 @@ static int ufshcd_clear_tm_cmd(struct ufs_hba *hba, int tag);
 static void ufshcd_hba_exit(struct ufs_hba *hba);
 static int ufshcd_device_init(struct ufs_hba *hba, bool init_dev_params);
 static int ufshcd_probe_hba(struct ufs_hba *hba, bool init_dev_params);
+static int __ufshcd_setup_clocks(struct ufs_hba *hba, bool on, bool *core_clocks_changed);
 static int ufshcd_setup_clocks(struct ufs_hba *hba, bool on);
 static inline void ufshcd_add_delay_before_dme_cmd(struct ufs_hba *hba);
 static int ufshcd_host_reset_and_restore(struct ufs_hba *hba);
@@ -346,8 +347,8 @@ static inline int ufshcd_config_vreg_hpm(struct ufs_hba *hba,
 					 struct ufs_vreg *vreg);
 static void ufshcd_wb_toggle_buf_flush_during_h8(struct ufs_hba *hba,
 						 bool enable);
-static void ufshcd_hba_vreg_set_lpm(struct ufs_hba *hba);
-static void ufshcd_hba_vreg_set_hpm(struct ufs_hba *hba);
+static int ufshcd_hba_vreg_set_lpm(struct ufs_hba *hba);
+static int ufshcd_hba_vreg_set_hpm(struct ufs_hba *hba);
 
 void ufshcd_enable_irq(struct ufs_hba *hba)
 {
@@ -1932,6 +1933,7 @@ static void ufshcd_exit_clk_scaling(struct ufs_hba *hba)
 
 static void ufshcd_ungate_work(struct work_struct *work)
 {
+	bool core_clks_on = false;
 	int ret;
 	struct ufs_hba *hba = container_of(work, struct ufs_hba,
 			clk_gating.ungate_work);
@@ -1943,8 +1945,31 @@ static void ufshcd_ungate_work(struct work_struct *work)
 			return;
 	}
 
-	ufshcd_hba_vreg_set_hpm(hba);
-	ufshcd_setup_clocks(hba, true);
+	ret = ufshcd_hba_vreg_set_hpm(hba);
+	if (!ret)
+		ret = __ufshcd_setup_clocks(hba, true, &core_clks_on);
+	if (ret) {
+		dev_err_ratelimited(hba->dev, "failed to ungate clocks: %d\n", ret);
+		if (!core_clks_on) {
+			/*
+			 * No register access is safe. Let the outstanding hold
+			 * retry the power/clock vote without spinning on its worker.
+			 */
+			msleep(20);
+			guard(spinlock_irqsave)(&hba->clk_gating.lock);
+			hba->clk_gating.state = CLKS_OFF;
+			return;
+		}
+
+		/* The HCI is accessible, but the link clocks failed to resume. */
+		scoped_guard(spinlock_irqsave, hba->host->host_lock) {
+			ufshcd_set_link_broken(hba);
+			ufshcd_schedule_eh_work(hba);
+		}
+		guard(spinlock_irqsave)(&hba->clk_gating.lock);
+		hba->clk_gating.state = CLKS_ON;
+		return;
+	}
 
 	ufshcd_enable_irq(hba);
 
@@ -2087,10 +2112,13 @@ static void ufshcd_gate_work(struct work_struct *work)
 
 	ufshcd_disable_irq(hba);
 
-	ufshcd_setup_clocks(hba, false);
+	/* A failed clock handoff must keep the HBA supply voted until ungating. */
+	ret = ufshcd_setup_clocks(hba, false);
+	if (!ret)
+		ufshcd_hba_vreg_set_lpm(hba);
+	else
+		dev_err_ratelimited(hba->dev, "failed to gate clocks: %d\n", ret);
 
-	/* Put the host controller in low power mode if possible */
-	ufshcd_hba_vreg_set_lpm(hba);
 	/*
 	 * In case you are here to cancel this work the gating state
 	 * would be marked as REQ_CLKS_ON. In this case keep the state
@@ -3122,6 +3150,11 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 	hba->req_abort_count = 0;
 
 	ufshcd_hold(hba);
+	if (ufshcd_is_link_broken(hba)) {
+		ufshcd_release(hba);
+		err = SCSI_MLQUEUE_HOST_BUSY;
+		goto out;
+	}
 
 	lrbp = &hba->lrb[tag];
 
@@ -9670,7 +9703,7 @@ static int ufshcd_init_hba_vreg(struct ufs_hba *hba)
 	return ufshcd_get_vreg(hba->dev, info->vdd_hba);
 }
 
-static int ufshcd_setup_clocks(struct ufs_hba *hba, bool on)
+static int __ufshcd_setup_clocks(struct ufs_hba *hba, bool on, bool *core_clocks_changed)
 {
 	int ret = 0;
 	struct ufs_clk_info *clki;
@@ -9712,6 +9745,8 @@ static int ufshcd_setup_clocks(struct ufs_hba *hba, bool on)
 		}
 	}
 
+	if (core_clocks_changed)
+		*core_clocks_changed = true;
 	ret = ufshcd_vops_setup_clocks(hba, on, POST_CHANGE);
 	if (ret)
 		return ret;
@@ -9721,8 +9756,11 @@ static int ufshcd_setup_clocks(struct ufs_hba *hba, bool on)
 out:
 	if (ret) {
 		list_for_each_entry(clki, head, list) {
-			if (!IS_ERR_OR_NULL(clki->clk) && clki->enabled)
-				clk_disable_unprepare(clki->clk);
+			if (IS_ERR_OR_NULL(clki->clk) || !clki->enabled ||
+			    (ufshcd_is_link_active(hba) && clki->keep_link_active))
+				continue;
+			clk_disable_unprepare(clki->clk);
+			clki->enabled = false;
 		}
 	} else if (!ret && on && hba->clk_gating.is_initialized) {
 		scoped_guard(spinlock_irqsave, &hba->clk_gating.lock)
@@ -9736,6 +9774,11 @@ out:
 			(on ? "on" : "off"),
 			ktime_to_us(ktime_sub(ktime_get(), start)), ret);
 	return ret;
+}
+
+static int ufshcd_setup_clocks(struct ufs_hba *hba, bool on)
+{
+	return __ufshcd_setup_clocks(hba, on, NULL);
 }
 
 static enum ufs_ref_clk_freq ufshcd_parse_ref_clk_property(struct ufs_hba *hba)
@@ -10104,7 +10147,6 @@ static void ufshcd_vreg_set_lpm(struct ufs_hba *hba)
 			     hba->vcc_off_delay_us + 100);
 }
 
-#ifdef CONFIG_PM
 static int ufshcd_vreg_set_hpm(struct ufs_hba *hba)
 {
 	bool vcc_on = false;
@@ -10144,18 +10186,19 @@ out:
 
 	return ret;
 }
-#endif /* CONFIG_PM */
 
-static void ufshcd_hba_vreg_set_lpm(struct ufs_hba *hba)
+static int ufshcd_hba_vreg_set_lpm(struct ufs_hba *hba)
 {
 	if (ufshcd_is_link_off(hba) || ufshcd_can_aggressive_pc(hba))
-		ufshcd_setup_hba_vreg(hba, false);
+		return ufshcd_setup_hba_vreg(hba, false);
+	return 0;
 }
 
-static void ufshcd_hba_vreg_set_hpm(struct ufs_hba *hba)
+static int ufshcd_hba_vreg_set_hpm(struct ufs_hba *hba)
 {
 	if (ufshcd_is_link_off(hba) || ufshcd_can_aggressive_pc(hba))
-		ufshcd_setup_hba_vreg(hba, true);
+		return ufshcd_setup_hba_vreg(hba, true);
+	return 0;
 }
 
 static int __ufshcd_wl_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
@@ -10552,7 +10595,8 @@ out:
  */
 static int ufshcd_suspend(struct ufs_hba *hba)
 {
-	int ret;
+	bool core_clks_off = false;
+	int ret, restore;
 
 	if (!hba->is_powered)
 		return 0;
@@ -10561,11 +10605,9 @@ static int ufshcd_suspend(struct ufs_hba *hba)
 	 * host controller transaction expected till resume.
 	 */
 	ufshcd_disable_irq(hba);
-	ret = ufshcd_setup_clocks(hba, false);
-	if (ret) {
-		ufshcd_enable_irq(hba);
-		goto out;
-	}
+	ret = __ufshcd_setup_clocks(hba, false, &core_clks_off);
+	if (ret)
+		goto restore_clocks;
 	if (ufshcd_is_clkgating_allowed(hba)) {
 		hba->clk_gating.state = CLKS_OFF;
 		trace_ufshcd_clk_gating(hba,
@@ -10573,12 +10615,28 @@ static int ufshcd_suspend(struct ufs_hba *hba)
 	}
 
 	ufshcd_vreg_set_lpm(hba);
-	/* Put the host controller in low power mode if possible */
-	ufshcd_hba_vreg_set_lpm(hba);
+	ret = ufshcd_hba_vreg_set_lpm(hba);
+	if (ret) {
+		restore = ufshcd_vreg_set_hpm(hba);
+		if (restore)
+			dev_err(hba->dev, "failed to restore device supplies: %d\n", restore);
+		goto restore_clocks;
+	}
 	ufshcd_pm_qos_update(hba, false);
+	return 0;
+
+restore_clocks:
+	/* PRE_CHANGE failures have not dropped the core clock votes. */
+	if (core_clks_off) {
+		restore = ufshcd_setup_clocks(hba, true);
+		if (restore) {
+			dev_err(hba->dev, "failed to restore clocks: %d\n", restore);
+			goto out;
+		}
+	}
+	ufshcd_enable_irq(hba);
 out:
-	if (ret)
-		ufshcd_update_evt_hist(hba, UFS_EVT_SUSPEND_ERR, (u32)ret);
+	ufshcd_update_evt_hist(hba, UFS_EVT_SUSPEND_ERR, (u32)ret);
 	return ret;
 }
 
@@ -10599,7 +10657,9 @@ static int ufshcd_resume(struct ufs_hba *hba)
 	if (!hba->is_powered)
 		return 0;
 
-	ufshcd_hba_vreg_set_hpm(hba);
+	ret = ufshcd_hba_vreg_set_hpm(hba);
+	if (ret)
+		goto out;
 	ret = ufshcd_vreg_set_hpm(hba);
 	if (ret)
 		goto out;
