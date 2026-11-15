@@ -799,22 +799,34 @@ EXPORT_SYMBOL(ufs_qcom_phy_power_on);
 
 int ufs_qcom_phy_power_off(struct phy *generic_phy)
 {
-	struct ufs_qcom_phy *phy_common = get_ufs_qcom_phy(generic_phy);
+	struct ufs_qcom_phy *phy = get_ufs_qcom_phy(generic_phy);
+	struct ufs_qcom_phy_vreg *supplies[] = {
+		&phy->vdda_pll, &phy->vdda_phy, &phy->vdda_qref, &phy->vdd_phy_gdsc,
+	};
+	int i, ret, restore;
 
-	phy_common->phy_spec_ops->power_control(phy_common, false);
+	phy->phy_spec_ops->power_control(phy, false);
 
-	if (phy_common->vddp_ref_clk.reg)
-		ufs_qcom_phy_disable_vreg(phy_common->dev,
-					  &phy_common->vddp_ref_clk);
-	ufs_qcom_phy_disable_ref_clk(phy_common);
-	ufs_qcom_phy_disable_iface_clk(phy_common);
+	ret = ufs_qcom_phy_disable_vreg(phy->dev, &phy->vddp_ref_clk);
+	if (ret)
+		goto restore_power;
+	ufs_qcom_phy_disable_ref_clk(phy);
+	ufs_qcom_phy_disable_iface_clk(phy);
 
-	ufs_qcom_phy_disable_vreg(phy_common->dev, &phy_common->vdda_pll);
-	ufs_qcom_phy_disable_vreg(phy_common->dev, &phy_common->vdda_phy);
-	if (phy_common->vdda_qref.reg)
-		ufs_qcom_phy_disable_vreg(phy_common->dev, &phy_common->vdda_qref);
-	ufs_qcom_phy_disable_vreg(phy_common->dev, &phy_common->vdd_phy_gdsc);
+	for (i = 0; i < ARRAY_SIZE(supplies); i++) {
+		ret = ufs_qcom_phy_disable_vreg(phy->dev, supplies[i]);
+		if (ret)
+			goto restore_power;
+	}
 	return 0;
+
+restore_power:
+	/* The PHY core keeps its power reference when this callback fails. */
+	restore = ufs_qcom_phy_power_on(generic_phy);
+	if (restore)
+		dev_err(phy->dev, "failed to restore PHY power after rail error: %d\n",
+			restore);
+	return ret;
 }
 EXPORT_SYMBOL(ufs_qcom_phy_power_off);
 
