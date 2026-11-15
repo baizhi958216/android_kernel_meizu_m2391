@@ -1682,6 +1682,14 @@ static const struct irq_domain_ops pmic_arb_irq_domain_ops = {
 	.translate = qpnpint_irq_domain_translate,
 };
 
+static void spmi_pmic_arb_remove_irq_domain(void *data)
+{
+	struct spmi_pmic_arb_bus *bus = data;
+
+	irq_set_chained_handler_and_data(bus->irq, NULL, NULL);
+	irq_domain_remove(bus->domain);
+}
+
 static int spmi_pmic_arb_bus_init(struct platform_device *pdev,
 				  struct device_node *node,
 				  struct spmi_pmic_arb *pmic_arb)
@@ -1776,8 +1784,12 @@ static int spmi_pmic_arb_bus_init(struct platform_device *pdev,
 	irq_set_chained_handler_and_data(bus->irq,
 					 pmic_arb_chained_irq, bus);
 
+	ret = devm_add_action_or_reset(dev, spmi_pmic_arb_remove_irq_domain, bus);
+	if (ret)
+		return ret;
+
+	/* The SPMI core allocated a globally unique controller number and name. */
 	ctrl->dev.of_node = node;
-	dev_set_name(&ctrl->dev, "spmi-%d", bus_index);
 
 	ret = devm_spmi_controller_add(dev, ctrl);
 	if (ret)
@@ -1808,19 +1820,6 @@ static int spmi_pmic_arb_register_buses(struct spmi_pmic_arb *pmic_arb,
 	}
 
 	return ret;
-}
-
-static void spmi_pmic_arb_deregister_buses(struct spmi_pmic_arb *pmic_arb)
-{
-	int i;
-
-	for (i = 0; i < pmic_arb->buses_available; i++) {
-		struct spmi_pmic_arb_bus *bus = pmic_arb->buses[i];
-
-		irq_set_chained_handler_and_data(bus->irq,
-						 NULL, NULL);
-		irq_domain_remove(bus->domain);
-	}
 }
 
 static int spmi_pmic_arb_probe(struct platform_device *pdev)
@@ -1897,13 +1896,6 @@ static int spmi_pmic_arb_probe(struct platform_device *pdev)
 	return spmi_pmic_arb_register_buses(pmic_arb, pdev);
 }
 
-static void spmi_pmic_arb_remove(struct platform_device *pdev)
-{
-	struct spmi_pmic_arb *pmic_arb = platform_get_drvdata(pdev);
-
-	spmi_pmic_arb_deregister_buses(pmic_arb);
-}
-
 static const struct of_device_id spmi_pmic_arb_match_table[] = {
 	{ .compatible = "qcom,spmi-pmic-arb", },
 	{ .compatible = "qcom,x1e80100-spmi-pmic-arb", },
@@ -1913,7 +1905,6 @@ MODULE_DEVICE_TABLE(of, spmi_pmic_arb_match_table);
 
 static struct platform_driver spmi_pmic_arb_driver = {
 	.probe		= spmi_pmic_arb_probe,
-	.remove		= spmi_pmic_arb_remove,
 	.driver		= {
 		.name	= "spmi_pmic_arb",
 		.of_match_table = spmi_pmic_arb_match_table,
