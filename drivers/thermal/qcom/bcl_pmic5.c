@@ -677,8 +677,9 @@ static int bcl_request_irq(struct platform_device *pdev, enum bcl_dev_type type,
 	irq = platform_get_irq_byname(pdev, bcl_int_names[type]);
 	if (irq < 0)
 		return irq;
+	/* PMIC BCL asserts each alarm on a rising edge. Kalama DT omits the type. */
 	ret = devm_request_threaded_irq(&pdev->dev, irq, NULL, bcl_handle_irq,
-					IRQF_ONESHOT | IRQF_NO_AUTOEN,
+					IRQF_TRIGGER_RISING | IRQF_ONESHOT | IRQF_NO_AUTOEN,
 					bcl_int_names[type], data);
 	if (!ret)
 		data->irq_num = irq;
