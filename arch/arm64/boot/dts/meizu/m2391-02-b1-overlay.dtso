@@ -1275,7 +1275,7 @@
 					phandle = <0x6e>;
 
 					smb1510_present@5d {
-						reg = <0x5d 0x01>;
+						reg = <0x5d 0x02>;
 						bits = <0x05 0x05>;
 						phandle = <0x6f>;
 					};
