@@ -552,7 +552,6 @@ static int qcom_cpufreq_hw_cpu_init(struct cpufreq_policy *policy)
 
 	policy->driver_data = data;
 	policy->dvfs_possible_from_any_cpu = true;
-	data->policy = policy;
 
 	ret = qcom_cpufreq_hw_read_lut(cpu_dev, policy);
 	if (ret) {
@@ -563,10 +562,23 @@ static int qcom_cpufreq_hw_cpu_init(struct cpufreq_policy *policy)
 	ret = dev_pm_opp_get_opp_count(cpu_dev);
 	if (ret <= 0) {
 		dev_err(cpu_dev, "Failed to add OPPs\n");
-		return -ENODEV;
+		ret = -ENODEV;
+		goto free_lut;
 	}
 
-	return qcom_cpufreq_hw_lmh_init(policy, index);
+	ret = qcom_cpufreq_hw_lmh_init(policy, index);
+	if (ret)
+		goto free_lut;
+
+	data->policy = policy;
+	return 0;
+
+free_lut:
+	dev_pm_opp_remove_all_dynamic(cpu_dev);
+	dev_pm_opp_of_cpumask_remove_table(policy->cpus);
+	kfree(policy->freq_table);
+	policy->freq_table = NULL;
+	return ret;
 }
 
 static void qcom_cpufreq_hw_cpu_exit(struct cpufreq_policy *policy)
@@ -577,8 +589,8 @@ static void qcom_cpufreq_hw_cpu_exit(struct cpufreq_policy *policy)
 	dev_pm_opp_remove_all_dynamic(cpu_dev);
 	dev_pm_opp_of_cpumask_remove_table(policy->related_cpus);
 	qcom_cpufreq_hw_lmh_exit(data);
+	data->policy = NULL;
 	kfree(policy->freq_table);
-	kfree(data);
 }
 
 static void qcom_cpufreq_ready(struct cpufreq_policy *policy)
