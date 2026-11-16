@@ -174,46 +174,46 @@ M2391_ANDROID_RAMDISK_LOAD := qcom-scm.ko qcom_hwspinlock.ko smem.ko cmd-db.ko \
     clk-rpmh.ko icc-clk.ko clk-qcom.ko tcsrcc-kalama.ko \
     gcc-kalama.ko qcom-pdc.ko pinctrl-msm.ko pinctrl-kalama.ko \
     spmi-pmic-arb.ko qcom-spmi-pmic.ko pinctrl-spmi-gpio.ko gdsc-regulator.ko \
-    icc-bcm-voter.ko icc-rpmh.ko qnoc-sm8550.ko arm_smmu.ko \
-    phy-qcom-ufs.ko phy-qcom-ufs-qmp-v4-kalama.ko ufs-qcom.ko mz_freq_qos.ko \
-    minidump.ko mz_enhance_qcom_wdog.ko qcom_wdt_core.ko gh_virt_wdt.ko \
-    camcc-kalama.ko qcom_ipc_logging.ko thermal_minidump.ko qcom_tsens.ko \
-    dcvs_fp.ko qcom-dcvs.ko bwmon.ko qcom-cpufreq-hw.ko \
-    mz_thermal_boost.ko sched-walt.ko thermal_pause.ko cpu_hotplug.ko \
-    dispcc-kalama.ko videocc-kalama.ko gh_ctrl.ko gh_dbl.ko \
-    gh_msgq.ko gh_rm_drv.ko mdt_loader.ko llcc-qcom.ko \
-    secure_buffer.ko mem_buf_dev.ko mem_buf_msgq.ko qcom_dma_heaps.ko \
-    mem_buf.ko nvmem_qcom-spmi-sdam.ko qcom_llcc_pmu.ko qcom-pmu-lib.ko \
-    pmu_vendor.ko pmu_scmi.ko qcom-reboot-reason.ko qrtr.ko \
-    rtc-pm8xxx.ko socinfo.ko c1dcvs_vendor.ko c1dcvs_scmi.ko \
-    bcl_pmic5.ko mz_info.ko meizu-sys.ko qcom-i2c-pmic.ko \
-    qcom-pm8008-split-regulator.ko mpower_logger.ko xcharge_notify_subsys.ko xcharge_thermal.ko \
-    xcharge_mbattery_logger.ko xcharge_chg_interface.ko mz_mrg.ko mz_compaction_opt.ko \
-    mz_kshrink_slabd.ko
+    icc-bcm-voter.ko icc-rpmh.ko qnoc-sm8550.ko gpucc-kalama.ko \
+    arm_smmu.ko phy-qcom-ufs.ko phy-qcom-ufs-qmp-v4-kalama.ko ufs-qcom.ko \
+    mz_freq_qos.ko minidump.ko mz_enhance_qcom_wdog.ko qcom_wdt_core.ko \
+    gh_virt_wdt.ko camcc-kalama.ko qcom_ipc_logging.ko thermal_minidump.ko \
+    qcom_tsens.ko dcvs_fp.ko qcom-dcvs.ko bwmon.ko \
+    qcom-cpufreq-hw.ko mz_thermal_boost.ko sched-walt.ko thermal_pause.ko \
+    cpu_hotplug.ko dispcc-kalama.ko videocc-kalama.ko gh_ctrl.ko \
+    gh_dbl.ko gh_msgq.ko gh_rm_drv.ko mdt_loader.ko \
+    llcc-qcom.ko secure_buffer.ko mem_buf_dev.ko mem_buf_msgq.ko \
+    qcom_dma_heaps.ko mem_buf.ko nvmem_qcom-spmi-sdam.ko qcom_llcc_pmu.ko \
+    qcom-pmu-lib.ko pmu_vendor.ko pmu_scmi.ko qcom-reboot-reason.ko \
+    qrtr.ko rtc-pm8xxx.ko socinfo.ko c1dcvs_vendor.ko \
+    c1dcvs_scmi.ko bcl_pmic5.ko mz_info.ko meizu-sys.ko \
+    qcom-i2c-pmic.ko qcom-pm8008-split-regulator.ko mpower_logger.ko xcharge_notify_subsys.ko \
+    xcharge_thermal.ko xcharge_mbattery_logger.ko xcharge_chg_interface.ko mz_mrg.ko \
+    mz_compaction_opt.ko mz_kshrink_slabd.ko
 M2391_ANDROID_RECOVERY_LOAD := qcom-scm.ko qcom_hwspinlock.ko smem.ko cmd-db.ko \
     qcom_rpmh.ko proxy-consumer.ko rpmh-regulator.ko qcom_aoss.ko \
     qcom-ipcc.ko msm_qmp.ko tmecom-intf.ko qcom_ice.ko \
     clk-rpmh.ko icc-clk.ko clk-qcom.ko tcsrcc-kalama.ko \
     gcc-kalama.ko qcom-pdc.ko pinctrl-msm.ko pinctrl-kalama.ko \
     spmi-pmic-arb.ko qcom-spmi-pmic.ko pinctrl-spmi-gpio.ko gdsc-regulator.ko \
-    icc-bcm-voter.ko icc-rpmh.ko qnoc-sm8550.ko arm_smmu.ko \
-    phy-qcom-ufs.ko phy-qcom-ufs-qmp-v4-kalama.ko ufs-qcom.ko mz_freq_qos.ko \
-    minidump.ko mz_enhance_qcom_wdog.ko qcom_wdt_core.ko gh_virt_wdt.ko \
-    camcc-kalama.ko qcom_ipc_logging.ko thermal_minidump.ko qcom_tsens.ko \
-    dcvs_fp.ko qcom-dcvs.ko bwmon.ko qcom-cpufreq-hw.ko \
-    mz_thermal_boost.ko sched-walt.ko thermal_pause.ko cpu_hotplug.ko \
-    dispcc-kalama.ko videocc-kalama.ko gh_ctrl.ko gh_dbl.ko \
-    gh_msgq.ko gh_rm_drv.ko mdt_loader.ko llcc-qcom.ko \
-    secure_buffer.ko mem_buf_dev.ko mem_buf_msgq.ko qcom_dma_heaps.ko \
-    mem_buf.ko nvmem_qcom-spmi-sdam.ko qcom_llcc_pmu.ko qcom-pmu-lib.ko \
-    pmu_vendor.ko pmu_scmi.ko qcom-reboot-reason.ko qrtr.ko \
-    rtc-pm8xxx.ko socinfo.ko c1dcvs_vendor.ko c1dcvs_scmi.ko \
-    bcl_pmic5.ko mz_info.ko meizu-sys.ko qcom-i2c-pmic.ko \
-    qcom-pm8008-split-regulator.ko mpower_logger.ko xcharge_notify_subsys.ko xcharge_thermal.ko \
-    xcharge_mbattery_logger.ko xcharge_chg_interface.ko mz_mrg.ko mz_compaction_opt.ko \
-    mz_kshrink_slabd.ko msm_sysstats.ko mhi.ko mhi_dev_satellite.ko \
-    pinctrl-spmi-mpp.ko qcom-pbs.ko pwm-qti-lpg.ko qcom_glink.ko \
-    qcom_glink_smem.ko qcom_common.ko pci-msm-drv.ko gpucc-kalama.ko \
+    icc-bcm-voter.ko icc-rpmh.ko qnoc-sm8550.ko gpucc-kalama.ko \
+    arm_smmu.ko phy-qcom-ufs.ko phy-qcom-ufs-qmp-v4-kalama.ko ufs-qcom.ko \
+    mz_freq_qos.ko minidump.ko mz_enhance_qcom_wdog.ko qcom_wdt_core.ko \
+    gh_virt_wdt.ko camcc-kalama.ko qcom_ipc_logging.ko thermal_minidump.ko \
+    qcom_tsens.ko dcvs_fp.ko qcom-dcvs.ko bwmon.ko \
+    qcom-cpufreq-hw.ko mz_thermal_boost.ko sched-walt.ko thermal_pause.ko \
+    cpu_hotplug.ko dispcc-kalama.ko videocc-kalama.ko gh_ctrl.ko \
+    gh_dbl.ko gh_msgq.ko gh_rm_drv.ko mdt_loader.ko \
+    llcc-qcom.ko secure_buffer.ko mem_buf_dev.ko mem_buf_msgq.ko \
+    qcom_dma_heaps.ko mem_buf.ko nvmem_qcom-spmi-sdam.ko qcom_llcc_pmu.ko \
+    qcom-pmu-lib.ko pmu_vendor.ko pmu_scmi.ko qcom-reboot-reason.ko \
+    qrtr.ko rtc-pm8xxx.ko socinfo.ko c1dcvs_vendor.ko \
+    c1dcvs_scmi.ko bcl_pmic5.ko mz_info.ko meizu-sys.ko \
+    qcom-i2c-pmic.ko qcom-pm8008-split-regulator.ko mpower_logger.ko xcharge_notify_subsys.ko \
+    xcharge_thermal.ko xcharge_mbattery_logger.ko xcharge_chg_interface.ko mz_mrg.ko \
+    mz_compaction_opt.ko mz_kshrink_slabd.ko msm_sysstats.ko mhi.ko \
+    mhi_dev_satellite.ko pinctrl-spmi-mpp.ko qcom-pbs.ko pwm-qti-lpg.ko \
+    qcom_glink.ko qcom_glink_smem.ko qcom_common.ko pci-msm-drv.ko \
     bam_dma.ko gpi.ko qcom_cpuss_sleep_stats.ko qmi_helpers.ko \
     qcom_pdr_msg.ko pdr_interface.ko heap_mem_ext_v01.ko msm_memshare.ko \
     smp2p.ko smp2p_sleepstate.ko qsee_ipc_irq_bridge.ko glink_pkt.ko \

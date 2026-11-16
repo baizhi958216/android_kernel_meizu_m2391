@@ -10,7 +10,7 @@ PROVIDERS = """
 qcom-scm qcom_hwspinlock smem cmd-db qcom_rpmh rpmh-regulator proxy-consumer
 qcom_aoss qcom-ipcc msm_qmp tmecom-intf qcom_ice clk-rpmh tcsrcc-kalama
 gcc-kalama qcom-pdc pinctrl-kalama spmi-pmic-arb qcom-spmi-pmic
-pinctrl-spmi-gpio gdsc-regulator icc-bcm-voter qnoc-sm8550 arm_smmu
+pinctrl-spmi-gpio gdsc-regulator icc-bcm-voter qnoc-sm8550 gpucc-kalama arm_smmu
 phy-qcom-ufs-qmp-v4-kalama ufs-qcom
 """.split()
 
