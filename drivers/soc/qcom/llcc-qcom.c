@@ -4528,8 +4528,22 @@ static int qcom_llcc_probe(struct platform_device *pdev)
 
 	llcc_cfg = cfg->sct_data;
 	sz = cfg->size;
+	drv_data->edac_reg_offset = cfg->edac_reg_offset;
 	if (of_device_is_compatible(dev->of_node, "qcom,kalama-llcc")) {
+		struct llcc_edac_reg_offset *edac;
 		struct llcc_slice_config *slices;
+
+		/* Kalama uses the earlier v2.1 Data RAM syndrome register layout. */
+		edac = devm_kmemdup(dev, cfg->edac_reg_offset, sizeof(*edac), GFP_KERNEL);
+		if (!edac) {
+			ret = -ENOMEM;
+			goto err;
+		}
+		edac->drp_ecc_error_status0 = 0x52044;
+		edac->drp_ecc_error_status1 = 0x52048;
+		edac->drp_ecc_sb_err_syn0 = 0x5204c;
+		edac->drp_ecc_db_err_syn0 = 0x52070;
+		drv_data->edac_reg_offset = edac;
 
 		/* The Kalama island firmware requires exclusive ways for
 		 * ISLAND1 and ISLAND4 across AP power collapse.
@@ -4562,7 +4576,6 @@ static int qcom_llcc_probe(struct platform_device *pdev)
 
 	drv_data->cfg = llcc_cfg;
 	drv_data->cfg_size = sz;
-	drv_data->edac_reg_offset = cfg->edac_reg_offset;
 	drv_data->ecc_irq_configured = cfg->irq_configured;
 	mutex_init(&drv_data->lock);
 	platform_set_drvdata(pdev, drv_data);
