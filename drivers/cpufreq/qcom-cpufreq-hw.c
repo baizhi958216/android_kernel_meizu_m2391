@@ -64,6 +64,7 @@ struct qcom_cpufreq_data {
 static struct {
 	struct qcom_cpufreq_data *data;
 	const struct qcom_cpufreq_soc_data *soc_data;
+	bool lut_uses_core_count;
 } qcom_cpufreq;
 
 static unsigned long cpu_hw_rate, xo_rate;
@@ -203,7 +204,7 @@ static int qcom_cpufreq_hw_read_lut(struct device *cpu_dev,
 				    struct cpufreq_policy *policy)
 {
 	u32 data, src, lval, i, core_count, prev_freq = 0, freq;
-	u32 volt;
+	u32 volt, full_core_count = 0;
 	struct cpufreq_frequency_table	*table;
 	struct dev_pm_opp *opp;
 	unsigned long rate;
@@ -242,6 +243,8 @@ static int qcom_cpufreq_hw_read_lut(struct device *cpu_dev,
 		src = FIELD_GET(LUT_SRC, data);
 		lval = FIELD_GET(LUT_L_VAL, data);
 		core_count = FIELD_GET(LUT_CORE_COUNT, data);
+		if (!i)
+			full_core_count = core_count;
 
 		data = readl_relaxed(drv_data->base + soc_data->reg_volt_lut +
 				      i * soc_data->lut_row_size);
@@ -252,18 +255,19 @@ static int qcom_cpufreq_hw_read_lut(struct device *cpu_dev,
 		else
 			freq = cpu_hw_rate / 1000;
 
-		if (freq != prev_freq && core_count != LUT_TURBO_IND) {
+		if (!qcom_cpufreq.lut_uses_core_count && core_count == LUT_TURBO_IND) {
+			table[i].frequency = CPUFREQ_ENTRY_INVALID;
+		} else if (freq != prev_freq) {
 			if (!qcom_cpufreq_update_opp(cpu_dev, freq, volt)) {
 				table[i].frequency = freq;
+				if (qcom_cpufreq.lut_uses_core_count && core_count < full_core_count)
+					table[i].flags = CPUFREQ_BOOST_FREQ;
 				dev_dbg(cpu_dev, "index=%d freq=%d, core_count %d\n", i,
 				freq, core_count);
 			} else {
 				dev_warn(cpu_dev, "failed to update OPP for freq=%d\n", freq);
 				table[i].frequency = CPUFREQ_ENTRY_INVALID;
 			}
-
-		} else if (core_count == LUT_TURBO_IND) {
-			table[i].frequency = CPUFREQ_ENTRY_INVALID;
 		}
 
 		/*
@@ -685,6 +689,9 @@ static int qcom_cpufreq_hw_driver_probe(struct platform_device *pdev)
 	if (!qcom_cpufreq.data)
 		return -ENOMEM;
 
+	/* SM8550 records the supported core count, including on its one-core domain. */
+	qcom_cpufreq.lut_uses_core_count =
+		of_device_is_compatible(dev->of_node, "qcom,sm8550-cpufreq-epss");
 	qcom_cpufreq.soc_data = of_device_get_match_data(dev);
 	if (!qcom_cpufreq.soc_data)
 		return -ENODEV;

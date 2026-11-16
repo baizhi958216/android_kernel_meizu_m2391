@@ -8170,7 +8170,7 @@
 		};
 
 		cpufreq_hw: qcom,cpufreq-hw {
-			compatible = "qcom,cpufreq-epss";
+			compatible = "qcom,sm8550-cpufreq-epss", "qcom,cpufreq-epss";
 			reg = <0x17d91000 0x1000 0x17d92000 0x1000 0x17d93000 0x1000>;
 			reg-names = "freq-domain0", "freq-domain1", "freq-domain2";
 			clocks = <0x3b 0x00 0x3a 0x18>;
