@@ -1152,6 +1152,7 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 	if (qcom->kalama) {
 		struct resource *r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 		struct resource scratch = {};
+		struct resource *access;
 
 		if (!r || resource_size(r) < SDM845_QSCRATCH_BASE_OFFSET + SDM845_QSCRATCH_SIZE) {
 			ret = -EINVAL;
@@ -1162,9 +1163,15 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 		scratch.flags = IORESOURCE_MEM;
 		scratch.name = "qscratch";
 		qcom->qscratch_base = devm_ioremap_resource(dev, &scratch);
-		qcom->usb_access = devm_platform_ioremap_resource_byname(pdev, "tcsr_dyn_en_dis");
-		if (IS_ERR(qcom->usb_access)) {
-			ret = PTR_ERR(qcom->usb_access);
+		/* TCSRCC owns the aperture; USB only reads its firmware access gate. */
+		access = platform_get_resource_byname(pdev, IORESOURCE_MEM, "tcsr_dyn_en_dis");
+		if (!access || resource_size(access) < sizeof(u32)) {
+			ret = -EINVAL;
+			goto clk_disable;
+		}
+		qcom->usb_access = devm_ioremap(dev, access->start, sizeof(u32));
+		if (!qcom->usb_access) {
+			ret = -ENOMEM;
 			goto clk_disable;
 		}
 	} else {
