@@ -76,11 +76,13 @@ static int rimps_probe(struct platform_device *pdev)
 		return PTR_ERR(ipc->tx);
 	if (resource_size(res) < RIMPS_TX_DOORBELL + sizeof(u32))
 		return -EINVAL;
-	ipc->rx = devm_platform_get_and_ioremap_resource(pdev, 1, &res);
-	if (IS_ERR(ipc->rx))
-		return PTR_ERR(ipc->rx);
-	if (resource_size(res) < RIMPS_DOMAIN_STRIDE + RIMPS_RX_STATUS + sizeof(u32))
+	/* The RX doorbells live inside the EPSS frequency-domain windows. */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!res || resource_size(res) < RIMPS_DOMAIN_STRIDE + RIMPS_RX_STATUS + sizeof(u32))
 		return -EINVAL;
+	ipc->rx = devm_ioremap(dev, res->start, resource_size(res));
+	if (!ipc->rx)
+		return -ENOMEM;
 
 	ipc->irq = platform_get_irq(pdev, 0);
 	if (ipc->irq < 0)
