@@ -4516,15 +4516,13 @@ static int qcom_llcc_probe(struct platform_device *pdev)
 
 	drv_data->version = version;
 
-	/* Applicable only when drv_data->version >= 4.1 */
-	if (drv_data->version >= LLCC_VERSION_4_1_0_0) {
+	/* The broadcast AND window is optional on LLCC v4.1 and later. */
+	if (drv_data->version >= LLCC_VERSION_4_1_0_0 &&
+	    platform_get_resource(pdev, IORESOURCE_MEM, i + 1)) {
 		drv_data->bcast_and_regmap = qcom_llcc_init_mmio(pdev, i + 1, "llcc_broadcast_and_base");
 		if (IS_ERR(drv_data->bcast_and_regmap)) {
 			ret = PTR_ERR(drv_data->bcast_and_regmap);
-			if (ret == -EINVAL)
-				drv_data->bcast_and_regmap = NULL;
-			else
-				goto err;
+			goto err;
 		}
 	}
 
