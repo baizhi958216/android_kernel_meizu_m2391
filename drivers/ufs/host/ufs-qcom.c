@@ -2102,9 +2102,16 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 		}
 	}
 
-	if (ufs_qcom_is_kalama_phy(host->generic_phy) && (!host->unipro_clki || !host->ref_clki)) {
-		err = dev_err_probe(dev, -EINVAL, "Missing UniPro or reference clock\n");
-		goto out_variant_clear;
+	if (ufs_qcom_is_kalama_phy(host->generic_phy)) {
+		if (!host->unipro_clki || !host->ref_clki) {
+			err = dev_err_probe(dev, -EINVAL, "Missing UniPro or reference clock\n");
+			goto out_variant_clear;
+		}
+
+		/* Enter hardware Hibern8 after 5 ms, ahead of software clock gating. */
+		hba->ahit = FIELD_PREP(UFSHCI_AHIBERN8_TIMER_MASK, 5) |
+			    FIELD_PREP(UFSHCI_AHIBERN8_SCALE_MASK, 3);
+		hba->clk_gating.delay_ms = 50;
 	}
 
 	err = ufs_qcom_init_kalama_rails(host);
