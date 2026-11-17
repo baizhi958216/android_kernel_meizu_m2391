@@ -676,23 +676,24 @@ static struct qcom_ice *qcom_ice_create(struct device *dev,
 	engine->ice_size = ice_size;
 	mutex_init(&engine->hwkm_lock);
 
-	/*
-	 * Legacy DT binding uses different clk names for each consumer,
-	 * so lets try those first. If none of those are a match, it means
-	 * the we only have one clock and it is part of the dedicated DT node.
-	 * Also, enable the clock before we check what HW version the driver
-	 * supports.
-	 */
-	if (km)
-		engine->core_clk = devm_clk_get_enabled(dev, "core_clk_ice");
-	else
+	if (km) {
+		/*
+		 * The Kalama UFS host already votes for core_clk_ice before
+		 * variant probe. It drops that vote during Hibern8 clock
+		 * gating, before collapsing the shared UFS host power domain.
+		 */
+		if (of_property_match_string(dev->of_node, "clock-names", "core_clk_ice") < 0)
+			return ERR_PTR(-EINVAL);
+	} else {
+		/* Older consumers name their clock; a dedicated ICE node has only one. */
 		engine->core_clk = devm_clk_get_optional_enabled(dev, "ice_core_clk");
-	if (!engine->core_clk)
-		engine->core_clk = devm_clk_get_optional_enabled(dev, "ice");
-	if (!engine->core_clk)
-		engine->core_clk = devm_clk_get_enabled(dev, NULL);
-	if (IS_ERR(engine->core_clk))
-		return ERR_CAST(engine->core_clk);
+		if (!engine->core_clk)
+			engine->core_clk = devm_clk_get_optional_enabled(dev, "ice");
+		if (!engine->core_clk)
+			engine->core_clk = devm_clk_get_enabled(dev, NULL);
+		if (IS_ERR(engine->core_clk))
+			return ERR_CAST(engine->core_clk);
+	}
 
 	if (!qcom_ice_check_supported(engine))
 		return ERR_PTR(-EOPNOTSUPP);
