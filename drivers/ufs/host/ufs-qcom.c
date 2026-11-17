@@ -1258,13 +1258,13 @@ static void ufs_qcom_dev_ref_clk_ctrl(struct ufs_qcom_host *host, bool enable)
 		 */
 		readl(host->dev_ref_clk_ctrl_mmio);
 
-		/*
-		 * If we call hibern8 exit after this, we need to make sure that
-		 * device ref_clk is stable for at least 1us before the hibern8
-		 * exit command.
-		 */
-		if (enable)
-			udelay(1);
+		/* Let REF_CLK settle at the device before a Hibern8 exit. */
+		if (enable) {
+			if (ufs_qcom_is_kalama_phy(host->generic_phy))
+				usleep_range(50, 60);
+			else
+				udelay(1);
+		}
 
 		host->is_dev_ref_clk_enabled = enable;
 	}
