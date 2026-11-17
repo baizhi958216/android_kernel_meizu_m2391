@@ -225,10 +225,12 @@ static int __init gh_ctrl_init(void)
 
 	hyp = of_find_node_by_path("/hypervisor");
 
-	if (!hyp || (!of_device_is_compatible(hyp, "qcom,gunyah-hypervisor") &&
-		     !of_device_is_compatible(hyp, "qcom,haven-hypervisor"))) {
+	/* A shared Android modules.load may also run on a non-Gunyah boot. */
+	if (!of_device_is_available(hyp) ||
+	    (!of_device_is_compatible(hyp, "qcom,gunyah-hypervisor") &&
+	     !of_device_is_compatible(hyp, "qcom,haven-hypervisor"))) {
 		of_node_put(hyp);
-		return -ENODEV;
+		return 0;
 	}
 
 	of_node_put(hyp);
@@ -262,6 +264,9 @@ module_init(gh_ctrl_init);
 
 static void __exit gh_ctrl_exit(void)
 {
+	if (!qc_hyp_calls)
+		return;
+
 	gh_sysfs_unregister();
 	gh_dbgfs_unregister();
 }
