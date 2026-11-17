@@ -1594,6 +1594,19 @@ preempt:
 		for (; se; se = NULL)
 #endif
 
+#if !IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
+static void walt_check_fair_pick(struct rq *rq, struct task_struct *p)
+{
+	/* The previous CFS donor can differ from the task still on this CPU. */
+	if (p && (!task_on_rq_queued(p) || task_rq(p) != rq ||
+		  (p->on_cpu && !task_current(rq, p))))
+		WALT_BUG(WALT_BUG_UPSTREAM, p,
+			 "picked %s(%d) on_cpu=%d on_rq=%d p->cpu=%d cpu_of(rq)=%d kthread=%d\n",
+			 p->comm, p->pid, p->on_cpu, p->on_rq, task_cpu(p),
+			 cpu_of(rq), p->flags & PF_KTHREAD);
+}
+#endif
+
 static void walt_cfs_replace_next_task_fair(void *unused, struct rq *rq, struct task_struct **p,
 					    struct task_struct *prev)
 {
@@ -1605,14 +1618,7 @@ static void walt_cfs_replace_next_task_fair(void *unused, struct rq *rq, struct 
 	if (unlikely(walt_disabled))
 		return;
 
-	if ((*p) && (*p) != prev && ((*p)->on_cpu == 1 || (*p)->on_rq == 0 ||
-				     (*p)->on_rq == TASK_ON_RQ_MIGRATING ||
-				     task_thread_info(*p)->cpu != cpu_of(rq)))
-		WALT_BUG(WALT_BUG_UPSTREAM, *p,
-			 "picked %s(%d) on_cpu=%d on_rq=%d p->cpu=%d cpu_of(rq)=%d kthread=%d\n",
-			 (*p)->comm, (*p)->pid, (*p)->on_cpu,
-			 (*p)->on_rq, task_thread_info(*p)->cpu,
-			 cpu_of(rq), ((*p)->flags & PF_KTHREAD));
+	walt_check_fair_pick(rq, *p);
 
 	/* RQ is in MVP throttled state*/
 	if (wrq->skip_mvp)
@@ -1635,14 +1641,7 @@ static void walt_cfs_replace_next_task_fair(void *unused, struct rq *rq, struct 
 		wrq->mvp_arrival_time = rq->clock;
 	}
 
-	if ((*p) && (*p) != prev && ((*p)->on_cpu == 1 || (*p)->on_rq == 0 ||
-				     (*p)->on_rq == TASK_ON_RQ_MIGRATING ||
-				     task_thread_info(*p)->cpu != cpu_of(rq)))
-		WALT_BUG(WALT_BUG_UPSTREAM, *p,
-			 "picked %s(%d) on_cpu=%d on_rq=%d p->cpu=%d cpu_of(rq)=%d kthread=%d\n",
-			 (*p)->comm, (*p)->pid, (*p)->on_cpu,
-			 (*p)->on_rq, task_thread_info(*p)->cpu,
-			 cpu_of(rq), ((*p)->flags & PF_KTHREAD));
+	walt_check_fair_pick(rq, mvp);
 
 	trace_walt_cfs_mvp_pick_next(mvp, wts, walt_cfs_mvp_task_limit(mvp));
 #else
