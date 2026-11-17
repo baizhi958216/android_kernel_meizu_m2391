@@ -74,7 +74,8 @@ int stop_walt_lb_active_migration(void *data)
 
 	BUG_ON(busiest_rq == target_rq);
 
-	if (task_on_rq_queued(push_task) &&
+	if (task_on_rq_queued(push_task) && !task_on_cpu(busiest_rq, push_task) &&
+			walt_balance_can_move(busiest_rq, push_task) &&
 			READ_ONCE(push_task->__state) == TASK_RUNNING &&
 			task_cpu(push_task) == busiest_cpu &&
 			cpu_active(target_cpu) &&
@@ -261,7 +262,7 @@ static inline bool _walt_can_migrate_task(struct task_struct *p, int dst_cpu,
 	struct walt_rq *wrq = &per_cpu(walt_rq, task_cpu(p));
 	struct walt_task_struct *wts = (struct walt_task_struct *)android_task_vendor_data(p);
 
-	if (p->se.sched_delayed)
+	if (p->se.sched_delayed || !walt_balance_can_move(task_rq(p), p))
 		return false;
 
 	/* Don't detach task if it is under active migration */
@@ -875,7 +876,8 @@ static bool walt_balance_rt(struct rq *this_rq)
 	if (!p)
 		goto unlock;
 
-	if (!cpumask_test_cpu(this_cpu, p->cpus_ptr))
+	if (task_on_cpu(src_rq, p) || !walt_balance_can_move(src_rq, p) ||
+	    !cpumask_test_cpu(this_cpu, p->cpus_ptr))
 		goto unlock;
 
 	wts = (struct walt_task_struct *)android_task_vendor_data(p);

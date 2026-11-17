@@ -63,7 +63,7 @@ static bool move_task(int src_cpu, int dst_cpu, cpumask_t *dst_cpu_mask_to_avoid
 	struct rq *dst_rq = cpu_rq(dst_cpu);
 	struct rq *src_rq = cpu_rq(src_cpu);
 	struct walt_rq *src_wrq = &per_cpu(walt_rq, src_cpu);
-	struct task_struct *p, *target_task;
+	struct task_struct *p, *target_task = NULL;
 	int ret, task_visited = 0;
 	bool moved = false;
 	unsigned long flags;
@@ -77,7 +77,7 @@ static bool move_task(int src_cpu, int dst_cpu, cpumask_t *dst_cpu_mask_to_avoid
 	}
 
 	list_for_each_entry_reverse(p, &src_rq->cfs_tasks, se.group_node) {
-		if (p->se.sched_delayed)
+		if (p->se.sched_delayed || !walt_balance_can_move(src_rq, p))
 			continue;
 
 		if (!walt_fair_task(p))

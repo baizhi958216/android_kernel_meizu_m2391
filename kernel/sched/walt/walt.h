@@ -1655,6 +1655,18 @@ extern void set_special_task(struct task_struct *pipeline_special_local);
 extern inline unsigned long walt_lb_cpu_util(int cpu);
 extern int stop_walt_lb_active_migration(void *data);
 
+/*
+ * WALT migrates one task at a time. The proxy scheduler owns blocked
+ * chains and the two active contexts while a donor lends its CPU to an
+ * owner. An ordinary running task may still be selected for the stopper.
+ * Called with the task's rq locked.
+ */
+static inline bool walt_balance_can_move(struct rq *rq, struct task_struct *p)
+{
+	return !task_is_blocked(p) && !is_migration_disabled(p) &&
+		task_current_donor(rq, p) == task_current(rq, p);
+}
+
 extern void walt_detach_task(struct task_struct *p, struct rq *src_rq, struct rq *dst_rq);
 extern void walt_attach_task(struct task_struct *p, struct rq *rq);
 
