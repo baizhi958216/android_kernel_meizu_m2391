@@ -332,6 +332,11 @@ static void llcc_ecc_check(struct edac_device_ctl_info *edev_ctl)
 	llcc_ecc_irq_handler(0, edev_ctl);
 }
 
+static void qcom_llcc_edac_free(void *data)
+{
+	edac_device_free_ctl_info(data);
+}
+
 static int qcom_llcc_edac_probe(struct platform_device *pdev)
 {
 	struct llcc_drv_data *llcc_driv_data = pdev->dev.platform_data;
@@ -354,6 +359,10 @@ static int qcom_llcc_edac_probe(struct platform_device *pdev)
 	if (!edev_ctl)
 		return -ENOMEM;
 
+	rc = devm_add_action_or_reset(dev, qcom_llcc_edac_free, edev_ctl);
+	if (rc)
+		return rc;
+
 	edev_ctl->dev = dev;
 	edev_ctl->mod_name = dev_name(dev);
 	edev_ctl->dev_name = dev_name(dev);
@@ -365,7 +374,7 @@ static int qcom_llcc_edac_probe(struct platform_device *pdev)
 	if (ecc_irq > 0) {
 		/* Use interrupt mode if IRQ is available */
 		rc = devm_request_irq(dev, ecc_irq, llcc_ecc_irq_handler,
-			      IRQF_TRIGGER_HIGH, "llcc_ecc", edev_ctl);
+				      IRQF_TRIGGER_HIGH | IRQF_NO_AUTOEN, "llcc_ecc", edev_ctl);
 		if (!rc) {
 			edac_op_state = EDAC_OPSTATE_INT;
 			goto irq_done;
@@ -379,10 +388,11 @@ static int qcom_llcc_edac_probe(struct platform_device *pdev)
 
 irq_done:
 	rc = edac_device_add_device(edev_ctl);
-	if (rc) {
-		edac_device_free_ctl_info(edev_ctl);
+	if (rc)
 		return rc;
-	}
+
+	if (!edev_ctl->edac_check)
+		enable_irq(ecc_irq);
 
 	platform_set_drvdata(pdev, edev_ctl);
 
@@ -391,10 +401,12 @@ irq_done:
 
 static void qcom_llcc_edac_remove(struct platform_device *pdev)
 {
+	struct llcc_drv_data *drv = dev_get_platdata(&pdev->dev);
 	struct edac_device_ctl_info *edev_ctl = dev_get_drvdata(&pdev->dev);
 
+	if (!edev_ctl->edac_check)
+		devm_free_irq(&pdev->dev, drv->ecc_irq, edev_ctl);
 	edac_device_del_device(edev_ctl->dev);
-	edac_device_free_ctl_info(edev_ctl);
 }
 
 static const struct platform_device_id qcom_llcc_edac_id_table[] = {

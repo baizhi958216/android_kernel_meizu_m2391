@@ -4408,6 +4408,11 @@ static void qcom_llcc_remove(struct platform_device *pdev)
 	drv_data = ERR_PTR(-ENODEV);
 }
 
+static void qcom_llcc_unregister_edac(void *data)
+{
+	platform_device_unregister(data);
+}
+
 static struct regmap *qcom_llcc_init_mmio(struct platform_device *pdev, u8 index,
 					  const char *name)
 {
@@ -4596,8 +4601,14 @@ static int qcom_llcc_probe(struct platform_device *pdev)
 		llcc_edac = platform_device_register_data(&pdev->dev,
 						"qcom_llcc_edac", -1, drv_data,
 						sizeof(*drv_data));
-		if (IS_ERR(llcc_edac))
+		if (IS_ERR(llcc_edac)) {
 			dev_err(dev, "Failed to register llcc edac driver\n");
+		} else {
+			ret = devm_add_action_or_reset(dev, qcom_llcc_unregister_edac,
+						       llcc_edac);
+			if (ret)
+				goto err;
+		}
 	}
 
 	return 0;
