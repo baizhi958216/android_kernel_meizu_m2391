@@ -22,6 +22,7 @@
 #include <trace/hooks/cpufreq.h>
 #include <trace/hooks/power.h>
 #include <trace/events/power.h>
+#include <trace/events/sched.h>
 #include "walt.h"
 #include "trace.h"
 #include "sysctl_walt_stats.h"
@@ -1275,24 +1276,24 @@ static void migrate_busy_time_subtraction(struct task_struct *p, int new_cpu)
 	u64 *src_nt_curr_runnable_sum, *src_nt_prev_runnable_sum;
 	bool new_task;
 	struct walt_related_thread_group *grp;
-	long pstate;
+	bool lock_src = !READ_ONCE(p->on_rq);
+	int event = TASK_MIGRATE;
 	struct walt_rq *src_wrq = &per_cpu(walt_rq, cpu_of(src_rq));
 	struct walt_task_struct *wts = (struct walt_task_struct *)android_task_vendor_data(p);
 	bool double_migrate = false;
 
-	if (!p->on_rq && READ_ONCE(p->__state) != TASK_WAKING) {
-		WALT_BUG(WALT_BUG_WALT, p,
-				"CPU%d: %s task %s(%d)'s state=0x%x src_rq=%d p->on_rq=%d",
-				raw_smp_processor_id(), __func__, p->comm, p->pid,
-				READ_ONCE(p->__state), src_rq->cpu, p->on_rq);
-
-		return;
-	}
-
-	pstate = READ_ONCE(p->__state);
-
-	if (pstate == TASK_WAKING)
+	/*
+	 * A queued migration, including a blocked proxy donor, already owns
+	 * the source rq lock. A waking task or a detached proxy waiter is
+	 * moved under pi_lock before it is attached to its destination.
+	 */
+	if (lock_src) {
+		lockdep_assert_held(&p->pi_lock);
 		raw_spin_rq_lock(src_rq);
+		/* The detached waiter slept on this rq; don't charge runnable wait. */
+		if (READ_ONCE(p->__state) != TASK_WAKING)
+			event = TASK_UPDATE;
+	}
 
 	walt_lockdep_assert_rq(src_rq, p);
 
@@ -1316,7 +1317,7 @@ static void migrate_busy_time_subtraction(struct task_struct *p, int new_cpu)
 		wts->enqueue_after_migration = 1; /* 1 is within cluster */
 
 	wallclock = walt_sched_clock();
-	walt_update_task_ravg(p, task_rq(p), TASK_MIGRATE, wallclock, 0);
+	walt_update_task_ravg(p, src_rq, event, wallclock, 0);
 
 	/*
 	 * Update task's cycles wrt to the new cpu.
@@ -1420,7 +1421,7 @@ skip_src_rq_sub:
 
 	wts->prev_cpu = task_cpu(p);
 
-	if (pstate == TASK_WAKING)
+	if (lock_src)
 		raw_spin_rq_unlock(src_rq);
 }
 
@@ -5085,7 +5086,23 @@ static void android_rvh_set_task_cpu(void *unused, struct task_struct *p, unsign
 	if (unlikely(walt_disabled))
 		return;
 
-	migrate_busy_time_subtraction(p, (int) new_cpu);
+	/* Both ordinary and proxy rq moves transfer the task's WALT history. */
+	migrate_busy_time_subtraction(p, new_cpu);
+}
+
+/*
+ * Only set_task_cpu() selects an execution CPU. proxy_set_task_cpu()
+ * moves a blocked scheduling context to its owner's rq, preserving its
+ * wake_cpu; the donor never executes there with its affinity overridden.
+ */
+static void walt_check_migration_affinity(void *unused, struct task_struct *p, int new_cpu)
+{
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_EXT)
+	if (task_on_scx(p))
+		return;
+#endif
+	if (unlikely(walt_disabled) || task_cpu(p) == new_cpu)
+		return;
 
 	if (!cpumask_test_cpu(new_cpu, p->cpus_ptr))
 		WALT_BUG(WALT_BUG_WALT, p, "selecting unaffined cpu=%d comm=%s(%d) affinity=0x%lx",
@@ -5934,6 +5951,7 @@ static void register_walt_hooks(void)
 	register_trace_android_rvh_sched_cpu_starting(android_rvh_sched_cpu_starting, NULL);
 	register_trace_android_rvh_sched_cpu_dying(android_rvh_sched_cpu_dying, NULL);
 	register_trace_android_rvh_set_task_cpu(android_rvh_set_task_cpu, NULL);
+	register_trace_sched_migrate_task(walt_check_migration_affinity, NULL);
 	register_trace_android_rvh_new_task_stats(android_rvh_new_task_stats, NULL);
 	register_trace_android_rvh_account_irq(android_rvh_account_irq, NULL);
 	register_trace_android_rvh_flush_task(android_rvh_flush_task, NULL);
