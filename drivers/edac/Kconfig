@@ -514,6 +514,14 @@ config EDAC_QCOM
 	  For debugging issues having to do with stability and overall system
 	  health, you should probably say 'Y' here.
 
+config EDAC_QCOM_LLCC_PANIC_ON_UE
+	bool "Panic on uncorrectable Qualcomm LLCC errors"
+	depends on EDAC_QCOM
+	default y
+	help
+	  Set the initial panic_on_ue policy for the LLCC EDAC device.
+	  Uncorrectable errors are counted and reported with either setting.
+
 config EDAC_ASPEED
 	tristate "Aspeed AST BMC SoC"
 	depends on ARCH_ASPEED

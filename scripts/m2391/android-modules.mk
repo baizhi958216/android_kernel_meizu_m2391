@@ -35,31 +35,31 @@ M2391_ANDROID_RAMDISK_MODULES := adsp_sleepmon.ko arm_smmu.ko aux-bridge.ko aux-
     pmic_glink_altmode.ko pmic-pon-log.ko pmu_scmi.ko pmu_vendor.ko \
     proxy-consumer.ko pwm-qti-lpg.ko qbt_handler.ko qcom_aoss.ko \
     qcom_common.ko qcom-cpufreq-hw.ko qcom_cpuss_sleep_stats.ko qcom-dcvs.ko \
-    qcom_dma_heaps.ko qcom_glink.ko qcom_glink_smem.ko qcom-hv-haptics.ko \
-    qcom_hwspinlock.ko qcom-i2c-pmic.ko qcom_ice.ko qcom_ipc_lite.ko \
-    qcom_ipc_logging.ko qcom-ipcc.ko qcom_llcc_pmu.ko qcom_lpm.ko \
-    qcom-pbs.ko qcom-pdc.ko qcom_pdr_msg.ko qcom_pil_info.ko \
-    qcom-pm8008-split-regulator.ko qcom-pmu-lib.ko qcom-pon.ko qcom_q6v5.ko \
-    qcom_q6v5_pas.ko qcom-reboot-reason.ko qcom_rpmh.ko qcom-scm.ko \
-    qcom-spmi-adc5-gen3.ko qcom-spmi-pmic.ko qcom-spmi-temp-alarm.ko qcom_spss.ko \
-    qcom_sysmon.ko qcom_tsens.ko qcom-vadc-common.ko qcom_wdt_core.ko \
-    qmi_helpers.ko qnoc-sm8550.ko qrtr.ko qrtr-mhi.ko \
-    qrtr-smd.ko qsee_ipc_irq_bridge.ko qti_battery_charger.ko qti_cpufreq_cdev.ko \
-    qti_devfreq_cdev.ko qti-ocp-notifier.ko qti_qmi_cdev.ko qti_qmi_sensor_v2.ko \
-    qti_userspace_cdev.ko qts.ko reboot-mode.ko rfkill.ko \
-    rimps_log.ko rpmh-regulator.ko rq_stats.ko rtc-pm8xxx.ko \
-    sched-walt.ko secure_buffer.ko sg.ko slim-qcom-ngd-ctrl.ko \
-    slimbus.ko smcinvoke_dlkm.ko smem.ko smp2p.ko \
-    smp2p_sleepstate.ko snd-usb-audio-qmi.ko soc_sleep_stats.ko soc-usb.ko \
-    socinfo.ko spcom.ko spi-geni-qcom.ko spmi-pmic-arb.ko \
-    sps_drv.ko spss_utils.ko stm_console.ko stm_core.ko \
-    stm_ftrace.ko stm_p_basic.ko subsystem_sleep_stats.ko sync_fence.ko \
-    synx-driver.ko sysmon_subsystem_stats.ko tcsrcc-kalama.ko thermal_minidump.ko \
-    thermal_pause.ko tmecom-intf.ko ucsi_glink.ko ufs-qcom.ko \
-    usb_f_ccid.ko usb_f_cdev.ko usb_f_diag.ko usb_f_gsi.ko \
-    usb_f_qdss.ko usbmon.ko videocc-kalama.ko xcharge_chg_interface.ko \
-    xcharge_chg_manager.ko xcharge_mbattery_logger.ko xcharge_notify_subsys.ko xcharge_thermal.ko \
-    zram.ko zsmalloc.ko
+    qcom_dma_heaps.ko qcom_edac.ko qcom_glink.ko qcom_glink_smem.ko \
+    qcom-hv-haptics.ko qcom_hwspinlock.ko qcom-i2c-pmic.ko qcom_ice.ko \
+    qcom_ipc_lite.ko qcom_ipc_logging.ko qcom-ipcc.ko qcom_llcc_pmu.ko \
+    qcom_lpm.ko qcom-pbs.ko qcom-pdc.ko qcom_pdr_msg.ko \
+    qcom_pil_info.ko qcom-pm8008-split-regulator.ko qcom-pmu-lib.ko qcom-pon.ko \
+    qcom_q6v5.ko qcom_q6v5_pas.ko qcom-reboot-reason.ko qcom_rpmh.ko \
+    qcom-scm.ko qcom-spmi-adc5-gen3.ko qcom-spmi-pmic.ko qcom-spmi-temp-alarm.ko \
+    qcom_spss.ko qcom_sysmon.ko qcom_tsens.ko qcom-vadc-common.ko \
+    qcom_wdt_core.ko qmi_helpers.ko qnoc-sm8550.ko qrtr.ko \
+    qrtr-mhi.ko qrtr-smd.ko qsee_ipc_irq_bridge.ko qti_battery_charger.ko \
+    qti_cpufreq_cdev.ko qti_devfreq_cdev.ko qti-ocp-notifier.ko qti_qmi_cdev.ko \
+    qti_qmi_sensor_v2.ko qti_userspace_cdev.ko qts.ko reboot-mode.ko \
+    rfkill.ko rimps_log.ko rpmh-regulator.ko rq_stats.ko \
+    rtc-pm8xxx.ko sched-walt.ko secure_buffer.ko sg.ko \
+    slim-qcom-ngd-ctrl.ko slimbus.ko smcinvoke_dlkm.ko smem.ko \
+    smp2p.ko smp2p_sleepstate.ko snd-usb-audio-qmi.ko soc_sleep_stats.ko \
+    soc-usb.ko socinfo.ko spcom.ko spi-geni-qcom.ko \
+    spmi-pmic-arb.ko sps_drv.ko spss_utils.ko stm_console.ko \
+    stm_core.ko stm_ftrace.ko stm_p_basic.ko subsystem_sleep_stats.ko \
+    sync_fence.ko synx-driver.ko sysmon_subsystem_stats.ko tcsrcc-kalama.ko \
+    thermal_minidump.ko thermal_pause.ko tmecom-intf.ko ucsi_glink.ko \
+    ufs-qcom.ko usb_f_ccid.ko usb_f_cdev.ko usb_f_diag.ko \
+    usb_f_gsi.ko usb_f_qdss.ko usbmon.ko videocc-kalama.ko \
+    xcharge_chg_interface.ko xcharge_chg_manager.ko xcharge_mbattery_logger.ko xcharge_notify_subsys.ko \
+    xcharge_thermal.ko zram.ko zsmalloc.ko
 M2391_ANDROID_VENDOR_MODULES := adsp_sleepmon.ko ai11ba.ko aks-adc-joystick.ko aks-ads1015.ko \
     arm_smmu.ko audio_pkt_dlkm.ko audio_prm_dlkm.ko audpkt_ion_dlkm.ko \
     bam_dma.ko bcl_pmic5.ko bcl_soc.ko binder_alloc_kunit.ko \
@@ -106,40 +106,40 @@ M2391_ANDROID_VENDOR_MODULES := adsp_sleepmon.ko ai11ba.ko aks-adc-joystick.ko a
     q6_notifier_dlkm.ko q6_pdr_dlkm.ko qbt_handler.ko qca_cld3_kiwi_v2.ko \
     qce50_dlkm.ko qcedev-mod_dlkm.ko qcom_aoss.ko qcom_common.ko \
     qcom-cpufreq-hw.ko qcom_cpuss_sleep_stats.ko qcom-dcvs.ko qcom_dma_heaps.ko \
-    qcom_glink.ko qcom_glink_smem.ko qcom-hv-haptics.ko qcom_hwspinlock.ko \
-    qcom-i2c-pmic.ko qcom_ice.ko qcom_ipc_lite.ko qcom-ipcc.ko \
-    qcom_llcc_pmu.ko qcom_lpm.ko qcom_pd_mapper.ko qcom-pdc.ko \
-    qcom_pdr_msg.ko qcom_pil_info.ko qcom-pm8008-split-regulator.ko qcom-pmu-lib.ko \
-    qcom-pon.ko qcom_q6v5.ko qcom_q6v5_pas.ko qcom-reboot-reason.ko \
-    qcom_rpmh.ko qcom-scm.ko qcom-spmi-adc5-gen3.ko qcom-spmi-adc-tm5-gen3.ko \
-    qcom-spmi-pmic.ko qcom-spmi-temp-alarm.ko qcom_spss.ko qcom_sysmon.ko \
-    qcom_tsens.ko qcom-vadc-common.ko qcom_wdt_core.ko qcrypto-msm_dlkm.ko \
-    qmi_helpers.ko qnoc-sm8550.ko qrng_dlkm.ko qrtr-mhi.ko \
-    qrtr-smd.ko qsee_ipc_irq_bridge.ko qti_battery_charger.ko qti_cpufreq_cdev.ko \
-    qti_devfreq_cdev.ko qti-ocp-notifier.ko qti_qmi_cdev.ko qti_qmi_sensor_v2.ko \
-    qti_userspace_cdev.ko qts.ko radio-i2c-rtc6226-qca.ko reboot-mode.ko \
-    regmap-kunit.ko rimps_log.ko rmnet_aps.ko rmnet_core.ko \
-    rmnet_ctl.ko rmnet_offload.ko rmnet_perf.ko rmnet_perf_tether.ko \
-    rmnet_sch.ko rmnet_shs.ko rmnet_wlan.ko rndisipam.ko \
-    rpmh-regulator.ko rq_stats.ko rtc-pm8xxx.ko sched-walt.ko \
-    secure_buffer.ko sg.ko slim-qcom-ngd-ctrl.ko slimbus.ko \
-    smcinvoke_dlkm.ko smem.ko smp2p.ko smp2p_sleepstate.ko \
-    snd_event_dlkm.ko snd-usb-audio-qmi.ko soc_sleep_stats.ko soc-topology-test.ko \
-    soc-utils-test.ko socinfo.ko spcom.ko spf_core_dlkm.ko \
-    spi-geni-qcom.ko spmi-pmic-arb.ko sps_drv.ko spss_utils.ko \
-    stm_console.ko stm_core.ko stm_ftrace.ko stm_nfc_i2c.ko \
-    stm_p_basic.ko stm_st54se_gpio.ko stub_dlkm.ko subsystem_sleep_stats.ko \
-    swr_ctrl_dlkm.ko swr_dlkm.ko swr_dmic_dlkm.ko swr_haptics_dlkm.ko \
-    sync_fence.ko synx-driver.ko sysmon_subsystem_stats.ko tcsrcc-kalama.ko \
-    test_rtc_lib.ko thermal_minidump.ko thermal_pause.ko time_test.ko \
-    tmecom-intf.ko tz_log_dlkm.ko ucsi_glink.ko ufs-qcom.ko \
-    usb_f_ccid.ko usb_f_cdev.ko usb_f_diag.ko usb_f_gsi.ko \
-    usb_f_qdss.ko usbmon.ko v4l2loopback.ko videocc-kalama.ko \
-    vl53l1.ko wcd937x_dlkm.ko wcd937x_slave_dlkm.ko wcd938x_dlkm.ko \
-    wcd938x_slave_dlkm.ko wcd939x_dlkm.ko wcd939x_slave_dlkm.ko wcd9xxx_dlkm.ko \
-    wcd_core_dlkm.ko wlan_firmware_service.ko wsa883x_dlkm.ko wsa884x_dlkm.ko \
-    xcharge_chg_interface.ko xcharge_chg_manager.ko xcharge_mbattery_logger.ko xcharge_notify_subsys.ko \
-    xcharge_thermal.ko zram.ko zsmalloc.ko
+    qcom_edac.ko qcom_glink.ko qcom_glink_smem.ko qcom-hv-haptics.ko \
+    qcom_hwspinlock.ko qcom-i2c-pmic.ko qcom_ice.ko qcom_ipc_lite.ko \
+    qcom-ipcc.ko qcom_llcc_pmu.ko qcom_lpm.ko qcom_pd_mapper.ko \
+    qcom-pdc.ko qcom_pdr_msg.ko qcom_pil_info.ko qcom-pm8008-split-regulator.ko \
+    qcom-pmu-lib.ko qcom-pon.ko qcom_q6v5.ko qcom_q6v5_pas.ko \
+    qcom-reboot-reason.ko qcom_rpmh.ko qcom-scm.ko qcom-spmi-adc5-gen3.ko \
+    qcom-spmi-adc-tm5-gen3.ko qcom-spmi-pmic.ko qcom-spmi-temp-alarm.ko qcom_spss.ko \
+    qcom_sysmon.ko qcom_tsens.ko qcom-vadc-common.ko qcom_wdt_core.ko \
+    qcrypto-msm_dlkm.ko qmi_helpers.ko qnoc-sm8550.ko qrng_dlkm.ko \
+    qrtr-mhi.ko qrtr-smd.ko qsee_ipc_irq_bridge.ko qti_battery_charger.ko \
+    qti_cpufreq_cdev.ko qti_devfreq_cdev.ko qti-ocp-notifier.ko qti_qmi_cdev.ko \
+    qti_qmi_sensor_v2.ko qti_userspace_cdev.ko qts.ko radio-i2c-rtc6226-qca.ko \
+    reboot-mode.ko regmap-kunit.ko rimps_log.ko rmnet_aps.ko \
+    rmnet_core.ko rmnet_ctl.ko rmnet_offload.ko rmnet_perf.ko \
+    rmnet_perf_tether.ko rmnet_sch.ko rmnet_shs.ko rmnet_wlan.ko \
+    rndisipam.ko rpmh-regulator.ko rq_stats.ko rtc-pm8xxx.ko \
+    sched-walt.ko secure_buffer.ko sg.ko slim-qcom-ngd-ctrl.ko \
+    slimbus.ko smcinvoke_dlkm.ko smem.ko smp2p.ko \
+    smp2p_sleepstate.ko snd_event_dlkm.ko snd-usb-audio-qmi.ko soc_sleep_stats.ko \
+    soc-topology-test.ko soc-utils-test.ko socinfo.ko spcom.ko \
+    spf_core_dlkm.ko spi-geni-qcom.ko spmi-pmic-arb.ko sps_drv.ko \
+    spss_utils.ko stm_console.ko stm_core.ko stm_ftrace.ko \
+    stm_nfc_i2c.ko stm_p_basic.ko stm_st54se_gpio.ko stub_dlkm.ko \
+    subsystem_sleep_stats.ko swr_ctrl_dlkm.ko swr_dlkm.ko swr_dmic_dlkm.ko \
+    swr_haptics_dlkm.ko sync_fence.ko synx-driver.ko sysmon_subsystem_stats.ko \
+    tcsrcc-kalama.ko test_rtc_lib.ko thermal_minidump.ko thermal_pause.ko \
+    time_test.ko tmecom-intf.ko tz_log_dlkm.ko ucsi_glink.ko \
+    ufs-qcom.ko usb_f_ccid.ko usb_f_cdev.ko usb_f_diag.ko \
+    usb_f_gsi.ko usb_f_qdss.ko usbmon.ko v4l2loopback.ko \
+    videocc-kalama.ko vl53l1.ko wcd937x_dlkm.ko wcd937x_slave_dlkm.ko \
+    wcd938x_dlkm.ko wcd938x_slave_dlkm.ko wcd939x_dlkm.ko wcd939x_slave_dlkm.ko \
+    wcd9xxx_dlkm.ko wcd_core_dlkm.ko wlan_firmware_service.ko wsa883x_dlkm.ko \
+    wsa884x_dlkm.ko xcharge_chg_interface.ko xcharge_chg_manager.ko xcharge_mbattery_logger.ko \
+    xcharge_notify_subsys.ko xcharge_thermal.ko zram.ko zsmalloc.ko
 M2391_ANDROID_SYSTEM_MODULES := 6lowpan.ko 8021q.ko 9pnet.ko 9pnet_fd.ko \
     aqc111.ko asix.ko aux-bridge.ko aux-hpd-bridge.ko \
     ax88179_178a.ko bluetooth.ko bsd_comp.ko btbcm.ko \
@@ -232,23 +232,23 @@ M2391_ANDROID_RECOVERY_LOAD := qcom-scm.ko qcom_hwspinlock.ko smem.ko cmd-db.ko 
     i2c-qcom-geni.ko qcom_ipc_lite.ko synx-driver.ko reboot-mode.ko \
     qcom-pon.ko qcom-spmi-temp-alarm.ko bcl_soc.ko cpu_voltage_cooling.ko \
     ddr_cdev.ko msm_lmh_dcvs.ko qti_qmi_cdev.ko qti_qmi_sensor_v2.ko \
-    qti_cpufreq_cdev.ko qti_devfreq_cdev.ko qti_userspace_cdev.ko qcom_lpm.ko \
-    leds-qti-flash.ko leds-qti-tri-led.ko leds-qpnp-vibrator-ldo.ko memlat_vendor.ko \
-    cpufreq_stats_vendor.ko plh_vendor.ko qcom_pil_info.ko qcom_sysmon.ko \
-    qcom_q6v5.ko qcom_q6v5_pas.ko qcom_spss.ko gh_irq_lend.ko \
-    gh_mem_notifier.ko qcom-vadc-common.ko qcom-spmi-adc5-gen3.ko industrialio-buffer-cb.ko \
-    nvmem_qfprom.ko bootloader_log.ko mz_bl_lock.ko boot_mode.ko \
-    mz_rpmb_ctl.ko meizu_key_value.ko mz_rstinfo.ko mz_reclaim_opt.ko \
-    zsmalloc.ko zram.ko mz_thermal_log.ko slimbus.ko \
-    slim-qcom-ngd-ctrl.ko coresight.ko coresight-tmc.ko coresight-funnel.ko \
-    coresight-replicator.ko stm_core.ko coresight-stm.ko coresight-cti.ko \
-    coresight-tpda.ko coresight-tpdm.ko coresight-dummy.ko coresight-remote-etm.ko \
-    stm_p_basic.ko stm_console.ko stm_ftrace.ko soc-usb.ko \
-    snd-usb-audio-qmi.ko rfkill.ko cfg80211.ko qrtr-smd.ko \
-    qrtr-mhi.ko kunit.ko kalama-shmbridge.ko smcinvoke_dlkm.ko \
-    hdcp_qseecom_dlkm.ko drm_display_helper.ko msm_ext_display.ko msm_hw_fence.ko \
-    msm-mmrm.ko sync_fence.ko msm_drm.ko mz_gesture_ts.ko \
-    qts.ko goodix_ts.ko
+    qti_cpufreq_cdev.ko qti_devfreq_cdev.ko qti_userspace_cdev.ko qcom_edac.ko \
+    qcom_lpm.ko leds-qti-flash.ko leds-qti-tri-led.ko leds-qpnp-vibrator-ldo.ko \
+    memlat_vendor.ko cpufreq_stats_vendor.ko plh_vendor.ko qcom_pil_info.ko \
+    qcom_sysmon.ko qcom_q6v5.ko qcom_q6v5_pas.ko qcom_spss.ko \
+    gh_irq_lend.ko gh_mem_notifier.ko qcom-vadc-common.ko qcom-spmi-adc5-gen3.ko \
+    industrialio-buffer-cb.ko nvmem_qfprom.ko bootloader_log.ko mz_bl_lock.ko \
+    boot_mode.ko mz_rpmb_ctl.ko meizu_key_value.ko mz_rstinfo.ko \
+    mz_reclaim_opt.ko zsmalloc.ko zram.ko mz_thermal_log.ko \
+    slimbus.ko slim-qcom-ngd-ctrl.ko coresight.ko coresight-tmc.ko \
+    coresight-funnel.ko coresight-replicator.ko stm_core.ko coresight-stm.ko \
+    coresight-cti.ko coresight-tpda.ko coresight-tpdm.ko coresight-dummy.ko \
+    coresight-remote-etm.ko stm_p_basic.ko stm_console.ko stm_ftrace.ko \
+    soc-usb.ko snd-usb-audio-qmi.ko rfkill.ko cfg80211.ko \
+    qrtr-smd.ko qrtr-mhi.ko kunit.ko kalama-shmbridge.ko \
+    smcinvoke_dlkm.ko hdcp_qseecom_dlkm.ko drm_display_helper.ko msm_ext_display.ko \
+    msm_hw_fence.ko msm-mmrm.ko sync_fence.ko msm_drm.ko \
+    mz_gesture_ts.ko qts.ko goodix_ts.ko
 M2391_ANDROID_VENDOR_LOAD := msm_sysstats.ko mhi.ko mhi_dev_satellite.ko pinctrl-spmi-gpio.ko \
     pinctrl-spmi-mpp.ko pwm-qti-lpg.ko pci-msm-drv.ko gpucc-kalama.ko \
     bam_dma.ko gpi.ko qcom_cpuss_sleep_stats.ko pdr_interface.ko \
@@ -268,55 +268,55 @@ M2391_ANDROID_VENDOR_LOAD := msm_sysstats.ko mhi.ko mhi_dev_satellite.ko pinctrl
     qcom-pon.ko reboot-mode.ko qti_battery_charger.ko qcom-spmi-temp-alarm.ko \
     bcl_soc.ko cpu_voltage_cooling.ko ddr_cdev.ko msm_lmh_dcvs.ko \
     qti_qmi_cdev.ko qti_qmi_sensor_v2.ko qti_cpufreq_cdev.ko qti_devfreq_cdev.ko \
-    qti_userspace_cdev.ko qcom_lpm.ko leds-qti-flash.ko leds-qti-tri-led.ko \
-    leds-qpnp-vibrator-ldo.ko memlat_vendor.ko cpufreq_stats_vendor.ko plh_vendor.ko \
-    ipa_fmwk.ko qcom_pil_info.ko qcom_common.ko qcom_q6v5.ko \
-    qcom_q6v5_pas.ko qcom_spss.ko qcom_sysmon.ko qcom_glink.ko \
-    qcom_glink_smem.ko gh_irq_lend.ko gh_mem_notifier.ko qcom-spmi-adc5-gen3.ko \
-    qcom-vadc-common.ko industrialio-buffer-cb.ko nvmem_qfprom.ko xcharge_chg_manager.ko \
-    bootloader_log.ko mz_bl_lock.ko boot_mode.ko meizu_private.ko \
-    mz_rpmb_ctl.ko meizu_key_value.ko mz_rstinfo.ko mz_reclaim_opt.ko \
-    zram.ko zsmalloc.ko mz_thermal_log.ko slimbus.ko \
-    slim-qcom-ngd-ctrl.ko coresight.ko coresight-tmc.ko coresight-funnel.ko \
-    coresight-replicator.ko coresight-stm.ko coresight-cti.ko coresight-tpda.ko \
-    coresight-tpdm.ko coresight-dummy.ko coresight-remote-etm.ko stm_core.ko \
-    stm_p_basic.ko stm_console.ko stm_ftrace.ko snd-usb-audio-qmi.ko \
-    cfg80211.ko qrtr-smd.ko qrtr-mhi.ko kunit.ko \
-    q6_notifier_dlkm.ko spf_core_dlkm.ko audpkt_ion_dlkm.ko gpr_dlkm.ko \
-    audio_pkt_dlkm.ko q6_dlkm.ko audio_prm_dlkm.ko q6_pdr_dlkm.ko \
-    pinctrl_lpi_dlkm.ko swr_dlkm.ko swr_ctrl_dlkm.ko snd_event_dlkm.ko \
-    wcd_core_dlkm.ko mbhc_dlkm.ko wcd9xxx_dlkm.ko stub_dlkm.ko \
-    machine_dlkm.ko swr_dmic_dlkm.ko swr_haptics_dlkm.ko hdmi_dlkm.ko \
-    lpass_cdc_wsa2_macro_dlkm.ko lpass_cdc_wsa_macro_dlkm.ko lpass_cdc_va_macro_dlkm.ko lpass_cdc_rx_macro_dlkm.ko \
-    lpass_cdc_tx_macro_dlkm.ko lpass_cdc_dlkm.ko wsa884x_dlkm.ko wsa883x_dlkm.ko \
-    wcd938x_dlkm.ko wcd938x_slave_dlkm.ko cs35l45_dlkm.ko cirrus_cali_dlkm.ko \
-    dummy_dlkm.ko wcd939x_dlkm.ko wcd939x_slave_dlkm.ko wcd937x_dlkm.ko \
-    wcd937x_slave_dlkm.ko stm_st54se_gpio.ko tz_log_dlkm.ko qcedev-mod_dlkm.ko \
-    qcrypto-msm_dlkm.ko qce50_dlkm.ko hdcp_qseecom_dlkm.ko smcinvoke_dlkm.ko \
-    qrng_dlkm.ko qca_cld3_kiwi_v2.ko cnss2.ko cnss_plat_ipc_qmi_svc.ko \
-    wlan_firmware_service.ko cnss_nl.ko cnss_prealloc.ko cnss_utils.ko \
-    aks-adc-joystick.ko aks-ads1015.ko btpower.ko bt_fm_slim.ko \
-    radio-i2c-rtc6226-qca.ko camera.ko gsim.ko ipam.ko \
-    ipanetm.ko rndisipam.ko ipa_clientsm.ko rmnet_core.ko \
-    rmnet_ctl.ko rmnet_offload.ko rmnet_perf_tether.ko rmnet_perf.ko \
-    rmnet_shs.ko rmnet_aps.ko rmnet_sch.ko rmnet_wlan.ko \
-    msm_drm.ko msm-eva.ko msm_ext_display.ko sync_fence.ko \
-    msm_hw_fence.ko msm-mmrm.ko cs_press_f71.ko cs_press_m68.ko \
-    haptic_hv.ko pwm_ir.ko ai11ba.ko vl53l1.ko \
-    stm_nfc_i2c.ko nxp-nci.ko mz_gesture_ts.ko qts.ko \
-    goodix_ts.ko msm_video.ko v4l2loopback.ko nxp-sr100.ko \
-    msm_kgsl.ko meizu-sys.ko mpower_logger.ko mz_compaction_opt.ko \
-    mz_freq_qos.ko mz_kshrink_slabd.ko mz_mrg.ko xcharge_chg_interface.ko \
-    xcharge_mbattery_logger.ko xcharge_notify_subsys.ko xcharge_thermal.ko arm_smmu.ko \
-    bcl_pmic5.ko camcc-kalama.ko clk-rpmh.ko cmd-db.ko \
-    cpu_hotplug.ko dcvs_fp.ko dispcc-kalama.ko gcc-kalama.ko \
-    gdsc-regulator.ko icc-bcm-voter.ko kalama-shmbridge.ko llcc-qcom.ko \
-    mem_buf.ko mem_buf_dev.ko minidump.ko msm_qmp.ko \
-    nvmem_qcom-spmi-sdam.ko phy-qcom-ufs-qmp-v4-kalama.ko pinctrl-kalama.ko qcom_aoss.ko \
-    qcom-cpufreq-hw.ko qcom-dcvs.ko qcom_dma_heaps.ko qcom_hwspinlock.ko \
-    qcom-i2c-pmic.ko qcom-ipcc.ko qcom_llcc_pmu.ko qcom-pdc.ko \
-    qcom-pm8008-split-regulator.ko qcom-reboot-reason.ko qcom_rpmh.ko qcom-scm.ko \
-    qcom-spmi-pmic.ko qcom_tsens.ko qnoc-sm8550.ko rpmh-regulator.ko \
-    rtc-pm8xxx.ko secure_buffer.ko smem.ko spmi-pmic-arb.ko \
-    tcsrcc-kalama.ko thermal_pause.ko tmecom-intf.ko ufs-qcom.ko \
-    videocc-kalama.ko
+    qti_userspace_cdev.ko qcom_edac.ko qcom_lpm.ko leds-qti-flash.ko \
+    leds-qti-tri-led.ko leds-qpnp-vibrator-ldo.ko memlat_vendor.ko cpufreq_stats_vendor.ko \
+    plh_vendor.ko ipa_fmwk.ko qcom_pil_info.ko qcom_common.ko \
+    qcom_q6v5.ko qcom_q6v5_pas.ko qcom_spss.ko qcom_sysmon.ko \
+    qcom_glink.ko qcom_glink_smem.ko gh_irq_lend.ko gh_mem_notifier.ko \
+    qcom-spmi-adc5-gen3.ko qcom-vadc-common.ko industrialio-buffer-cb.ko nvmem_qfprom.ko \
+    xcharge_chg_manager.ko bootloader_log.ko mz_bl_lock.ko boot_mode.ko \
+    meizu_private.ko mz_rpmb_ctl.ko meizu_key_value.ko mz_rstinfo.ko \
+    mz_reclaim_opt.ko zram.ko zsmalloc.ko mz_thermal_log.ko \
+    slimbus.ko slim-qcom-ngd-ctrl.ko coresight.ko coresight-tmc.ko \
+    coresight-funnel.ko coresight-replicator.ko coresight-stm.ko coresight-cti.ko \
+    coresight-tpda.ko coresight-tpdm.ko coresight-dummy.ko coresight-remote-etm.ko \
+    stm_core.ko stm_p_basic.ko stm_console.ko stm_ftrace.ko \
+    snd-usb-audio-qmi.ko cfg80211.ko qrtr-smd.ko qrtr-mhi.ko \
+    kunit.ko q6_notifier_dlkm.ko spf_core_dlkm.ko audpkt_ion_dlkm.ko \
+    gpr_dlkm.ko audio_pkt_dlkm.ko q6_dlkm.ko audio_prm_dlkm.ko \
+    q6_pdr_dlkm.ko pinctrl_lpi_dlkm.ko swr_dlkm.ko swr_ctrl_dlkm.ko \
+    snd_event_dlkm.ko wcd_core_dlkm.ko mbhc_dlkm.ko wcd9xxx_dlkm.ko \
+    stub_dlkm.ko machine_dlkm.ko swr_dmic_dlkm.ko swr_haptics_dlkm.ko \
+    hdmi_dlkm.ko lpass_cdc_wsa2_macro_dlkm.ko lpass_cdc_wsa_macro_dlkm.ko lpass_cdc_va_macro_dlkm.ko \
+    lpass_cdc_rx_macro_dlkm.ko lpass_cdc_tx_macro_dlkm.ko lpass_cdc_dlkm.ko wsa884x_dlkm.ko \
+    wsa883x_dlkm.ko wcd938x_dlkm.ko wcd938x_slave_dlkm.ko cs35l45_dlkm.ko \
+    cirrus_cali_dlkm.ko dummy_dlkm.ko wcd939x_dlkm.ko wcd939x_slave_dlkm.ko \
+    wcd937x_dlkm.ko wcd937x_slave_dlkm.ko stm_st54se_gpio.ko tz_log_dlkm.ko \
+    qcedev-mod_dlkm.ko qcrypto-msm_dlkm.ko qce50_dlkm.ko hdcp_qseecom_dlkm.ko \
+    smcinvoke_dlkm.ko qrng_dlkm.ko qca_cld3_kiwi_v2.ko cnss2.ko \
+    cnss_plat_ipc_qmi_svc.ko wlan_firmware_service.ko cnss_nl.ko cnss_prealloc.ko \
+    cnss_utils.ko aks-adc-joystick.ko aks-ads1015.ko btpower.ko \
+    bt_fm_slim.ko radio-i2c-rtc6226-qca.ko camera.ko gsim.ko \
+    ipam.ko ipanetm.ko rndisipam.ko ipa_clientsm.ko \
+    rmnet_core.ko rmnet_ctl.ko rmnet_offload.ko rmnet_perf_tether.ko \
+    rmnet_perf.ko rmnet_shs.ko rmnet_aps.ko rmnet_sch.ko \
+    rmnet_wlan.ko msm_drm.ko msm-eva.ko msm_ext_display.ko \
+    sync_fence.ko msm_hw_fence.ko msm-mmrm.ko cs_press_f71.ko \
+    cs_press_m68.ko haptic_hv.ko pwm_ir.ko ai11ba.ko \
+    vl53l1.ko stm_nfc_i2c.ko nxp-nci.ko mz_gesture_ts.ko \
+    qts.ko goodix_ts.ko msm_video.ko v4l2loopback.ko \
+    nxp-sr100.ko msm_kgsl.ko meizu-sys.ko mpower_logger.ko \
+    mz_compaction_opt.ko mz_freq_qos.ko mz_kshrink_slabd.ko mz_mrg.ko \
+    xcharge_chg_interface.ko xcharge_mbattery_logger.ko xcharge_notify_subsys.ko xcharge_thermal.ko \
+    arm_smmu.ko bcl_pmic5.ko camcc-kalama.ko clk-rpmh.ko \
+    cmd-db.ko cpu_hotplug.ko dcvs_fp.ko dispcc-kalama.ko \
+    gcc-kalama.ko gdsc-regulator.ko icc-bcm-voter.ko kalama-shmbridge.ko \
+    llcc-qcom.ko mem_buf.ko mem_buf_dev.ko minidump.ko \
+    msm_qmp.ko nvmem_qcom-spmi-sdam.ko phy-qcom-ufs-qmp-v4-kalama.ko pinctrl-kalama.ko \
+    qcom_aoss.ko qcom-cpufreq-hw.ko qcom-dcvs.ko qcom_dma_heaps.ko \
+    qcom_hwspinlock.ko qcom-i2c-pmic.ko qcom-ipcc.ko qcom_llcc_pmu.ko \
+    qcom-pdc.ko qcom-pm8008-split-regulator.ko qcom-reboot-reason.ko qcom_rpmh.ko \
+    qcom-scm.ko qcom-spmi-pmic.ko qcom_tsens.ko qnoc-sm8550.ko \
+    rpmh-regulator.ko rtc-pm8xxx.ko secure_buffer.ko smem.ko \
+    spmi-pmic-arb.ko tcsrcc-kalama.ko thermal_pause.ko tmecom-intf.ko \
+    ufs-qcom.ko videocc-kalama.ko
