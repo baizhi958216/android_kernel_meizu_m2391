@@ -1203,6 +1203,7 @@ static int ufshcd_opp_set_rate(struct ufs_hba *hba, unsigned long freq)
  */
 int ufshcd_scale_clks(struct ufs_hba *hba, unsigned long freq, bool scale_up)
 {
+	bool needs_reinit = hba->quirks & UFSHCD_QUIRK_REINIT_ON_CLK_SCALE_FAILURE;
 	int ret = 0;
 	ktime_t start = ktime_get();
 
@@ -1218,18 +1219,29 @@ int ufshcd_scale_clks(struct ufs_hba *hba, unsigned long freq, bool scale_up)
 		goto out;
 
 	ret = ufshcd_vops_clk_scale_notify(hba, scale_up, freq, POST_CHANGE);
-	if (ret) {
+	if (ret && !needs_reinit) {
 		if (hba->use_pm_opp)
 			ufshcd_opp_set_rate(hba,
 					    hba->devfreq->previous_freq);
 		else
 			ufshcd_set_clk_freq(hba, !scale_up);
-		goto out;
 	}
+	if (ret)
+		goto out;
 
 	ufshcd_pm_qos_update(hba, scale_up);
 
 out:
+	/*
+	 * PRE_CHANGE can enter Hibern8 or update UniPro timers before the
+	 * clock provider runs. A bare rate change cannot undo either step.
+	 * While recovering, the stopped HBA has no active link to repair.
+	 */
+	if (ret && needs_reinit && ufshcd_is_hba_active(hba)) {
+		guard(spinlock_irqsave)(hba->host->host_lock);
+		ufshcd_set_link_broken(hba);
+		ufshcd_schedule_eh_work(hba);
+	}
 	trace_ufshcd_profile_clk_scaling(hba,
 			(scale_up ? "up" : "down"),
 			ktime_to_us(ktime_sub(ktime_get(), start)), ret);
@@ -1534,7 +1546,7 @@ static int ufshcd_devfreq_scale(struct ufs_hba *hba, unsigned long freq,
 
 	ret = ufshcd_scale_clks(hba, freq, scale_up);
 	if (ret) {
-		if (!scale_up)
+		if (!scale_up && !ufshcd_is_link_broken(hba))
 			ufshcd_scale_gear(hba, old_gear, true);
 		goto out_unprepare;
 	}
@@ -1543,8 +1555,8 @@ static int ufshcd_devfreq_scale(struct ufs_hba *hba, unsigned long freq,
 	if (scale_up) {
 		ret = ufshcd_scale_gear(hba, new_gear, true);
 		if (ret) {
-			ufshcd_scale_clks(hba, hba->devfreq->previous_freq,
-					  false);
+			if (!ufshcd_is_link_broken(hba))
+				ufshcd_scale_clks(hba, hba->devfreq->previous_freq, false);
 			goto out_unprepare;
 		}
 	}
@@ -8387,8 +8399,11 @@ static int ufshcd_host_reset_and_restore(struct ufs_hba *hba)
 	hba->silence_err_logs = false;
 
 	/* scale up clocks to max frequency before full reinitialization */
-	if (ufshcd_is_clkscaling_supported(hba))
-		ufshcd_scale_clks(hba, ULONG_MAX, true);
+	if (ufshcd_is_clkscaling_supported(hba)) {
+		err = ufshcd_scale_clks(hba, ULONG_MAX, true);
+		if (err && (hba->quirks & UFSHCD_QUIRK_REINIT_ON_CLK_SCALE_FAILURE))
+			goto out;
+	}
 
 	err = ufshcd_hba_enable(hba);
 
@@ -8402,6 +8417,7 @@ static int ufshcd_host_reset_and_restore(struct ufs_hba *hba)
 		ufshcd_process_probe_result(hba, probe_start, err);
 	}
 
+out:
 	if (err)
 		dev_err(hba->dev, "%s: Host init failed %d\n", __func__, err);
 	ufshcd_update_evt_hist(hba, UFS_EVT_HOST_RESET, (u32)err);

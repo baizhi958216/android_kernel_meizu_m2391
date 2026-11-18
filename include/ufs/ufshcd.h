@@ -828,6 +828,9 @@ enum ufshcd_quirks {
 	 * allowed by M-PHY spec ver 6.0.
 	 */
 	UFSHCD_QUIRK_EXTENDED_TX_EQTR_ADAPT_LENGTH_L0L1L2L3	= 1 << 28,
+
+	/* A failed clock transition leaves the link or its UniPro timers indeterminate. */
+	UFSHCD_QUIRK_REINIT_ON_CLK_SCALE_FAILURE	= 1 << 29,
 };
 
 enum ufshcd_android_quirks {
