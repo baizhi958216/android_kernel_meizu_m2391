@@ -786,7 +786,7 @@ out_disable_phy:
  * this function enables them (after every UFS link startup) to save some power
  * leakage.
  */
-static void ufs_qcom_enable_hw_clk_gating(struct ufs_hba *hba)
+static int ufs_qcom_enable_hw_clk_gating(struct ufs_hba *hba)
 {
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
 	int err;
@@ -818,7 +818,8 @@ static void ufs_qcom_enable_hw_clk_gating(struct ufs_hba *hba)
 			     DME_VS_CORE_CLK_CTRL);
 out:
 	if (err)
-		dev_err(hba->dev, "hw clk gating enabled failed\n");
+		dev_err(hba->dev, "failed to configure host clock gating: %d\n", err);
+	return err;
 }
 
 static int ufs_qcom_hce_enable_notify(struct ufs_hba *hba,
@@ -848,7 +849,8 @@ static int ufs_qcom_hce_enable_notify(struct ufs_hba *hba,
 		err = ufs_qcom_check_hibern8(hba);
 		if (err)
 			return err;
-		ufs_qcom_enable_hw_clk_gating(hba);
+		if (!ufs_qcom_is_kalama_phy(host->generic_phy))
+			ufs_qcom_enable_hw_clk_gating(hba);
 		if (!of_machine_is_compatible("qcom,kalama")) {
 			err = ufs_qcom_ice_enable(host);
 			if (err)
@@ -928,6 +930,19 @@ cfg_timers:
 	return 0;
 }
 
+static int ufs_qcom_set_available_lanes(struct ufs_hba *hba, u32 attribute)
+{
+	u32 lanes;
+	int ret;
+
+	/* Fixed PA attributes already matching the board need no override. */
+	ret = ufshcd_dme_get(hba, UIC_ARG_MIB(attribute), &lanes);
+	if (!ret && lanes == hba->lanes_per_direction)
+		return 0;
+
+	return ufshcd_dme_set(hba, UIC_ARG_MIB(attribute), hba->lanes_per_direction);
+}
+
 static int ufs_qcom_link_startup_notify(struct ufs_hba *hba,
 					enum ufs_notify_change_status status)
 {
@@ -938,8 +953,15 @@ static int ufs_qcom_link_startup_notify(struct ufs_hba *hba,
 
 	switch (status) {
 	case PRE_CHANGE:
-		if (kalama_phy)
+		if (kalama_phy) {
+			err = ufs_qcom_set_available_lanes(hba, PA_AVAILTXDATALANES);
+			if (err)
+				return err;
+			err = ufs_qcom_set_available_lanes(hba, PA_AVAILRXDATALANES);
+			if (err)
+				return err;
 			ufs_qcom_phy_ctrl_rx_linecfg(phy, true);
+		}
 		if (ufs_qcom_cfg_timers(hba, false, ULONG_MAX)) {
 			dev_err(hba->dev, "%s: ufs_qcom_cfg_timers() failed\n",
 				__func__);
@@ -950,6 +972,12 @@ static int ufs_qcom_link_startup_notify(struct ufs_hba *hba,
 		if (err) {
 			dev_err(hba->dev, "cfg core clk ctrl failed\n");
 			return err;
+		}
+		if (kalama_phy) {
+			/* Program the DME clock gate after its core timer on each link startup. */
+			err = ufs_qcom_enable_hw_clk_gating(hba);
+			if (err)
+				return err;
 		}
 		if (of_machine_is_compatible("qcom,kalama")) {
 			/* Non-SCSI management UPIUs do not carry a crypto context. */
