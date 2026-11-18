@@ -687,6 +687,11 @@ static int ufs_qcom_host_reset(struct ufs_hba *hba)
 	WRITE_ONCE(host->ice_sync_reset_pending, false);
 	usleep_range(1000, 1100);
 
+	/* The GCC reset may have changed the device REF_CLK output gate. */
+	if (ufs_qcom_is_kalama_phy(host->generic_phy))
+		host->is_dev_ref_clk_enabled =
+			!!(ufshcd_readl(hba, REG_UFS_CFG1) & host->dev_ref_clk_en_mask);
+
 	if (reenable_intr)
 		ufshcd_enable_irq(hba);
 
