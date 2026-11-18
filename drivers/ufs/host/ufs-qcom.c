@@ -2391,7 +2391,7 @@ static int ufs_qcom_clk_scale_notify(struct ufs_hba *hba, bool scale_up,
 				     enum ufs_notify_change_status status)
 {
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
-	int err;
+	int err, exit_err;
 
 	/* check the host controller state before sending hibern8 cmd */
 	if (!ufshcd_is_hba_active(hba))
@@ -2406,29 +2406,23 @@ static int ufs_qcom_clk_scale_notify(struct ufs_hba *hba, bool scale_up,
 		else
 			err = ufs_qcom_clk_scale_down_pre_change(hba);
 
-		if (err) {
-			ufshcd_uic_hibern8_exit(hba);
-			return err;
-		}
+		if (!err)
+			return 0;
 	} else {
 		if (scale_up)
 			err = ufs_qcom_clk_scale_up_post_change(hba);
 		else
 			err = ufs_qcom_clk_scale_down_post_change(hba, target_freq);
 
-
-		if (err) {
-			ufshcd_uic_hibern8_exit(hba);
-			return err;
-		}
-
-		err = ufs_qcom_icc_update_bw(host);
-		ufshcd_uic_hibern8_exit(hba);
-		if (err)
-			return err;
+		if (!err)
+			err = ufs_qcom_icc_update_bw(host);
 	}
 
-	return 0;
+	exit_err = ufshcd_uic_hibern8_exit(hba);
+	if (err)
+		return err;
+	/* UIC power-control failures may carry a positive UPMCRS code. */
+	return exit_err > 0 ? -EIO : exit_err;
 }
 
 static void ufs_qcom_enable_test_bus(struct ufs_qcom_host *host)
