@@ -2139,7 +2139,8 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 		/* Enter hardware Hibern8 after 5 ms, ahead of software clock gating. */
 		hba->ahit = FIELD_PREP(UFSHCI_AHIBERN8_TIMER_MASK, 5) |
 			    FIELD_PREP(UFSHCI_AHIBERN8_SCALE_MASK, 3);
-		hba->clk_gating.delay_ms = 50;
+		hba->clk_gating.delay_ms_perf = 50;
+		hba->clk_gating.delay_ms_pwr_save = 10;
 	}
 
 	err = ufs_qcom_init_kalama_rails(host);
@@ -2722,10 +2723,12 @@ static void ufs_qcom_config_scaling_param(struct ufs_hba *hba,
 					struct devfreq_dev_profile *p,
 					struct devfreq_simple_ondemand_data *d)
 {
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+
 	p->polling_ms = 60;
 	p->timer = DEVFREQ_TIMER_DELAYED;
 	d->upthreshold = 70;
-	d->downdifferential = 5;
+	d->downdifferential = ufs_qcom_is_kalama_phy(host->generic_phy) ? 65 : 5;
 
 	hba->clk_scaling.suspend_on_no_request = true;
 }

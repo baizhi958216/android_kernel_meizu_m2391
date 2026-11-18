@@ -1549,6 +1549,13 @@ static int ufshcd_devfreq_scale(struct ufs_hba *hba, unsigned long freq,
 		}
 	}
 
+	/* Publish the idle policy only after both clock and gear changes succeed. */
+	scoped_guard(spinlock_irqsave, &hba->clk_gating.lock) {
+		if (hba->clk_gating.delay_ms_perf)
+			hba->clk_gating.delay_ms = scale_up ?
+				hba->clk_gating.delay_ms_perf : hba->clk_gating.delay_ms_pwr_save;
+	}
+
 out_unprepare:
 	ufshcd_clock_scaling_unprepare(hba, ret);
 	return ret;
@@ -2188,6 +2195,7 @@ static ssize_t ufshcd_clkgate_delay_show(struct device *dev,
 {
 	struct ufs_hba *hba = dev_get_drvdata(dev);
 
+	guard(spinlock_irqsave)(&hba->clk_gating.lock);
 	return sysfs_emit(buf, "%lu\n", hba->clk_gating.delay_ms);
 }
 
@@ -2196,6 +2204,8 @@ void ufshcd_clkgate_delay_set(struct device *dev, unsigned long value)
 	struct ufs_hba *hba = dev_get_drvdata(dev);
 
 	guard(spinlock_irqsave)(&hba->clk_gating.lock);
+	/* An explicit delay takes precedence over both devfreq defaults. */
+	hba->clk_gating.delay_ms_perf = 0;
 	hba->clk_gating.delay_ms = value;
 }
 EXPORT_SYMBOL_GPL(ufshcd_clkgate_delay_set);
@@ -2281,7 +2291,7 @@ static void ufshcd_init_clk_gating(struct ufs_hba *hba)
 	hba->clk_gating.state = CLKS_ON;
 
 	if (!hba->clk_gating.delay_ms)
-		hba->clk_gating.delay_ms = 150;
+		hba->clk_gating.delay_ms = hba->clk_gating.delay_ms_perf ?: 150;
 	INIT_DELAYED_WORK(&hba->clk_gating.gate_work, ufshcd_gate_work);
 	INIT_WORK(&hba->clk_gating.ungate_work, ufshcd_ungate_work);
 

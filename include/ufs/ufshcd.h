@@ -517,6 +517,8 @@ enum clk_gating_state {
  * @is_initialized: Indicates whether clock gating is initialized or not
  * @active_reqs: number of requests that are pending and should be waited for
  * completion before gating clocks.
+ * @delay_ms_perf: optional gate delay at maximum clock rate, zero for fixed delay
+ * @delay_ms_pwr_save: gate delay at the reduced clock rate
  */
 struct ufs_clk_gating {
 	struct delayed_work gate_work;
@@ -534,7 +536,7 @@ struct ufs_clk_gating {
 	bool is_initialized;
 	int active_reqs;
 
-	ANDROID_KABI_RESERVE(1);
+	ANDROID_KABI_USE2(1, u32 delay_ms_perf, u32 delay_ms_pwr_save);
 };
 
 /**
