@@ -175,7 +175,8 @@ M2391_ANDROID_RAMDISK_LOAD := qcom-scm.ko qcom_hwspinlock.ko smem.ko cmd-db.ko \
     gcc-kalama.ko qcom-pdc.ko pinctrl-msm.ko pinctrl-kalama.ko \
     spmi-pmic-arb.ko qcom-spmi-pmic.ko pinctrl-spmi-gpio.ko gdsc-regulator.ko \
     icc-bcm-voter.ko icc-rpmh.ko qnoc-sm8550.ko gpucc-kalama.ko \
-    arm_smmu.ko phy-qcom-ufs.ko phy-qcom-ufs-qmp-v4-kalama.ko ufs-qcom.ko \
+    arm_smmu.ko phy-qcom-eusb2-repeater.ko phy-snps-eusb2.ko aux-bridge.ko \
+    phy-qcom-qmp-combo.ko phy-qcom-ufs.ko phy-qcom-ufs-qmp-v4-kalama.ko ufs-qcom.ko \
     mz_freq_qos.ko minidump.ko mz_enhance_qcom_wdog.ko qcom_wdt_core.ko \
     gh_virt_wdt.ko camcc-kalama.ko qcom_ipc_logging.ko thermal_minidump.ko \
     qcom_tsens.ko dcvs_fp.ko qcom-dcvs.ko bwmon.ko \
@@ -197,7 +198,8 @@ M2391_ANDROID_RECOVERY_LOAD := qcom-scm.ko qcom_hwspinlock.ko smem.ko cmd-db.ko 
     gcc-kalama.ko qcom-pdc.ko pinctrl-msm.ko pinctrl-kalama.ko \
     spmi-pmic-arb.ko qcom-spmi-pmic.ko pinctrl-spmi-gpio.ko gdsc-regulator.ko \
     icc-bcm-voter.ko icc-rpmh.ko qnoc-sm8550.ko gpucc-kalama.ko \
-    arm_smmu.ko phy-qcom-ufs.ko phy-qcom-ufs-qmp-v4-kalama.ko ufs-qcom.ko \
+    arm_smmu.ko phy-qcom-eusb2-repeater.ko phy-snps-eusb2.ko aux-bridge.ko \
+    phy-qcom-qmp-combo.ko phy-qcom-ufs.ko phy-qcom-ufs-qmp-v4-kalama.ko ufs-qcom.ko \
     mz_freq_qos.ko minidump.ko mz_enhance_qcom_wdog.ko qcom_wdt_core.ko \
     gh_virt_wdt.ko camcc-kalama.ko qcom_ipc_logging.ko thermal_minidump.ko \
     qcom_tsens.ko dcvs_fp.ko qcom-dcvs.ko bwmon.ko \
@@ -224,10 +226,9 @@ M2391_ANDROID_RECOVERY_LOAD := qcom-scm.ko qcom_hwspinlock.ko smem.ko cmd-db.ko 
     rimps_log.ko panel_event_notifier.ko msm_performance.ko plh_scmi.ko \
     fsa4480.ko sps_drv.ko spss_utils.ko spcom.ko \
     qbt_handler.ko qti-ocp-notifier.ko hvc_gunyah.ko frpc-adsprpc.ko \
-    sg.ko spi-geni-qcom.ko msm_sharedmem.ko aux-bridge.ko \
-    phy-qcom-qmp-combo.ko phy-snps-eusb2.ko usb_f_cdev.ko usb_f_ccid.ko \
-    usb_f_qdss.ko ipa_fmwk.ko usb_f_gsi.ko usb_f_diag.ko \
-    ucsi_glink.ko usbmon.ko phy-qcom-eusb2-repeater.ko pm8941-pwrkey.ko \
+    sg.ko spi-geni-qcom.ko msm_sharedmem.ko usb_f_cdev.ko \
+    usb_f_ccid.ko usb_f_qdss.ko ipa_fmwk.ko usb_f_gsi.ko \
+    usb_f_diag.ko ucsi_glink.ko usbmon.ko pm8941-pwrkey.ko \
     meizu_private.ko xcharge_chg_manager.ko qti_battery_charger.ko qcom-hv-haptics.ko \
     i2c-qcom-geni.ko qcom_ipc_lite.ko synx-driver.ko reboot-mode.ko \
     qcom-pon.ko qcom-spmi-temp-alarm.ko bcl_soc.ko cpu_voltage_cooling.ko \

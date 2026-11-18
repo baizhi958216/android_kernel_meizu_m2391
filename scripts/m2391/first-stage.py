@@ -4,13 +4,14 @@
 import sys
 from pathlib import Path
 
-# Android first-stage init has to discover the UFS before it can mount dlkm.
+# Load storage and USB PHY providers before first-stage init can mount dlkm.
 # Firmware links between DT devices do not appear in an ELF dependency graph.
 PROVIDERS = """
 qcom-scm qcom_hwspinlock smem cmd-db qcom_rpmh rpmh-regulator proxy-consumer
 qcom_aoss qcom-ipcc msm_qmp tmecom-intf qcom_ice clk-rpmh tcsrcc-kalama
 gcc-kalama qcom-pdc pinctrl-kalama spmi-pmic-arb qcom-spmi-pmic
 pinctrl-spmi-gpio gdsc-regulator icc-bcm-voter qnoc-sm8550 gpucc-kalama arm_smmu
+phy-qcom-eusb2-repeater phy-snps-eusb2 phy-qcom-qmp-combo
 phy-qcom-ufs-qmp-v4-kalama ufs-qcom
 """.split()
 
