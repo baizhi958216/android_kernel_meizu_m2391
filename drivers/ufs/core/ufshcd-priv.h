@@ -8,6 +8,7 @@
 
 struct ufs_hba_priv {
 	struct ufs_hba hba;
+	struct ufs_hba_variant_params variant_params;
 	/* Published under clk_gating.lock until EH restores HCI access. */
 	int ungate_error;
 	/* Serializes AHIT register access between sysfs and the host driver */

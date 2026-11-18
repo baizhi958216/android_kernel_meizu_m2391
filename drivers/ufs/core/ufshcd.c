@@ -9644,7 +9644,7 @@ static const struct attribute_group *ufshcd_driver_groups[] = {
 	NULL,
 };
 
-static struct ufs_hba_variant_params ufs_hba_vps = {
+static const struct ufs_hba_variant_params ufs_hba_vps = {
 	.hba_enable_delay_us		= 1000,
 	.wb_flush_threshold		= UFS_WB_BUF_REMAIN_PERCENT(40),
 	.devfreq_profile.polling_ms	= 100,
@@ -11268,7 +11268,8 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 
 	hba->mmio_base = mmio_base;
 	hba->irq = irq;
-	hba->vps = &ufs_hba_vps;
+	hba->vps = &to_hba_priv(hba)->variant_params;
+	*hba->vps = ufs_hba_vps;
 
 	/*
 	 * Initialize clk_gating.lock early since it is being used in
