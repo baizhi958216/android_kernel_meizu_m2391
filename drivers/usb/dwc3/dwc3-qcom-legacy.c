@@ -804,6 +804,11 @@ static void kalama_remove_core(struct dwc3_qcom *qcom)
 	qcom->dwc3 = NULL;
 }
 
+static bool kalama_has_usb_access(struct dwc3_qcom *qcom)
+{
+	return readl(qcom->usb_access) == 0xf;
+}
+
 static int kalama_update_core(struct dwc3_qcom *qcom)
 {
 	enum usb_role role = qcom->requested_role;
@@ -817,11 +822,14 @@ static int kalama_update_core(struct dwc3_qcom *qcom)
 	mode = role == USB_ROLE_HOST ?
 				USB_DR_MODE_HOST : USB_DR_MODE_PERIPHERAL;
 
-	if (!qcom->data_enabled || readl(qcom->usb_access) != 0xf) {
+	if (!kalama_has_usb_access(qcom)) {
 		kalama_remove_core(qcom);
-		if (readl(qcom->usb_access) == 0xf)
-			dwc3_qcom_vbus_override_enable(qcom, false);
 		return qcom->data_enabled ? -EACCES : 0;
+	}
+	if (!qcom->data_enabled) {
+		kalama_remove_core(qcom);
+		dwc3_qcom_vbus_override_enable(qcom, false);
+		return 0;
 	}
 	if (qcom->dwc3 && qcom->glue.child_mode != mode)
 		kalama_remove_core(qcom);
@@ -835,6 +843,8 @@ static int kalama_update_core(struct dwc3_qcom *qcom)
 	if (ret)
 		return ret;
 
+	if (!qcom->dwc3 && device_property_read_bool(qcom->dev, "qcom,select-utmi-as-pipe-clk"))
+		dwc3_qcom_select_pipe_clk(qcom, true);
 	dwc3_qcom_vbus_override_enable(qcom, role == USB_ROLE_DEVICE);
 	if (qcom->dwc3)
 		return 0;
@@ -943,7 +953,7 @@ int dwc3_qcom_set_dp_lanes(struct device *dev, unsigned int lanes,
 	if (ret < 0)
 		goto out_unlock;
 	mutex_lock(&qcom->role_lock);
-	if (readl(qcom->usb_access) != 0xf) {
+	if (!kalama_has_usb_access(qcom)) {
 		ret = -EACCES;
 		goto out_pm;
 	}
@@ -1007,7 +1017,8 @@ static ssize_t mode_show(struct device *dev, struct device_attribute *attr, char
 	enum usb_role role;
 
 	guard(mutex)(&qcom->role_lock);
-	role = qcom->data_enabled ? qcom->requested_role : USB_ROLE_NONE;
+	role = qcom->data_enabled && kalama_has_usb_access(qcom) ?
+		qcom->requested_role : USB_ROLE_NONE;
 	return sysfs_emit(buf, "%s\n", role == USB_ROLE_DEVICE ? "peripheral" :
 				       role == USB_ROLE_HOST ? "host" : "none");
 }
@@ -1035,16 +1046,18 @@ static DEVICE_ATTR_RW(mode);
 
 static int kalama_enable_data(struct dwc3_qcom *qcom, bool enable)
 {
+	bool previous;
 	int ret;
 
 	ret = pm_runtime_resume_and_get(qcom->dev);
 	if (ret < 0)
 		return ret;
 	mutex_lock(&qcom->role_lock);
+	previous = qcom->data_enabled;
 	qcom->data_enabled = enable;
 	ret = kalama_update_core(qcom);
 	if (ret)
-		qcom->data_enabled = false;
+		qcom->data_enabled = previous;
 	mutex_unlock(&qcom->role_lock);
 	pm_runtime_put(qcom->dev);
 	return ret;
@@ -1068,7 +1081,7 @@ static ssize_t usb_data_enabled_show(struct device *dev, struct device_attribute
 	struct dwc3_qcom *qcom = dev_get_drvdata(dev);
 
 	guard(mutex)(&qcom->role_lock);
-	return sysfs_emit(buf, "%u\n", qcom->data_enabled);
+	return sysfs_emit(buf, "%u\n", qcom->data_enabled && kalama_has_usb_access(qcom));
 }
 
 static ssize_t usb_data_enabled_store(struct device *dev, struct device_attribute *attr,
@@ -1194,7 +1207,7 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 	 */
 	ignore_pipe_clk = device_property_read_bool(dev,
 				"qcom,select-utmi-as-pipe-clk");
-	if (ignore_pipe_clk && (!qcom->kalama || readl(qcom->usb_access) == 0xf))
+	if (ignore_pipe_clk && !qcom->kalama)
 		dwc3_qcom_select_pipe_clk(qcom, true);
 
 	if (qcom->kalama) {
@@ -1211,9 +1224,10 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 				goto clk_disable;
 			}
 		}
-		qcom->data_enabled = readl(qcom->usb_access) == 0xf;
+		/* A closed firmware gate at probe is independent of the user's data policy. */
+		qcom->data_enabled = true;
 		ret = kalama_update_core(qcom);
-		if (ret)
+		if (ret && (ret != -EACCES || kalama_has_usb_access(qcom)))
 			goto clk_disable;
 		/* The switch must be usable immediately when UCSI finds it. */
 		pm_runtime_set_active(dev);
