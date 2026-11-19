@@ -69,6 +69,12 @@ enum WrapState {
     Available,
 }
 
+struct MonitorEntry {
+    filemon: Arc<FileMonitor>,
+    slot: usize,
+    seq_num: i64,
+}
+
 pub(crate) struct WrapInfo {
     pub(crate) content: Option<DmaBufContent>,
     owner: WrapOwner,
@@ -76,14 +82,19 @@ pub(crate) struct WrapInfo {
     vma_file: VmaFile,
     num_pending_mmaps: usize,
     state: WrapState,
-    monitors: KVec<(Arc<FileMonitor>, usize)>,
+    monitors: KVec<MonitorEntry>,
     pub(crate) close_on_exec: bool,
 }
 
 impl Drop for WrapInfo {
     fn drop(&mut self) {
-        for (filemon, slot) in core::mem::take(&mut self.monitors) {
-            _ = filemon.free_slot(slot);
+        for MonitorEntry {
+            filemon,
+            seq_num,
+            slot,
+        } in core::mem::take(&mut self.monitors)
+        {
+            _ = filemon.free_slot(slot, seq_num);
         }
     }
 }
@@ -145,20 +156,25 @@ impl WrapInfo {
         matches!(&self.owner, WrapOwner::Device(owning_dev) if *dev == **owning_dev)
     }
 
-    fn with_mmap_rbtree_read_locked<T>(
+    /// # Safety
+    ///
+    /// `mapping` must be a valid, non-null pointer to an initialized `bindings::address_space`
+    /// that remains alive for the duration of this call. Must be called from a sleepable context.
+    unsafe fn with_mmap_rbtree_read_locked<T>(
         mapping: *mut bindings::address_space,
         f: impl FnOnce(*const bindings::rb_root) -> T,
     ) -> T {
-        // SAFETY: `mapping` points to the `struct address_space` of `vma_file`, which is kept
-        // alive by our `ARef<File>` reference.
+        // SAFETY: By the function safety contract, `mapping` points to a live, initialized
+        // `struct address_space`.
         unsafe { bindings::i_mmap_lock_read(mapping) };
 
-        // SAFETY: Reading `i_mmap.rb_root` is synchronized under the `i_mmap_lock_read` lock.
-        let rb_root_ref = unsafe { &(*mapping).i_mmap.rb_root };
+        // SAFETY: `mapping` is valid per function contract, and `i_mmap.rb_root` is protected
+        // by `i_mmap_lock_read` held above.
+        let rb_root_ptr = unsafe { &raw const (*mapping).i_mmap.rb_root };
 
-        let result = f(rb_root_ref);
+        let result = f(rb_root_ptr);
 
-        // SAFETY: `mapping` is valid and matches the lock acquired above.
+        // SAFETY: `mapping` is valid and matches the read lock acquired above.
         unsafe { bindings::i_mmap_unlock_read(mapping) };
 
         result
@@ -171,25 +187,31 @@ impl WrapInfo {
             VmaFile::External(ref file) => file.as_ptr(),
         };
 
-        // SAFETY: `vma_file` is either a valid `ARef<File>` or is a non-NULL valid raw pointer. The
-        // raw pointer is valid, as it refers to the file structure associated with the wrap object,
-        // and therefore valid throughout the wrap's lifetime. In either case, accessing it is safe.
+        // SAFETY: `vma_file_ptr` points to a live, opened `struct file`: either the wrap's own
+        // file (cleared in `Wrap::release` before destruction) or an external file kept alive
+        // via `ARef<File>` in `VmaFile::External`.
         let mapping = unsafe { (*vma_file_ptr).f_mapping };
 
-        let map_count = Self::with_mmap_rbtree_read_locked(mapping, |rb_root_ref| {
-            // SAFETY: `rb_root_ref` is a valid reference to `rb_root` wihin `struct address_space`.
-            let mut node = unsafe { bindings::rb_first(rb_root_ref) };
+        let count_nodes = |rb_root_ptr: *const bindings::rb_root| {
+            // SAFETY: `rb_root_ptr` points to a valid `rb_root` protected by the read lock
+            // held by `with_mmap_rbtree_read_locked`.
+            let mut node = unsafe { bindings::rb_first(rb_root_ptr) };
             let mut map_count = 0;
 
             while !node.is_null() {
                 map_count += 1;
-                // SAFETY: the rbtree lock is held throughout this function, so the entire tree is
-                // valid.
+                // SAFETY: `node` is non-null and belongs to the `rb_root` protected by the
+                // read lock held throughout this closure.
                 node = unsafe { bindings::rb_next(node) };
             }
 
             map_count
-        });
+        };
+
+        // SAFETY: `mapping` came from an opened `struct file`'s `f_mapping`, which is guaranteed
+        // non-null and remains valid for as long as the `struct file` stays alive (guaranteed
+        // throughout this call via `VmaFile::Internal` or `VmaFile::External`).
+        let map_count = unsafe { Self::with_mmap_rbtree_read_locked(mapping, count_nodes) };
 
         if map_count == 0 && self.num_pending_mmaps == 0 {
             self.reset_vmafile();
@@ -211,15 +233,21 @@ impl WrapInfo {
             return true;
         }
 
-        // SAFETY: `vma_file` is either a valid `ARef<File>` or is a non-NULL valid raw pointer. The
-        // raw pointer is valid, as it refers to the file structure associated with the wrap object,
-        // and therefore valid throughout the wrap's lifetime. In either case, accessing it is safe.
+        // SAFETY: `vma_file_ptr` points to a live, opened `struct file`: either the wrap's own
+        // file (cleared in `Wrap::release` before destruction) or an external file kept alive
+        // via `ARef<File>` in `VmaFile::External`.
         let mapping = unsafe { (*vma_file_ptr).f_mapping };
 
-        // SAFETY: `rb_root_ref` is a valid reference to `rb_root` within `struct address_space`.
-        let is_mapped = Self::with_mmap_rbtree_read_locked(mapping, |rb_root| !unsafe {
-            bindings::RB_EMPTY_ROOT(rb_root)
-        });
+        let check_non_empty = |rb_root_ptr: *const bindings::rb_root| {
+            // SAFETY: `rb_root_ptr` points to a valid `rb_root` protected by the read lock
+            // held by `with_mmap_rbtree_read_locked`.
+            !unsafe { bindings::RB_EMPTY_ROOT(rb_root_ptr) }
+        };
+
+        // SAFETY: `mapping` came from an opened `struct file`'s `f_mapping`, which is guaranteed
+        // non-null and remains valid for as long as the `struct file` stays alive (guaranteed
+        // throughout this call via `VmaFile::Internal` or `VmaFile::External`).
+        let is_mapped = unsafe { Self::with_mmap_rbtree_read_locked(mapping, check_non_empty) };
 
         if !is_mapped {
             self.reset_vmafile();
@@ -258,41 +286,68 @@ impl WrapInfo {
         Ok(())
     }
 
-    pub(crate) fn get_slot(&self, filemon: &FileMonitor) -> Option<usize> {
-        self.monitors.iter().find_map(|(existing_filemon, slot)| {
-            (existing_filemon.as_ref() == filemon).then_some(*slot)
-        })
+    pub(crate) fn get_slot(&self, filemon: &FileMonitor) -> Option<(usize, i64)> {
+        self.monitors.iter().find_map(
+            |MonitorEntry {
+                 filemon: existing_filemon,
+                 slot,
+                 seq_num,
+             }| { (existing_filemon.as_ref() == filemon).then_some((*slot, *seq_num)) },
+        )
     }
 
-    pub(crate) fn attach_monitor(&mut self, filemon: Arc<FileMonitor>, slot: usize) -> Result<()> {
-        if let Some(_entry) = self
-            .monitors
-            .iter()
-            .find(|(existing_filemon, _)| existing_filemon.as_ref() == filemon.as_ref())
-        {
+    pub(crate) fn attach_monitor(
+        &mut self,
+        filemon: Arc<FileMonitor>,
+        slot: usize,
+        seq_num: i64,
+    ) -> Result<()> {
+        if let Some(_entry) = self.monitors.iter().find(
+            |MonitorEntry {
+                 filemon: existing_filemon,
+                 ..
+             }| existing_filemon.as_ref() == filemon.as_ref(),
+        ) {
             return Err(EEXIST);
         }
 
-        self.monitors.push((filemon, slot), GFP_KERNEL)?;
+        self.monitors.push(
+            MonitorEntry {
+                filemon,
+                slot,
+                seq_num,
+            },
+            GFP_KERNEL,
+        )?;
 
         Ok(())
     }
 
     pub(crate) fn detach_monitor(&mut self, filemon: &FileMonitor) -> Result<()> {
-        let index = self
+        let Some(index) = self
             .monitors
             .iter()
-            .position(|(existing_filemon, _)| existing_filemon.as_ref() == filemon)
-            .ok_or(EINVAL)?;
+            .position(|entry| entry.filemon.as_ref() == filemon)
+        else {
+            return Err(EINVAL);
+        };
 
         _ = self.monitors.remove(index);
+
         Ok(())
     }
 
-    fn generate_event(&self, event: u32) {
-        for (filemon, slot) in &self.monitors {
-            _ = filemon.generate_wrap_event(*slot, event);
-        }
+    fn generate_event(&mut self, event: u32) {
+        // If `generate_wrap_event` returns an error, it is because the slot no longer belongs to
+        // this wrap, i.e. it has either been cleared or has already been reused as indicated by a
+        // mismatched `seq_num`. In that case we no longer need to keep track of it in our list of
+        // monitor entries.
+        self.monitors.retain(|entry| {
+            entry
+                .filemon
+                .generate_wrap_event(entry.slot, entry.seq_num, event)
+                .is_ok()
+        });
     }
 }
 
@@ -419,7 +474,7 @@ impl Wrap {
         let buf_offset: Offset = load_args.buf_offs.try_into()?;
         let len: Offset = load_args.len.try_into()?;
 
-        if file_offset < 0 || buf_offset < 0 || len < 0 {
+        if file_offset < 0 || buf_offset < 0 || len <= 0 {
             return Err(EINVAL);
         }
 
@@ -556,7 +611,7 @@ impl Wrap {
         Ok(0)
     }
 
-    pub(crate) fn repopulate(&self, wrap_file: &File, fd: u32) -> Result<bool> {
+    pub(crate) fn repopulate(&self, wrap_file: &LocalFile, fd: u32) -> Result<bool> {
         let f_mode = wrap_file.mode();
 
         let mut prot = 0;
@@ -616,7 +671,7 @@ impl Wrap {
 impl AnonInodeFileInterface for Wrap {
     type Ptr = Pin<KBox<Self>>;
 
-    fn release(wrap: Self::Ptr, _file: &File) {
+    fn release(wrap: Self::Ptr) {
         // The driver instance and the associated file are about to go away, let's make sure
         // we don't leave a dangling raw pointer to the file inside the VmaFile enum.
         wrap.inner.lock().vma_file = VmaFile::None;
@@ -986,13 +1041,14 @@ unsafe extern "C" fn wrapfd_get_mappable(
         // We acquire an additional reference on `dmabuf` here that will be released in a matching
         // call to `wrapfd_put_mappable`.
         content.dmabuf.inc_ref();
-        guard.generate_event(uapi::WRAPFD_EVENT_MAP);
 
         // SAFETY: `mappable` is a valid, writable pointer to `struct wrapfd_mappable` per caller
         // contract.
         unsafe {
             (*mappable).dmabuf = content.dmabuf.as_ptr();
         }
+
+        guard.generate_event(uapi::WRAPFD_EVENT_MAP);
 
         guard.owner = WrapOwner::Device(device);
 
