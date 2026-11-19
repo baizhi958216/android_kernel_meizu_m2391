@@ -1977,14 +1977,7 @@ static void ufshcd_ungate_work(struct work_struct *work)
 	}
 	if (ret) {
 		dev_err_ratelimited(hba->dev, "failed to restore clocks: %d\n", ret);
-		guard(spinlock_irqsave)(&hba->clk_gating.lock);
-		WRITE_ONCE(to_hba_priv(hba)->ungate_error, ret);
-		hba->clk_gating.state = core_clks_on ? CLKS_ON : CLKS_OFF;
-		scoped_guard(spinlock, hba->host->host_lock) {
-			ufshcd_set_link_broken(hba);
-			ufshcd_schedule_eh_work(hba);
-		}
-		return;
+		goto failed;
 	}
 
 	ufshcd_enable_irq(hba);
@@ -1995,13 +1988,29 @@ static void ufshcd_ungate_work(struct work_struct *work)
 		hba->clk_gating.is_suspended = true;
 		if (ufshcd_is_link_hibern8(hba)) {
 			ret = ufshcd_uic_hibern8_exit(hba);
-			if (ret)
+			if (ret) {
 				dev_err(hba->dev, "%s: hibern8 exit failed %d\n",
 					__func__, ret);
-			else
-				ufshcd_set_link_active(hba);
+				hba->clk_gating.is_suspended = false;
+				/* Clocks and IRQ are live; the link needs reset. */
+				core_clks_on = true;
+				goto failed;
+			}
+			ufshcd_set_link_active(hba);
 		}
 		hba->clk_gating.is_suspended = false;
+	}
+	return;
+
+failed:
+	scoped_guard(spinlock_irqsave, &hba->clk_gating.lock) {
+		/* A UIC failure may be a positive UPMCRS status. */
+		WRITE_ONCE(to_hba_priv(hba)->ungate_error, ret < 0 ? ret : -EIO);
+		hba->clk_gating.state = core_clks_on ? CLKS_ON : CLKS_OFF;
+		scoped_guard(spinlock, hba->host->host_lock) {
+			ufshcd_set_link_broken(hba);
+			ufshcd_schedule_eh_work(hba);
+		}
 	}
 }
 
@@ -4650,7 +4659,10 @@ out:
 	spin_lock_irqsave(hba->host->host_lock, flags);
 	hba->active_uic_cmd = NULL;
 	hba->uic_async_done = NULL;
-	if (ret && !hba->pm_op_in_progress) {
+	/* The ungate worker publishes its failure before scheduling EH. */
+	if (ret && !hba->pm_op_in_progress &&
+	    !(cmd->command == UIC_CMD_DME_HIBER_EXIT &&
+	      current_work() == &hba->clk_gating.ungate_work)) {
 		ufshcd_set_link_broken(hba);
 		ufshcd_schedule_eh_work(hba);
 	}
@@ -6935,13 +6947,16 @@ static int ufshcd_recover_ungate(struct ufs_hba *hba)
 		goto failed;
 	}
 
-	/* A broken link no longer satisfies the Hibern8 power-vote predicate. */
-	ret = ufshcd_setup_hba_vreg(hba, true);
-	if (ret)
-		goto failed;
-	ret = __ufshcd_setup_clocks(hba, true, &core_clks_on);
-	if (ret && !core_clks_on)
-		goto failed;
+	/* A failed Hibern8 EXIT already restored the bus clocks and IRQ. */
+	if (hba->clk_gating.state != CLKS_ON || !hba->is_irq_enabled) {
+		/* A broken link no longer satisfies the Hibern8 power-vote predicate. */
+		ret = ufshcd_setup_hba_vreg(hba, true);
+		if (ret)
+			goto failed;
+		ret = __ufshcd_setup_clocks(hba, true, &core_clks_on);
+		if (ret && !core_clks_on)
+			goto failed;
+	}
 
 	/*
 	 * The bus clocks are live. A remaining POST_CHANGE link-clock error
