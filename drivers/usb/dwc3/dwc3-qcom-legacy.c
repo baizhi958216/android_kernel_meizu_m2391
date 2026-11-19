@@ -914,7 +914,7 @@ static int kalama_set_lane_route(struct dwc3_qcom *qcom, unsigned int lanes,
 	return typec_mux_set(qcom->lane_mux, &mux);
 }
 
-static struct platform_driver dwc3_qcom_driver;
+static struct platform_driver kalama_driver;
 
 int dwc3_qcom_set_dp_lanes(struct device *dev, unsigned int lanes,
 			   enum typec_orientation orientation)
@@ -926,7 +926,7 @@ int dwc3_qcom_set_dp_lanes(struct device *dev, unsigned int lanes,
 	if (lanes && ((lanes != 2 && lanes != 4) || orientation == TYPEC_ORIENTATION_NONE))
 		return -EINVAL;
 	device_lock(dev);
-	if (dev->driver != &dwc3_qcom_driver.driver || !device_is_bound(dev)) {
+	if (dev->driver != &kalama_driver.driver || !device_is_bound(dev)) {
 		ret = -EAGAIN;
 		goto out_unlock;
 	}
