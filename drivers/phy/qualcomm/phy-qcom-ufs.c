@@ -201,7 +201,7 @@ int ufs_qcom_phy_get_reset(struct ufs_qcom_phy *phy_common)
 	if (phy_common->ufs_reset)
 		return 0;
 
-	reset = devm_reset_control_get_optional_exclusive(phy_common->dev, NULL);
+	reset = reset_control_get_optional_exclusive(phy_common->dev, NULL);
 	if (IS_ERR(reset))
 		return PTR_ERR(reset);
 
@@ -717,21 +717,12 @@ int ufs_qcom_phy_power_on(struct phy *generic_phy)
 	struct device *dev = phy_common->dev;
 	int err;
 
-	if (phy_common->vdd_phy_gdsc.reg) {
-		err = ufs_qcom_phy_enable_vreg(dev, &phy_common->vdd_phy_gdsc);
-		if (err) {
-			dev_err(dev, "%s enable phy_gdsc failed, err=%d\n",
-				__func__, err);
-			goto out;
-		}
-	}
-
 	if (phy_common->vdda_qref.reg) {
 		err = ufs_qcom_phy_enable_vreg(dev, &phy_common->vdda_qref);
 		if (err) {
 			dev_err(dev, "%s enable vdda_qref failed, err=%d\n",
 				__func__, err);
-			goto out_disable_gdsc;
+			goto out;
 		}
 	}
 
@@ -790,8 +781,6 @@ out_disable_phy:
 	ufs_qcom_phy_disable_vreg(dev, &phy_common->vdda_phy);
 out_disable_qref:
 	ufs_qcom_phy_disable_vreg(dev, &phy_common->vdda_qref);
-out_disable_gdsc:
-	ufs_qcom_phy_disable_vreg(dev, &phy_common->vdd_phy_gdsc);
 out:
 	return err;
 }
@@ -801,7 +790,7 @@ int ufs_qcom_phy_power_off(struct phy *generic_phy)
 {
 	struct ufs_qcom_phy *phy = get_ufs_qcom_phy(generic_phy);
 	struct ufs_qcom_phy_vreg *supplies[] = {
-		&phy->vdda_pll, &phy->vdda_phy, &phy->vdda_qref, &phy->vdd_phy_gdsc,
+		&phy->vdda_pll, &phy->vdda_phy, &phy->vdda_qref,
 	};
 	int i, ret, restore;
 

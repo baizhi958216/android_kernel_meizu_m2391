@@ -80,15 +80,39 @@ out:
 
 static int ufs_qcom_phy_qmp_v4_init(struct phy *generic_phy)
 {
-	struct ufs_qcom_phy_qmp_v4 *phy = phy_get_drvdata(generic_phy);
-	struct ufs_qcom_phy *phy_common = &phy->common_cfg;
+	struct ufs_qcom_phy *phy = get_ufs_qcom_phy(generic_phy);
+	int ret;
 
-	/* The host registers this reset controller after discovering the PHY. */
-	return ufs_qcom_phy_get_reset(phy_common);
+	/* The reset controller belongs to the host currently binding this PHY. */
+	ret = ufs_qcom_phy_get_reset(phy);
+	if (ret)
+		return ret;
+
+	/* Keep the calibrated PHY memory powered across analog Hibern8 cycles. */
+	if (phy->vdd_phy_gdsc.reg) {
+		ret = regulator_enable(phy->vdd_phy_gdsc.reg);
+		if (ret) {
+			reset_control_put(phy->ufs_reset);
+			phy->ufs_reset = NULL;
+		}
+	}
+
+	return ret;
 }
 
 static int ufs_qcom_phy_qmp_v4_exit(struct phy *generic_phy)
 {
+	struct ufs_qcom_phy *phy = get_ufs_qcom_phy(generic_phy);
+	int ret;
+
+	if (phy->vdd_phy_gdsc.reg) {
+		ret = regulator_disable(phy->vdd_phy_gdsc.reg);
+		if (ret)
+			return ret;
+	}
+
+	reset_control_put(phy->ufs_reset);
+	phy->ufs_reset = NULL;
 	return 0;
 }
 
