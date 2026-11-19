@@ -550,7 +550,7 @@ static void sysmon_stop(struct rproc_subdev *subdev, bool crashed)
 	if (crashed)
 		return;
 
-	if (sysmon->ssctl_instance) {
+	if (sysmon->ssctl_instance > 0) {
 		if (!wait_for_completion_timeout(&sysmon->ssctl_comp, HZ / 2))
 			dev_err(sysmon->dev, "timeout waiting for ssctl service\n");
 	}
@@ -617,7 +617,7 @@ static irqreturn_t sysmon_shutdown_interrupt(int irq, void *data)
  * qcom_add_sysmon_subdev() - create a sysmon subdev for the given remoteproc
  * @rproc:	rproc context to associate the subdev with
  * @name:	name of this subdev, to use in SSR
- * @ssctl_instance: instance id of the ssctl QMI service
+ * @ssctl_instance: SSCTL QMI instance ID, or a negative value for no service
  *
  * Return: A new qcom_sysmon object, or an error pointer on failure
  */
@@ -644,6 +644,10 @@ struct qcom_sysmon *qcom_add_sysmon_subdev(struct rproc *rproc,
 	init_completion(&sysmon->ssctl_comp);
 	mutex_init(&sysmon->lock);
 	mutex_init(&sysmon->state_lock);
+
+	/* SPSS participates in SSR notifications without an SSCTL service. */
+	if (ssctl_instance < 0)
+		goto add_subdev;
 
 	sysmon->shutdown_irq = of_irq_get_byname(sysmon->dev->of_node,
 						 "shutdown-ack");
@@ -679,6 +683,7 @@ struct qcom_sysmon *qcom_add_sysmon_subdev(struct rproc *rproc,
 
 	qmi_add_lookup(&sysmon->qmi, 43, 0, 0);
 
+add_subdev:
 	sysmon->subdev.prepare = sysmon_prepare;
 	sysmon->subdev.start = sysmon_start;
 	sysmon->subdev.stop = sysmon_stop;
@@ -714,7 +719,8 @@ void qcom_remove_sysmon_subdev(struct qcom_sysmon *sysmon)
 
 	rproc_remove_subdev(sysmon->rproc, &sysmon->subdev);
 
-	qmi_handle_release(&sysmon->qmi);
+	if (sysmon->ssctl_instance >= 0)
+		qmi_handle_release(&sysmon->qmi);
 
 	kfree(sysmon);
 }
