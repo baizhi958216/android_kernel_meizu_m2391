@@ -714,6 +714,7 @@ static int ufs_qcom_power_up_sequence(struct ufs_hba *hba)
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
 	struct ufs_host_params *host_params = &host->host_params;
 	struct phy *phy = host->generic_phy;
+	bool kalama = ufs_qcom_is_kalama_phy(phy);
 	enum phy_mode mode;
 	int ret;
 
@@ -738,12 +739,13 @@ static int ufs_qcom_power_up_sequence(struct ufs_hba *hba)
 			return ret;
 	}
 
-	/* phy initialization - calibrate the phy */
-	ret = phy_init(phy);
-	if (ret) {
-		dev_err(hba->dev, "%s: phy init failed, ret = %d\n",
-			__func__, ret);
-		return ret;
+	if (!kalama) {
+		ret = phy_init(phy);
+		if (ret) {
+			dev_err(hba->dev, "%s: phy init failed, ret = %d\n",
+				__func__, ret);
+			return ret;
+		}
 	}
 
 	ret = phy_set_mode_ext(phy, mode, host->phy_gear);
@@ -761,15 +763,13 @@ static int ufs_qcom_power_up_sequence(struct ufs_hba *hba)
 	ret = phy_calibrate(phy);
 	if (ret) {
 		dev_err(hba->dev, "Failed to calibrate PHY: %d\n", ret);
-		goto out_disable_phy;
+		goto out_power_off;
 	}
 
-	if (ufs_qcom_is_kalama_phy(phy) && host->h8_mux_error) {
+	if (kalama && host->h8_mux_error) {
 		ret = ufs_qcom_phy_set_src_clk_h8_exit(phy);
-		if (ret) {
-			phy_power_off(phy);
-			goto out_disable_phy;
-		}
+		if (ret)
+			goto out_power_off;
 		host->h8_mux_error = 0;
 	}
 
@@ -777,8 +777,12 @@ static int ufs_qcom_power_up_sequence(struct ufs_hba *hba)
 
 	return 0;
 
+out_power_off:
+	if (kalama)
+		phy_power_off(phy);
 out_disable_phy:
-	phy_exit(phy);
+	if (!kalama)
+		phy_exit(phy);
 
 	return ret;
 }
@@ -1945,10 +1949,12 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 					return 0;
 
 				ufs_qcom_set_core_clk(host->unipro_clki, false);
-				err = phy_power_off(phy);
-				if (err) {
-					ufs_qcom_set_core_clk(host->unipro_clki, true);
-					return err;
+				if (phy->power_count) {
+					err = phy_power_off(phy);
+					if (err) {
+						ufs_qcom_set_core_clk(host->unipro_clki, true);
+						return err;
+					}
 				}
 				ufs_qcom_dev_ref_clk_ctrl(host, false);
 				return ufs_qcom_set_core_clk(host->ref_clki, false);
@@ -2060,6 +2066,16 @@ static int ufs_qcom_icc_init(struct ufs_qcom_host *host)
 	return 0;
 }
 
+static void ufs_qcom_release_kalama_phy(void *data)
+{
+	struct phy *phy = data;
+
+	if (phy->power_count && phy_power_off(phy))
+		return;
+	if (phy->init_count)
+		phy_exit(phy);
+}
+
 /**
  * ufs_qcom_init - bind phy with controller
  * @hba: host controller instance
@@ -2169,7 +2185,15 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 	if (err)
 		goto out_variant_clear;
 
-	err = ufs_qcom_setup_clocks(hba, true, POST_CHANGE);
+	/* Keep one Kalama PHY init reference across HCE and clock gating. */
+	if (ufs_qcom_is_kalama_phy(host->generic_phy)) {
+		err = phy_init(host->generic_phy);
+		if (!err)
+			err = devm_add_action_or_reset(dev, ufs_qcom_release_kalama_phy,
+						       host->generic_phy);
+	} else {
+		err = ufs_qcom_setup_clocks(hba, true, POST_CHANGE);
+	}
 	if (err)
 		goto out_variant_clear;
 
@@ -2194,10 +2218,16 @@ out_variant_clear:
 static void ufs_qcom_exit(struct ufs_hba *hba)
 {
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	struct phy *phy = host->generic_phy;
 
 	ufs_qcom_disable_lane_clks(host);
-	phy_power_off(host->generic_phy);
-	phy_exit(host->generic_phy);
+	if (ufs_qcom_is_kalama_phy(phy)) {
+		/* Devres retries if a provider rejects the final power-off. */
+		ufs_qcom_release_kalama_phy(phy);
+	} else {
+		phy_power_off(phy);
+		phy_exit(phy);
+	}
 }
 
 /**
