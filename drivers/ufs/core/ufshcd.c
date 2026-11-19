@@ -2005,7 +2005,13 @@ static void ufshcd_ungate_work(struct work_struct *work)
 	}
 }
 
-static int __ufshcd_hold(struct ufs_hba *hba, bool drop_failed_vote)
+enum ufs_hold_mode {
+	UFS_HOLD_LEGACY,
+	UFS_HOLD_CHECKED,
+	UFS_HOLD_DISPATCH,
+};
+
+static int __ufshcd_hold(struct ufs_hba *hba, enum ufs_hold_mode mode)
 {
 	bool flush_result;
 	unsigned long flags;
@@ -2020,7 +2026,7 @@ start:
 	if (to_hba_priv(hba)->ungate_error) {
 		int ret = to_hba_priv(hba)->ungate_error;
 
-		if (drop_failed_vote)
+		if (mode != UFS_HOLD_LEGACY)
 			hba->clk_gating.active_reqs--;
 		spin_unlock_irqrestore(&hba->clk_gating.lock, flags);
 		return ret;
@@ -2037,6 +2043,8 @@ start:
 		 */
 		if (ufshcd_can_hibern8_during_gating(hba) &&
 		    ufshcd_is_link_hibern8(hba)) {
+			if (mode == UFS_HOLD_DISPATCH)
+				goto requeue;
 			spin_unlock_irqrestore(&hba->clk_gating.lock, flags);
 			flush_result = flush_work(&hba->clk_gating.ungate_work);
 			if (hba->clk_gating.is_suspended && !flush_result)
@@ -2070,6 +2078,8 @@ start:
 		 */
 		fallthrough;
 	case REQ_CLKS_ON:
+		if (mode == UFS_HOLD_DISPATCH)
+			goto requeue;
 		spin_unlock_irqrestore(&hba->clk_gating.lock, flags);
 		flush_work(&hba->clk_gating.ungate_work);
 		/* Make sure state is CLKS_ON before returning */
@@ -2082,18 +2092,24 @@ start:
 	}
 	spin_unlock_irqrestore(&hba->clk_gating.lock, flags);
 	return 0;
+
+requeue:
+	/* Leave the blk-mq dispatch section so quiesce can make progress. */
+	hba->clk_gating.active_reqs--;
+	spin_unlock_irqrestore(&hba->clk_gating.lock, flags);
+	return -EAGAIN;
 }
 
 int ufshcd_hold_checked(struct ufs_hba *hba)
 {
-	return __ufshcd_hold(hba, true);
+	return __ufshcd_hold(hba, UFS_HOLD_CHECKED);
 }
 EXPORT_SYMBOL_GPL(ufshcd_hold_checked);
 
 void ufshcd_hold(struct ufs_hba *hba)
 {
 	/* Legacy callers pair this reference with ufshcd_release(). */
-	__ufshcd_hold(hba, false);
+	__ufshcd_hold(hba, UFS_HOLD_LEGACY);
 }
 EXPORT_SYMBOL_GPL(ufshcd_hold);
 
@@ -3187,7 +3203,7 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 
 	hba->req_abort_count = 0;
 
-	if (ufshcd_hold_checked(hba)) {
+	if (__ufshcd_hold(hba, UFS_HOLD_DISPATCH)) {
 		if (READ_ONCE(hba->ufshcd_state) == UFSHCD_STATE_ERROR) {
 			set_host_byte(cmd, DID_ERROR);
 			scsi_done(cmd);
