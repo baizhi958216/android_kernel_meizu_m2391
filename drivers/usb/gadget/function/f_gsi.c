@@ -45,22 +45,6 @@ static inline bool usb_gsi_remote_wakeup_allowed(struct usb_function *f)
 	return remote_wakeup_allowed;
 }
 
-static void ipa_ready_callback(void *user_data)
-{
-	struct f_gsi *gsi = user_data;
-
-	log_event_info("%s: ipa is ready\n", __func__);
-
-	/*
-	 * If ipa_ready_timeout is set then don't mark ipa_ready as true since this
-	 * callback can come even after timeout.
-	 */
-	if (!gsi->ipa_ready_timeout) {
-		gsi->d_port.ipa_ready = true;
-		wake_up_interruptible(&gsi->d_port.wait_for_ipa_ready);
-	}
-}
-
 static void post_event(struct gsi_data_port *port, u8 event)
 {
 	unsigned long flags;
@@ -644,21 +628,10 @@ static int ipa_connect_channels(struct gsi_data_port *d_port)
 	memset(&ipa_out_channel_out_params, 0x0,
 				sizeof(ipa_out_channel_out_params));
 
-	gsi->ipa_ready_timeout = false;
-	gsi->d_port.ipa_ready = false;
-	ret = ipa_register_ipa_ready_cb(ipa_ready_callback, gsi);
-	if (!ret) {
-		log_event_info("%s: ipa is not ready", __func__);
-		ret = wait_event_interruptible_timeout(
-			gsi->d_port.wait_for_ipa_ready, gsi->d_port.ipa_ready,
-			msecs_to_jiffies(GSI_IPA_READY_TIMEOUT));
-		if (ret <= 0) {
-			log_event_err("%s: ipa ready timeout", __func__);
-			gsi->ipa_ready_timeout = !ret;
-			ret = ret ?: -ETIMEDOUT;
-			goto end_xfer_ep_out;
-		}
-		gsi->d_port.ipa_ready = false;
+	ret = ipa_usb_wait_for_ready(msecs_to_jiffies(GSI_IPA_READY_TIMEOUT));
+	if (ret) {
+		log_event_err("%s: wait for IPA failed: %d", __func__, ret);
+		goto end_xfer_ep_out;
 	}
 
 	log_event_dbg("%s: Calling xdci_connect", __func__);
@@ -2872,6 +2845,11 @@ static int gsi_bind(struct usb_configuration *c, struct usb_function *f)
 	__u8  subclass;
 	__u8  proto;
 
+	status = ipa_usb_wait_for_ready(msecs_to_jiffies(GSI_IPA_READY_TIMEOUT));
+	if (status) {
+		log_event_err("%s: wait for IPA failed: %d", __func__, status);
+		return status;
+	}
 
 	if (gsi->prot_id == IPA_USB_RMNET ||
 		gsi->prot_id == IPA_USB_DIAG)
@@ -3168,23 +3146,6 @@ static int gsi_bind(struct usb_configuration *c, struct usb_function *f)
 	if (status)
 		goto dereg_rndis;
 
-	gsi->ipa_ready_timeout = false;
-	gsi->d_port.ipa_ready = false;
-	status = ipa_register_ipa_ready_cb(ipa_ready_callback, gsi);
-	if (!status) {
-		log_event_info("%s: ipa is not ready", __func__);
-		status = wait_event_interruptible_timeout(
-			gsi->d_port.wait_for_ipa_ready, gsi->d_port.ipa_ready,
-			msecs_to_jiffies(GSI_IPA_READY_TIMEOUT));
-		if (!status) {
-			log_event_err("%s: ipa ready timeout", __func__);
-			gsi->ipa_ready_timeout = true;
-			status = -ETIMEDOUT;
-			goto dereg_rndis;
-		}
-		gsi->d_port.ipa_ready = false;
-	}
-
 	gsi->d_port.ipa_usb_notify_cb = ipa_usb_notify_cb;
 	status = ipa_usb_init_teth_prot(gsi->prot_id,
 		&gsi->d_port.ipa_init_params, gsi->d_port.ipa_usb_notify_cb,
@@ -3331,8 +3292,6 @@ static struct f_gsi *gsi_function_init(enum ipa_usb_teth_prot prot_id)
 	}
 
 	spin_lock_init(&gsi->d_port.lock);
-
-	init_waitqueue_head(&gsi->d_port.wait_for_ipa_ready);
 
 	INIT_DELAYED_WORK(&gsi->d_port.usb_ipa_w, ipa_work_handler);
 

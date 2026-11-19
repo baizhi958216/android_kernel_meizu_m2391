@@ -10,6 +10,7 @@
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/list.h>
+#include <linux/wait.h>
 
 #define IPA_FMWK_DISPATCH_RETURN(api, p...) \
 	do { \
@@ -504,6 +505,7 @@ struct ipa_fmwk_contex {
 };
 
 static struct ipa_fmwk_contex *ipa_fmwk_ctx;
+static DECLARE_WAIT_QUEUE_HEAD(ipa_usb_ready_waitq);
 
 /* Never call a client while holding the registration mutex. Clients may
  * immediately register secondary services from their ready notification.
@@ -627,6 +629,7 @@ int ipa_fmwk_register_ipa(const struct ipa_core_data *in)
 	smp_store_release(&ipa_fmwk_ctx->ipa_ready, true);
 	list_splice_init(&ipa_fmwk_ctx->ipa_ready_cb_list, &pending);
 	mutex_unlock(&ipa_fmwk_ctx->lock);
+	wake_up_interruptible(&ipa_usb_ready_waitq);
 	ipa_trigger_ipa_ready_cbs(&pending);
 	ipa_late_register_ready_cb();
 
@@ -674,6 +677,7 @@ int ipa_fmwk_deepsleep_exit_ipa(void)
 	smp_store_release(&ipa_fmwk_ctx->ipa_ready, true);
 	list_splice_init(&ipa_fmwk_ctx->ipa_ready_cb_list, &pending);
 	mutex_unlock(&ipa_fmwk_ctx->lock);
+	wake_up_interruptible(&ipa_usb_ready_waitq);
 	ipa_trigger_ipa_ready_cbs(&pending);
 	ipa_late_register_ready_cb();
 	pr_info("IPA driver is now in ready state\n");
@@ -1210,6 +1214,7 @@ int ipa_fmwk_register_ipa_usb(const struct ipa_usb_data *in)
 		return -EPERM;
 	}
 
+	mutex_lock(&ipa_fmwk_ctx->lock);
 	if (ipa_fmwk_ctx->ipa_usb_init_teth_prot ||
 		ipa_fmwk_ctx->ipa_usb_xdci_connect ||
 		ipa_fmwk_ctx->ipa_usb_xdci_disconnect ||
@@ -1218,9 +1223,9 @@ int ipa_fmwk_register_ipa_usb(const struct ipa_usb_data *in)
 		ipa_fmwk_ctx->ipa_usb_xdci_resume ||
 		ipa_fmwk_ctx->ipa_usb_is_teth_prot_connected) {
 		pr_err("ipa_usb APIs were already initialized\n");
+		mutex_unlock(&ipa_fmwk_ctx->lock);
 		return -EPERM;
 	}
-	ipa_fmwk_ctx->ipa_usb_init_teth_prot = in->ipa_usb_init_teth_prot;
 	ipa_fmwk_ctx->ipa_usb_xdci_connect = in->ipa_usb_xdci_connect;
 	ipa_fmwk_ctx->ipa_usb_xdci_disconnect = in->ipa_usb_xdci_disconnect;
 	ipa_fmwk_ctx->ipa_usb_deinit_teth_prot = in->ipa_usb_deinit_teth_prot;
@@ -1229,11 +1234,40 @@ int ipa_fmwk_register_ipa_usb(const struct ipa_usb_data *in)
 	ipa_fmwk_ctx->ipa_usb_is_teth_prot_connected =
 		in->ipa_usb_is_teth_prot_connected;
 
+	/* Publish the complete USB operations table to waiting gadget functions. */
+	smp_store_release(&ipa_fmwk_ctx->ipa_usb_init_teth_prot,
+			  in->ipa_usb_init_teth_prot);
+	mutex_unlock(&ipa_fmwk_ctx->lock);
+	wake_up_interruptible(&ipa_usb_ready_waitq);
+
 	pr_info("ipa_usb registered successfully\n");
 
 	return 0;
 }
 EXPORT_SYMBOL(ipa_fmwk_register_ipa_usb);
+
+static bool ipa_usb_ready(void)
+{
+	return ipa_is_ready() &&
+		smp_load_acquire(&ipa_fmwk_ctx->ipa_usb_init_teth_prot) &&
+		READ_ONCE(ipa_fmwk_ctx->ipa_usb_xdci_connect);
+}
+
+/*
+ * RMNET and DPL need both the IPA core and USB transport. Wait on their
+ * provider so a cancelled gadget bind never leaves a client callback behind.
+ */
+int ipa_usb_wait_for_ready(unsigned long timeout)
+{
+	long ret;
+
+	ret = wait_event_interruptible_timeout(ipa_usb_ready_waitq,
+			ipa_usb_ready(), timeout);
+	if (ret < 0)
+		return ret;
+	return ret ? 0 : -ETIMEDOUT;
+}
+EXPORT_SYMBOL_GPL(ipa_usb_wait_for_ready);
 
 /* ipa_usb API wrappers*/
 int ipa_usb_init_teth_prot(enum ipa_usb_teth_prot teth_prot,

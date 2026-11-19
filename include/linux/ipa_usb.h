@@ -178,6 +178,8 @@ struct ipa_req_chan_out_params {
 
 #if IS_ENABLED(CONFIG_IPA3)
 
+int ipa_usb_wait_for_ready(unsigned long timeout);
+
 /**
  * ipa_usb_init_teth_prot - Peripheral should call this function to initialize
  * RNDIS/ECM/teth_bridge/DPL, prior to calling ipa_usb_xdci_connect()
@@ -301,6 +303,11 @@ int ipa_usb_xdci_resume(u32 ul_clnt_hdl, u32 dl_clnt_hdl,
 bool ipa_usb_is_teth_prot_connected(enum ipa_usb_teth_prot usb_teth_prot);
 
 #else /* IS_ENABLED(CONFIG_IPA3) */
+
+static inline int ipa_usb_wait_for_ready(unsigned long timeout)
+{
+	return -ENODEV;
+}
 
 static inline int ipa_usb_init_teth_prot(enum ipa_usb_teth_prot teth_prot,
 			   struct ipa_usb_teth_params *teth_params,

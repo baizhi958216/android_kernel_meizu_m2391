@@ -243,7 +243,6 @@ struct gsi_data_port {
 	u32 in_aggr_size;
 	u32 out_aggr_size;
 
-	bool ipa_ready;
 	bool net_ready_trigger;
 	struct gsi_ntb_info ntb_info;
 
@@ -253,7 +252,6 @@ struct gsi_data_port {
 	struct workqueue_struct *ipa_usb_wq;
 	enum connection_state sm_state;
 	struct event_queue evt_q;
-	wait_queue_head_t wait_for_ipa_ready;
 
 	/* Track these for debugfs */
 	struct ipa_usb_xdci_chan_params ipa_in_channel_params;
@@ -291,7 +289,6 @@ struct f_gsi {
 	u8 debugfs_rw_timer_enable;
 	u16 gsi_rw_timer_interval;
 	bool host_supports_flow_control;
-	bool ipa_ready_timeout;
 };
 
 static inline struct f_gsi *func_to_gsi(struct usb_function *f)
