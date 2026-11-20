@@ -450,6 +450,7 @@ static void kalama_wdt_destroy_worker(void *data)
 
 int kalama_wdt_register(struct platform_device *pdev, const struct kalama_wdt_ops *ops)
 {
+	const struct sched_param worker_param = { .sched_priority = MAX_RT_PRIO - 1 };
 	struct device *dev = &pdev->dev;
 	struct kalama_wdt *wdt;
 	int ret;
@@ -480,7 +481,10 @@ int kalama_wdt_register(struct platform_device *pdev, const struct kalama_wdt_op
 	wdt->worker = kthread_run_worker(0, "gh-watchdog");
 	if (IS_ERR(wdt->worker))
 		return PTR_ERR(wdt->worker);
-	sched_set_fifo(wdt->worker->task);
+	/* Keep the heartbeat ahead of other RT workers as on the shipping kernel. */
+	ret = sched_setscheduler_nocheck(wdt->worker->task, SCHED_FIFO, &worker_param);
+	if (ret)
+		dev_warn(dev, "failed to set watchdog worker priority: %d\n", ret);
 	kthread_init_delayed_work(&wdt->pet, kalama_wdt_pet);
 	ret = devm_add_action_or_reset(dev, kalama_wdt_destroy_worker, wdt->worker);
 	if (ret)
