@@ -2216,7 +2216,13 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 		dev_warn(dev, "%s: failed to configure the testbus %d\n",
 				__func__, err);
 
-	if (drvdata && drvdata->no_phy_retention)
+	/*
+	 * The downstream Kalama PHY has its own Hibern8 clock and rail
+	 * sequence and requires the sleep/Hibern8 system-suspend policy.
+	 * The upstream QMP PHY requires full power-down.
+	 */
+	if (drvdata && drvdata->no_phy_retention &&
+	    !ufs_qcom_is_kalama_phy(host->generic_phy))
 		hba->spm_lvl = UFS_PM_LVL_5;
 
 	return 0;
