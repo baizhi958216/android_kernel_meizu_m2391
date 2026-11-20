@@ -89,11 +89,17 @@ static void kalama_wdt_pet(struct kthread_work *work)
 
 	cpus_read_lock();
 	mz_get_cpu_ping_mask(&ping, wdt->idle);
+	cpumask_clear(&ping);
 	cpumask_clear(&wdt->alive);
 	WRITE_ONCE(wdt->dump.acknowledged_cpus, 0);
-	WRITE_ONCE(wdt->dump.expected_cpus, cpumask_bits(&ping)[0]);
+	WRITE_ONCE(wdt->dump.expected_cpus, 0);
 	WRITE_ONCE(wdt->dump.ping_started_ns, ktime_get_boottime_ns());
-	for_each_cpu(cpu, &ping) {
+	for_each_online_cpu(cpu) {
+		/* An earlier synchronous IPI can outlast a CPU idle transition. */
+		if (READ_ONCE(wdt->idle[cpu]))
+			continue;
+		cpumask_set_cpu(cpu, &ping);
+		WRITE_ONCE(wdt->dump.expected_cpus, cpumask_bits(&ping)[0]);
 		ret = smp_call_function_single(cpu, kalama_wdt_ack, wdt, true);
 		if (ret)
 			break;
