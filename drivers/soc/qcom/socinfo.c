@@ -783,24 +783,36 @@ static void socinfo_debugfs_init(struct qcom_socinfo *qcom_socinfo,
 static void socinfo_debugfs_exit(struct qcom_socinfo *qcom_socinfo) {  }
 #endif /* CONFIG_DEBUG_FS */
 
-/* The version 16 SMEM part map has fixed-size, potentially unaligned records. */
+/* The version 14 subset table uses one little-endian word per part. */
+static const u8 *socinfo_subset_table(const struct socinfo *info, size_t size,
+				      u32 *count)
+{
+	u32 offset;
+
+	if (size < offsetofend(struct socinfo, nsubset_parts_array_offset) ||
+	    le32_to_cpu(info->fmt) < SOCINFO_VERSION(0, 14))
+		return NULL;
+	offset = le32_to_cpu(info->nsubset_parts_array_offset);
+	*count = le32_to_cpu(info->num_subset_parts);
+	if (!offset || !*count || offset > size || *count > (size - offset) / sizeof(__le32))
+		return NULL;
+	return (const u8 *)info + offset;
+}
+
 int qcom_socinfo_get_subpart(unsigned int part, u32 *value)
 {
 	const struct socinfo *info;
-	u32 offset, count;
+	const u8 *table;
+	u32 count;
 	size_t size;
 
 	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_HW_SW_BUILD_ID, &size);
 	if (IS_ERR(info))
 		return PTR_ERR(info);
-	if (size < offsetofend(struct socinfo, nsubset_parts_array_offset) ||
-	    le32_to_cpu(info->fmt) < SOCINFO_VERSION(0, 14))
+	table = socinfo_subset_table(info, size, &count);
+	if (!table || part >= count)
 		return -ENODATA;
-	offset = le32_to_cpu(info->nsubset_parts_array_offset);
-	count = le32_to_cpu(info->num_subset_parts);
-	if (!offset || offset > size || count > (size - offset) / sizeof(__le32) || part >= count)
-		return -ENODATA;
-	*value = get_unaligned_le32((const u8 *)info + offset + part * sizeof(__le32));
+	*value = get_unaligned_le32(table + part * sizeof(__le32));
 	return 0;
 }
 EXPORT_SYMBOL_GPL(qcom_socinfo_get_subpart);
@@ -849,11 +861,44 @@ int qcom_socinfo_get_adreno(struct qcom_socinfo_adreno *gpu)
 }
 EXPORT_SYMBOL_GPL(qcom_socinfo_get_adreno);
 
+/* Qualcomm display userspace reads a hexadecimal mask of disabled parts. */
+static ssize_t subset_parts_show(struct device *dev, struct device_attribute *attr,
+				 char *buf)
+{
+	const struct socinfo *info;
+	const u8 *table;
+	u32 count, i, mask = 0;
+	size_t size;
+
+	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_HW_SW_BUILD_ID, &size);
+	if (IS_ERR(info))
+		return PTR_ERR(info);
+	table = socinfo_subset_table(info, size, &count);
+	if (!table)
+		return -ENODATA;
+	for (i = 0; i < min(count, 32U); i++) {
+		if (get_unaligned_le32(table + i * sizeof(__le32)) & BIT(0))
+			mask |= BIT(i);
+	}
+	return sysfs_emit(buf, "%x\n", mask);
+}
+static DEVICE_ATTR_RO(subset_parts);
+
+static struct attribute *socinfo_subset_attrs[] = {
+	&dev_attr_subset_parts.attr,
+	NULL,
+};
+
+static const struct attribute_group socinfo_subset_group = {
+	.attrs = socinfo_subset_attrs,
+};
+
 static int qcom_socinfo_probe(struct platform_device *pdev)
 {
 	struct qcom_socinfo *qs;
 	struct socinfo *info;
 	size_t item_size;
+	u32 num_parts;
 
 	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_HW_SW_BUILD_ID,
 			      &item_size);
@@ -884,6 +929,9 @@ static int qcom_socinfo_probe(struct platform_device *pdev)
 		if (!qs->attr.serial_number)
 			return -ENOMEM;
 	}
+
+	if (socinfo_subset_table(info, item_size, &num_parts))
+		qs->attr.custom_attr_group = &socinfo_subset_group;
 
 	qs->soc_dev = soc_device_register(&qs->attr);
 	if (IS_ERR(qs->soc_dev))

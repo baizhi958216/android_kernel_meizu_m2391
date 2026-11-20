@@ -41,7 +41,6 @@ struct tme_hwkm {
 	struct mbox_chan *channel;
 	struct completion completion;
 	spinlock_t rx_lock;
-	u32 transaction;
 	int result;
 	bool waiting;
 };
@@ -62,7 +61,7 @@ static void tme_hwkm_rx(struct mbox_client *client, void *message)
 	rsp = pkt->data;
 
 	spin_lock_irqsave(&tme->rx_lock, flags);
-	if (tme->waiting && le32_to_cpu(rsp->txn) == tme->transaction) {
+	if (tme->waiting && !rsp->txn) {
 		if (pkt->size != sizeof(*rsp))
 			tme->result = -EBADMSG;
 		else if (rsp->fw_status || rsp->seq_status ||
@@ -105,24 +104,35 @@ int qcom_tme_hwkm_broadcast(void)
 		return -EPROBE_DEFER;
 
 	spin_lock_irqsave(&tme->rx_lock, flags);
-	req.txn = cpu_to_le32(++tme->transaction);
+	/*
+	 * Kalama firmware uses transaction zero on every broadcast. Only
+	 * one request may be in flight, including a timed-out request
+	 * whose response has not arrived yet.
+	 */
+	if (tme->waiting) {
+		spin_unlock_irqrestore(&tme->rx_lock, flags);
+		return -EAGAIN;
+	}
 	reinit_completion(&tme->completion);
 	tme->waiting = true;
 	spin_unlock_irqrestore(&tme->rx_lock, flags);
 
 	ret = mbox_send_message(tme->channel, &pkt);
-	if (ret >= 0) {
-		if (!wait_for_completion_timeout(&tme->completion,
-						 msecs_to_jiffies(TME_TIMEOUT_MS)))
-			ret = -ETIMEDOUT;
-		else
-			ret = tme->result;
+	if (ret < 0) {
+		/* A TX timeout can still be followed by an RX completion. */
+		if (ret != -ETIME) {
+			spin_lock_irqsave(&tme->rx_lock, flags);
+			tme->waiting = false;
+			spin_unlock_irqrestore(&tme->rx_lock, flags);
+		}
+		return ret;
 	}
 
-	spin_lock_irqsave(&tme->rx_lock, flags);
-	tme->waiting = false;
-	spin_unlock_irqrestore(&tme->rx_lock, flags);
-	return ret;
+	if (!wait_for_completion_timeout(&tme->completion,
+					 msecs_to_jiffies(TME_TIMEOUT_MS)))
+		return -ETIMEDOUT;
+
+	return tme->result;
 }
 EXPORT_SYMBOL_GPL(qcom_tme_hwkm_broadcast);
 

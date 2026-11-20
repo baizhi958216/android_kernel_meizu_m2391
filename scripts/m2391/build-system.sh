@@ -133,7 +133,8 @@ extbuild "$display/msm" DISPLAY_ROOT="$external/$display" KERNEL_SRC="$kernel" \
 gpu=qcom/opensource/graphics-kernel
 gpu_symbols=("$out/m2391-external/$mm/hw_fence/Module.symvers"
              "$out/m2391-external/meizu/thermal-log/Module.symvers")
-extbuild "$gpu" KGSL_PATH="$external/$gpu" KERNEL_SRC="$kernel" CONFIG_ARCH_KALAMA=y \
+# GPU rendering on m2391 must also work with the CoreSight trace modules disabled.
+extbuild "$gpu" KGSL_PATH="$external/$gpu" KERNEL_SRC="$kernel" CONFIG_ARCH_KALAMA=y CONFIG_CORESIGHT= \
 	CONFIG_QCOM_KGSL_MEIZU_THERMAL_LOG=y KBUILD_EXTRA_SYMBOLS="${gpu_symbols[*]}"
 
 audio=qcom/opensource/audio-kernel
