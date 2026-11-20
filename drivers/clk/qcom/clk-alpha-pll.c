@@ -1781,7 +1781,8 @@ static int alpha_pll_lucid_prepare(struct clk_hw *hw)
 }
 
 static int __alpha_pll_trion_set_rate(struct clk_hw *hw, unsigned long rate,
-				      unsigned long prate, u32 latch_bit, u32 latch_ack)
+				      unsigned long prate, u32 latch_bit, u32 latch_ack,
+				      bool reset_latches_rate)
 {
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
 	unsigned long rrate;
@@ -1797,6 +1798,15 @@ static int __alpha_pll_trion_set_rate(struct clk_hw *hw, unsigned long rate,
 
 	regmap_update_bits(pll->clkr.regmap, PLL_L_VAL(pll), LUCID_EVO_PLL_L_VAL_MASK,  l);
 	regmap_write(pll->clkr.regmap, PLL_ALPHA_VAL(pll), a);
+
+	/* Lucid EVO/OLE latch L and ALPHA on leaving RESET; ACK is disabled there. */
+	if (reset_latches_rate) {
+		ret = regmap_read(pll->clkr.regmap, PLL_MODE(pll), &val);
+		if (ret)
+			return ret;
+		if (!(val & PLL_RESET_N))
+			return 0;
+	}
 
 	/* Latch the PLL input */
 	ret = regmap_update_bits(pll->clkr.regmap, PLL_MODE(pll), latch_bit, latch_bit);
@@ -1830,7 +1840,8 @@ static int __alpha_pll_trion_set_rate(struct clk_hw *hw, unsigned long rate,
 static int alpha_pll_trion_set_rate(struct clk_hw *hw, unsigned long rate,
 				    unsigned long prate)
 {
-	return __alpha_pll_trion_set_rate(hw, rate, prate, PLL_UPDATE, ALPHA_PLL_ACK_LATCH);
+	return __alpha_pll_trion_set_rate(hw, rate, prate, PLL_UPDATE, ALPHA_PLL_ACK_LATCH,
+					false);
 }
 
 const struct clk_ops clk_alpha_pll_trion_ops = {
@@ -2071,7 +2082,7 @@ static int alpha_pll_lucid_5lpe_set_rate(struct clk_hw *hw, unsigned long rate,
 {
 	return __alpha_pll_trion_set_rate(hw, rate, prate,
 					  LUCID_5LPE_PLL_LATCH_INPUT,
-					  LUCID_5LPE_ALPHA_PLL_ACK_LATCH);
+					  LUCID_5LPE_ALPHA_PLL_ACK_LATCH, false);
 }
 
 static int __clk_lucid_pll_postdiv_set_rate(struct clk_hw *hw, unsigned long rate,
@@ -2507,6 +2518,14 @@ static int alpha_pll_reset_lucid_evo_prepare(struct clk_hw *hw)
 	return _alpha_pll_lucid_evo_prepare(hw, true);
 }
 
+static int alpha_pll_reset_lucid_evo_set_rate(struct clk_hw *hw, unsigned long rate,
+					   unsigned long prate)
+{
+	return __alpha_pll_trion_set_rate(hw, rate, prate,
+					  LUCID_5LPE_PLL_LATCH_INPUT,
+					  LUCID_5LPE_ALPHA_PLL_ACK_LATCH, true);
+}
+
 static unsigned long alpha_pll_lucid_evo_recalc_rate(struct clk_hw *hw,
 						     unsigned long parent_rate)
 {
@@ -2564,7 +2583,7 @@ const struct clk_ops clk_alpha_pll_reset_lucid_evo_ops = {
 	.is_enabled = clk_trion_pll_is_enabled,
 	.recalc_rate = alpha_pll_lucid_evo_recalc_rate,
 	.determine_rate = clk_alpha_pll_determine_rate,
-	.set_rate = alpha_pll_lucid_5lpe_set_rate,
+	.set_rate = alpha_pll_reset_lucid_evo_set_rate,
 };
 EXPORT_SYMBOL_GPL(clk_alpha_pll_reset_lucid_evo_ops);
 
