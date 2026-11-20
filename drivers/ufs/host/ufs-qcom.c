@@ -448,9 +448,21 @@ static int ufs_qcom_ice_derive_sw_secret(struct blk_crypto_profile *profile,
 {
 	struct ufs_hba *hba = ufs_hba_from_crypto_profile(profile);
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	bool kalama = of_machine_is_compatible("qcom,kalama");
+	int err;
 
-	return qcom_ice_derive_sw_secret(host->ice, eph_key, eph_key_size,
-					 sw_secret);
+	/* Keep the Kalama host clocks running while secure firmware uses ICE. */
+	if (kalama) {
+		err = ufshcd_hold_checked(hba);
+		if (err)
+			return err;
+	}
+	err = qcom_ice_derive_sw_secret(host->ice, eph_key, eph_key_size,
+				       sw_secret);
+	if (kalama)
+		ufshcd_release(hba);
+
+	return err;
 }
 
 static int ufs_qcom_ice_import_key(struct blk_crypto_profile *profile,
