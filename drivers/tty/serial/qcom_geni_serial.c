@@ -175,6 +175,9 @@ enum qcom_geni_uart_fault {
 static const struct uart_ops qcom_geni_console_pops;
 static const struct uart_ops qcom_geni_uart_pops;
 static struct uart_driver qcom_geni_console_driver;
+static bool con_enabled;
+module_param(con_enabled, bool, 0444);
+MODULE_PARM_DESC(con_enabled, "Enable the GENI serial console");
 static struct uart_driver qcom_geni_uart_driver;
 
 static int qcom_geni_serial_get_vote(struct qcom_geni_serial_port *port);
@@ -1534,6 +1537,9 @@ static int qcom_geni_console_setup(struct console *co, char *options)
 	int flow = 'n';
 	int ret;
 
+	if (!con_enabled)
+		return -ENODEV;
+
 	if (co->index >= GENI_UART_CONS_PORTS  || co->index < 0)
 		return -ENXIO;
 
@@ -2051,6 +2057,8 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 		return -EINVAL;
 
 	if (data->console) {
+		if (!con_enabled)
+			return -ENODEV;
 		drv = &qcom_geni_console_driver;
 		line = of_alias_get_id(pdev->dev.of_node, "serial");
 	} else {
@@ -2279,19 +2287,23 @@ static int __init qcom_geni_serial_init(void)
 {
 	int ret;
 
-	ret = console_register(&qcom_geni_console_driver);
-	if (ret)
-		return ret;
+	if (con_enabled) {
+		ret = console_register(&qcom_geni_console_driver);
+		if (ret)
+			return ret;
+	}
 
 	ret = uart_register_driver(&qcom_geni_uart_driver);
 	if (ret) {
-		console_unregister(&qcom_geni_console_driver);
+		if (con_enabled)
+			console_unregister(&qcom_geni_console_driver);
 		return ret;
 	}
 
 	ret = platform_driver_register(&qcom_geni_serial_platform_driver);
 	if (ret) {
-		console_unregister(&qcom_geni_console_driver);
+		if (con_enabled)
+			console_unregister(&qcom_geni_console_driver);
 		uart_unregister_driver(&qcom_geni_uart_driver);
 	}
 	return ret;
@@ -2301,7 +2313,8 @@ module_init(qcom_geni_serial_init);
 static void __exit qcom_geni_serial_exit(void)
 {
 	platform_driver_unregister(&qcom_geni_serial_platform_driver);
-	console_unregister(&qcom_geni_console_driver);
+	if (con_enabled)
+		console_unregister(&qcom_geni_console_driver);
 	uart_unregister_driver(&qcom_geni_uart_driver);
 }
 module_exit(qcom_geni_serial_exit);
