@@ -15,6 +15,9 @@ external=$(cd "$2" && pwd -P)
 mkdir "$3"
 stage=$(cd "$3" && pwd -P)
 jobs=${JOBS:-$(nproc)}
+# Stable build identity instead of the local account and container hostname.
+export KBUILD_BUILD_USER=${KBUILD_BUILD_USER:-android-build}
+export KBUILD_BUILD_HOST=${KBUILD_BUILD_HOST:-lineage}
 kmake=(make -C "$kernel" O="$out" ARCH=arm64 LLVM=1)
 "${kmake[@]}" gki_defconfig m2391.config
 
