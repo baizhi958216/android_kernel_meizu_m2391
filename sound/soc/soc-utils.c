@@ -150,7 +150,8 @@ static int dummy_dma_open(struct snd_soc_component *component,
 	 * override their hwparams
 	 */
 	for_each_rtd_components(rtd, i, component) {
-		if (component->driver == &dummy_platform)
+		if (component->driver != &dummy_platform &&
+		    component->driver->open)
 			return 0;
 	}
 
