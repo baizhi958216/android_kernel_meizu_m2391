@@ -163,17 +163,36 @@ static const struct mhi_device_id qcom_mhi_qrtr_id_table[] = {
 };
 MODULE_DEVICE_TABLE(mhi, qcom_mhi_qrtr_id_table);
 
+static enum mhi_state qcom_mhi_qrtr_pm_state(struct mhi_device *mhi_dev)
+{
+	struct mhi_controller *mhi_cntrl = mhi_dev->mhi_cntrl;
+	unsigned long flags;
+	enum mhi_state state;
+
+	/*
+	 * The controller may have suspended its PCIe link in the normal
+	 * suspend phase. Do not read MHISTATUS from suspend_late/resume_early:
+	 * the link is not accessible until the controller's normal resume.
+	 * MHI records both M3 and downstream M3_FAST under pm_lock.
+	 */
+	read_lock_irqsave(&mhi_cntrl->pm_lock, flags);
+	state = mhi_cntrl->dev_state;
+	read_unlock_irqrestore(&mhi_cntrl->pm_lock, flags);
+
+	return state;
+}
+
 static int __maybe_unused qcom_mhi_qrtr_pm_suspend_late(struct device *dev)
 {
 	struct mhi_device *mhi_dev = container_of(dev, struct mhi_device, dev);
 	enum mhi_state state;
 
-	state = mhi_get_mhi_state(mhi_dev->mhi_cntrl);
+	state = qcom_mhi_qrtr_pm_state(mhi_dev);
 	/*
 	 * If the device is in suspend state, then no need for the
 	 * client driver to unprepare the channels.
 	 */
-	if (state == MHI_STATE_M3)
+	if (state == MHI_STATE_M3 || state == MHI_STATE_M3_FAST)
 		return 0;
 
 	mhi_unprepare_from_transfer(mhi_dev);
@@ -187,13 +206,13 @@ static int __maybe_unused qcom_mhi_qrtr_pm_resume_early(struct device *dev)
 	enum mhi_state state;
 	int rc;
 
-	state = mhi_get_mhi_state(mhi_dev->mhi_cntrl);
+	state = qcom_mhi_qrtr_pm_state(mhi_dev);
 	/*
 	 * If the device is in suspend state, we won't unprepare channels
 	 * in suspend callback, therefore no need to prepare channels when
 	 * resume.
 	 */
-	if (state == MHI_STATE_M3)
+	if (state == MHI_STATE_M3 || state == MHI_STATE_M3_FAST)
 		return 0;
 
 	rc = mhi_prepare_for_transfer(mhi_dev);
