@@ -1,0 +1,41 @@
+soong_namespace {
+}
+
+cc_binary_host {
+    name: "unifdef",
+    srcs: ["scripts/unifdef.c"],
+    c_std: "gnu11",
+    sanitize: {
+        never: true,
+    },
+}
+
+genrule {
+    name: "gen-headers_install.sh",
+    srcs: ["scripts/headers_install.sh"],
+    tools: ["unifdef"],
+    out: ["headers_install.sh"],
+    cmd: "sed 's+[$$]{objtree}/scripts/unifdef+$${LOC_UNIFDEF:-$$(dirname $$0)/unifdef}+g' $(in) > $(out)",
+}
+
+sh_binary_host {
+    name: "headers_install.sh",
+    src: ":gen-headers_install.sh",
+    required: ["unifdef"],
+}
+
+genrule {
+    name: "m2391_generate_audio_core_headers",
+    tools: ["headers_install.sh", "unifdef"],
+    srcs: ["include/uapi/misc/adsp_sleepmon.h"],
+    out: ["misc/adsp_sleepmon.h"],
+    cmd: "LOC_UNIFDEF=$(location unifdef) $(location headers_install.sh) $(in) $(out)",
+}
+
+cc_library_headers {
+    name: "m2391_audio_core_headers",
+    vendor: true,
+    recovery_available: true,
+    generated_headers: ["m2391_generate_audio_core_headers"],
+    export_generated_headers: ["m2391_generate_audio_core_headers"],
+}
