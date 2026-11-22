@@ -75,6 +75,8 @@
 /* UART S_CMD OP codes */
 #define UART_START_READ			0x1
 #define UART_PARAM			0x1
+#define UART_PARAM_SKIP_FRAME_ERR_CHAR	BIT(5)
+#define UART_PARAM_SKIP_BREAK_CHAR	BIT(6)
 #define UART_PARAM_RFR_OPEN		BIT(7)
 
 #define UART_OVERSAMPLING		32
@@ -181,6 +183,7 @@ MODULE_PARM_DESC(con_enabled, "Enable the GENI serial console");
 static struct uart_driver qcom_geni_uart_driver;
 
 static int qcom_geni_serial_get_vote(struct qcom_geni_serial_port *port);
+static void qcom_geni_serial_put_vote(struct qcom_geni_serial_port *port);
 static void __qcom_geni_serial_cancel_tx_cmd(struct uart_port *uport);
 static void qcom_geni_serial_cancel_tx_cmd(struct uart_port *uport);
 static int qcom_geni_serial_port_setup(struct uart_port *uport);
@@ -933,6 +936,7 @@ static void qcom_geni_serial_stop_rx_dma(struct uart_port *uport)
 static void qcom_geni_serial_start_rx_dma(struct uart_port *uport)
 {
 	struct qcom_geni_serial_port *port = to_dev_port(uport);
+	u32 params = UART_PARAM_RFR_OPEN;
 	int ret;
 
 	if (qcom_geni_serial_asleep(uport))
@@ -941,7 +945,9 @@ static void qcom_geni_serial_start_rx_dma(struct uart_port *uport)
 	if (qcom_geni_serial_secondary_active(uport))
 		qcom_geni_serial_stop_rx_dma(uport);
 
-	geni_se_setup_s_cmd(&port->se, UART_START_READ, UART_PARAM_RFR_OPEN);
+	if (port->dev_data->vendor_hs)
+		params |= UART_PARAM_SKIP_FRAME_ERR_CHAR | UART_PARAM_SKIP_BREAK_CHAR;
+	geni_se_setup_s_cmd(&port->se, UART_START_READ, params);
 
 	ret = geni_se_rx_dma_prep(&port->se, port->rx_buf,
 				  DMA_RX_BUF_SIZE,
@@ -1183,6 +1189,10 @@ static irqreturn_t qcom_geni_serial_isr(int isr, void *dev)
 			if (dma_rx_status & RX_RESET_DONE)
 				goto out_unlock;
 
+			/* The HS firmware removes framing and break characters before DMA. */
+			if (port->dev_data->vendor_hs)
+				drop_rx = false;
+
 			if (dma_rx_status & RX_DMA_PARITY_ERR) {
 				atomic_set(&port->last_fault, GENI_UART_RX_PARITY);
 				uport->icount.parity++;
@@ -1345,13 +1355,22 @@ static int qcom_geni_serial_startup(struct uart_port *uport)
 	if (!port->setup) {
 		ret = qcom_geni_serial_port_setup(uport);
 		if (ret)
-			return ret;
+			goto err_vote;
 	}
 
 	if (port->dev_data->vendor_hs && port->wakeup_irq > 0) {
 		ret = dev_pm_set_dedicated_wake_irq(uport->dev, port->wakeup_irq);
 		if (ret)
-			return ret;
+			goto err_vote;
+
+		/* Requesting the wake IRQ muxes RX to GPIO behind pinctrl's cache. */
+		ret = pinctrl_pm_select_default_state(uport->dev);
+		if (!ret)
+			ret = pinctrl_select_state(port->pinctrl, port->active_pins);
+		if (ret) {
+			dev_pm_clear_wake_irq(uport->dev);
+			goto err_vote;
+		}
 	}
 
 	WRITE_ONCE(port->opened, true);
@@ -1362,6 +1381,11 @@ static int qcom_geni_serial_startup(struct uart_port *uport)
 	enable_irq(uport->irq);
 
 	return 0;
+
+err_vote:
+	if (port->dev_data->vendor_hs)
+		qcom_geni_serial_put_vote(port);
+	return ret;
 }
 
 static int geni_serial_set_rate(struct uart_port *uport, unsigned int baud)
@@ -2122,6 +2146,11 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 		port->wakeup_irq = platform_get_irq_optional(pdev, 1);
 		if (port->wakeup_irq == -EPROBE_DEFER)
 			return -EPROBE_DEFER;
+		if (data->vendor_hs && port->wakeup_irq > 0) {
+			ret = irq_set_irq_type(port->wakeup_irq, IRQ_TYPE_EDGE_FALLING);
+			if (ret)
+				return ret;
+		}
 	}
 
 	if (of_property_read_bool(pdev->dev.of_node, "rx-tx-swap"))
