@@ -692,6 +692,7 @@ static int iommu_dma_init_domain(struct iommu_domain *domain, struct device *dev
 	 * DMA window and private IOVAs managed by the DSP or camera driver.
 	 */
 	if (of_device_is_compatible(dev->of_node, "qcom,msm-fastrpc-compute-cb") ||
+	    of_device_is_compatible(dev->of_node, "qcom,msm-audio-ion") ||
 	    (of_device_is_compatible(dev->of_node, "qcom,msm-cam-smmu-cb") &&
 	     of_property_present(dev->of_node, "qcom,iommu-dma-addr-pool"))) {
 		u64 base, length, end;
