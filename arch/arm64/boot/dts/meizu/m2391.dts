@@ -368,6 +368,14 @@
 			alloc-ranges = <0x00 0x00 0x00 0xffffffff>;
 			compatible = "shared-dma-pool";
 		};
+
+		scm_dma_pool: scm-dma-pool {
+			compatible = "shared-dma-pool";
+			reusable;
+			alignment = <0x00 0x400000>;
+			size = <0x00 0x1000000>;
+			alloc-ranges = <0x00 0xa5300000 0x00 0x12d00000>;
+		};
 	};
 
 	aliases: aliases {
@@ -404,6 +412,7 @@
 		qcom_scm {
 			compatible = "qcom,scm";
 			qcom,dload-mode = <0x02 0x19000>;
+			memory-region = <&scm_dma_pool>;
 		};
 
 		android {
