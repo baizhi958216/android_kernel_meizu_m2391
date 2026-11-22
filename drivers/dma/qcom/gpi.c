@@ -983,6 +983,9 @@ static void gpi_process_imed_data_event(struct gchan *gchan,
 			goto gpi_free_desc;
 		else
 			return;
+	} else if (imed_event->code == MSM_GPI_TCE_EOB && !gpii->ieob_set &&
+		   gchan->protocol != QCOM_GPI_UART) {
+		goto gpi_free_desc;
 	}
 
 	if (imed_event->code == MSM_GPI_TCE_UNEXP_ERR)
@@ -991,8 +994,14 @@ static void gpi_process_imed_data_event(struct gchan *gchan,
 		result.result = DMA_TRANS_NOERROR;
 	result.residue = gpi_desc->len - imed_event->length;
 
+	spin_lock_irqsave(&gchan->vc.lock, flags);
+	list_del(&vd->node);
+	spin_unlock_irqrestore(&gchan->vc.lock, flags);
+
 	dma_cookie_complete(&vd->tx);
 	dmaengine_desc_get_callback_invoke(&vd->tx, &result);
+	kfree(gpi_desc);
+	return;
 
 gpi_free_desc:
 	spin_lock_irqsave(&gchan->vc.lock, flags);
@@ -1058,6 +1067,9 @@ static void gpi_process_xfer_compl_event(struct gchan *gchan,
 			goto gpi_free_desc;
 		else
 			return;
+	} else if (compl_event->code == MSM_GPI_TCE_EOB && !gpii->ieob_set &&
+		   gchan->protocol != QCOM_GPI_UART) {
+		goto gpi_free_desc;
 	}
 
 	if (compl_event->code == MSM_GPI_TCE_UNEXP_ERR) {
@@ -1070,8 +1082,14 @@ static void gpi_process_xfer_compl_event(struct gchan *gchan,
 	result.residue = gpi_desc->len - compl_event->length;
 	dev_dbg(gpii->gpi_dev->dev, "Residue %d\n", result.residue);
 
+	spin_lock_irqsave(&gchan->vc.lock, flags);
+	list_del(&vd->node);
+	spin_unlock_irqrestore(&gchan->vc.lock, flags);
+
 	dma_cookie_complete(&vd->tx);
 	dmaengine_desc_get_callback_invoke(&vd->tx, &result);
+	kfree(gpi_desc);
+	return;
 
 gpi_free_desc:
 	spin_lock_irqsave(&gchan->vc.lock, flags);
@@ -1079,6 +1097,60 @@ gpi_free_desc:
 	spin_unlock_irqrestore(&gchan->vc.lock, flags);
 	kfree(gpi_desc);
 	gpi_desc = NULL;
+}
+
+/* GENI M_IRQ error bits reported in I2C QUP_NOTIF events */
+#define GPI_I2C_QUP_ERR_MASK	(BIT(1) | BIT(2) | BIT(3) | BIT(10) | BIT(12) | BIT(13))
+
+static void gpi_process_qup_notif_event(struct gchan *gchan,
+					struct qup_notif_event *notif_event)
+{
+	struct gpii *gpii = gchan->gpii;
+	struct virt_dma_desc *vd = NULL;
+	struct gpi_desc *gpi_desc;
+	struct dmaengine_result result;
+	unsigned long flags;
+
+	dev_dbg(gpii->gpi_dev->dev, "QUP_NOTIF_EV_TYPE chid:%u status:0x%x\n",
+		notif_event->chid, notif_event->status);
+
+	if (gchan->protocol != QCOM_GPI_I2C ||
+	    !(notif_event->status & GPI_I2C_QUP_ERR_MASK))
+		return;
+
+	if (unlikely(gchan->pm_state != ACTIVE_STATE))
+		return;
+
+	/* For I2C read, the error notification arrives on TX while RX waits */
+	if (gchan->chid == GPI_TX_CHAN &&
+	    gpii->gchan[GPI_RX_CHAN].pm_state == ACTIVE_STATE) {
+		struct gchan *rx_chan = &gpii->gchan[GPI_RX_CHAN];
+
+		spin_lock_irqsave(&rx_chan->vc.lock, flags);
+		vd = vchan_next_desc(&rx_chan->vc);
+		if (vd)
+			list_del(&vd->node);
+		spin_unlock_irqrestore(&rx_chan->vc.lock, flags);
+	}
+
+	if (!vd) {
+		spin_lock_irqsave(&gchan->vc.lock, flags);
+		vd = vchan_next_desc(&gchan->vc);
+		if (vd)
+			list_del(&vd->node);
+		spin_unlock_irqrestore(&gchan->vc.lock, flags);
+	}
+
+	if (!vd)
+		return;
+
+	gpi_desc = to_gpi_desc(vd);
+	result.result = DMA_TRANS_ABORTED;
+	result.residue = gpi_desc->len;
+
+	dma_cookie_complete(&vd->tx);
+	dmaengine_desc_get_callback_invoke(&vd->tx, &result);
+	kfree(gpi_desc);
 }
 
 /* process all events */
@@ -1121,7 +1193,9 @@ static void gpi_process_events(struct gpii *gpii)
 							    &gpi_event->immediate_data_event);
 				break;
 			case QUP_NOTIF_EV_TYPE:
-				dev_dbg(gpii->gpi_dev->dev, "QUP_NOTIF_EV_TYPE\n");
+				gchan = &gpii->gchan[chid];
+				gpi_process_qup_notif_event(gchan,
+							    &gpi_event->qup_notif_event);
 				break;
 			default:
 				dev_dbg(gpii->gpi_dev->dev,
@@ -1677,10 +1751,12 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
 
 		tre->dword[3] = u32_encode_bits(TRE_TYPE_GO, TRE_FLAGS_TYPE);
 
-		if (i2c->multi_msg)
+		if (i2c->multi_msg) {
 			tre->dword[3] |= u32_encode_bits(1, TRE_FLAGS_LINK);
-		else
+			tre->dword[3] |= u32_encode_bits(1, TRE_FLAGS_IEOB);
+		} else {
 			tre->dword[3] |= u32_encode_bits(1, TRE_FLAGS_CHAIN);
+		}
 	}
 
 	if (i2c->op == I2C_READ || i2c->multi_msg == false) {
