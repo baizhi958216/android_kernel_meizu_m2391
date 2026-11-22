@@ -419,8 +419,11 @@ int slim_stream_disable(struct slim_stream_runtime *stream)
 	if (!stream->ports || !stream->num_ports)
 		return -EINVAL;
 
-	if (ctrl->disable_stream)
-		ctrl->disable_stream(stream);
+	if (ctrl->disable_stream) {
+		ret = ctrl->disable_stream(stream);
+		if (ret)
+			return ret;
+	}
 
 	ret = slim_do_transfer(ctrl, &txn);
 	if (ret)

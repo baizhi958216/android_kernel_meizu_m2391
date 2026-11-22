@@ -81,6 +81,8 @@
 #define SLIM_USR_MC_DISCONNECT_PORT	0x2E
 #define SLIM_USR_MC_REPEAT_CHANGE_VALUE	0x0
 
+#define SLIM_USR_CHAN_REMOVE		2
+
 #define SLIM_RX_MSGQ_TIMEOUT_VAL	0x10000
 
 #define SLIM_LA_MGR	0xFF
@@ -1141,6 +1143,48 @@ static int qcom_slim_ngd_enable_stream(struct slim_stream_runtime *rt)
 	return qcom_slim_ngd_xfer_msg_sync(ctrl, &txn, &wbuf[0], sizeof(rbuf));
 }
 
+static int qcom_slim_ngd_disable_stream(struct slim_stream_runtime *rt)
+{
+	struct slim_device *sdev = rt->dev;
+	struct slim_controller *ctrl = sdev->ctrl;
+	struct slim_val_inf msg = {0};
+	struct slim_msg_txn txn = {0};
+	u8 wbuf[SLIM_MSGQ_BUF_LEN];
+	u8 rbuf[SLIM_MSGQ_BUF_LEN];
+	int i, ret;
+
+	if (!rt->num_ports || rt->num_ports > SLIM_MSGQ_BUF_LEN - 6)
+		return -EINVAL;
+
+	txn.mt = SLIM_MSG_MT_DEST_REFERRED_USER;
+	txn.dt = SLIM_MSG_DEST_LOGICALADDR;
+	txn.la = SLIM_LA_MGR;
+	txn.mc = SLIM_USR_MC_CHAN_CTRL;
+	txn.msg = &msg;
+	msg.wbuf = wbuf;
+	msg.rbuf = rbuf;
+
+	wbuf[0] = (SLIM_USR_CHAN_REMOVE << 6) | (sdev->laddr & 0x1f);
+	wbuf[1] = 0;
+	for (i = 0; i < rt->num_ports; i++)
+		wbuf[i + 2] = rt->ports[i].ch.id;
+	msg.num_bytes = rt->num_ports + 2;
+	txn.rl = msg.num_bytes + 4;
+
+	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn, &wbuf[1], sizeof(rbuf));
+	if (ret) {
+		dev_err(&sdev->dev, "Remove channel failed: %d\n", ret);
+		return ret;
+	}
+
+	txn.mc = SLIM_USR_MC_RECONFIG_NOW;
+	msg.num_bytes = 2;
+	wbuf[1] = sdev->laddr;
+	txn.rl = msg.num_bytes + 4;
+
+	return qcom_slim_ngd_xfer_msg_sync(ctrl, &txn, &wbuf[0], sizeof(rbuf));
+}
+
 static int qcom_slim_ngd_get_laddr(struct slim_controller *ctrl,
 				   struct slim_eaddr *ea, u8 *laddr)
 {
@@ -1718,6 +1762,7 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 	ctrl->ctrl.clkgear = SLIM_MAX_CLK_GEAR;
 	ctrl->ctrl.get_laddr = qcom_slim_ngd_get_laddr;
 	ctrl->ctrl.enable_stream = qcom_slim_ngd_enable_stream;
+	ctrl->ctrl.disable_stream = qcom_slim_ngd_disable_stream;
 	ctrl->ctrl.xfer_msg = qcom_slim_ngd_xfer_msg;
 	ctrl->ctrl.wakeup = NULL;
 	ctrl->state = QCOM_SLIM_NGD_CTRL_DOWN;
