@@ -1,4 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0
+
+# Android consumes the display UAPI from the sibling m2391-modules checkout.
+# A standalone kernel checkout can still export its own headers.
+ifeq ($(realpath $(src)/display/drm/msm_drm_pp.h),)
+no-export-headers += $(patsubst $(src)/%,%,$(wildcard $(src)/display/*/*.h))
+endif
+
 ifeq ($(wildcard $(srctree)/arch/$(SRCARCH)/include/uapi/asm/a.out.h),)
 no-export-headers += linux/a.out.h
 endif

@@ -137,8 +137,9 @@ gpu=qcom/opensource/graphics-kernel
 gpu_symbols=("$out/m2391-external/$mm/hw_fence/Module.symvers"
              "$out/m2391-external/meizu/thermal-log/Module.symvers")
 # GPU rendering on m2391 must also work with the CoreSight trace modules disabled.
-extbuild "$gpu" KGSL_PATH="$external/$gpu" KERNEL_SRC="$kernel" CONFIG_ARCH_KALAMA=y CONFIG_CORESIGHT= \
-	CONFIG_QCOM_KGSL_MEIZU_THERMAL_LOG=y KBUILD_EXTRA_SYMBOLS="${gpu_symbols[*]}"
+extbuild "$gpu" KGSL_PATH="$external/$gpu" KERNEL_SRC="$kernel" CONFIG_ARCH_KALAMA=y \
+	CONFIG_QCOM_KGSL=m CONFIG_CORESIGHT= CONFIG_QCOM_KGSL_MEIZU_THERMAL_LOG=y \
+	KBUILD_EXTRA_SYMBOLS="${gpu_symbols[*]}"
 
 audio=qcom/opensource/audio-kernel
 audio_symbols=("$out/m2391-external/$mm/msm_ext_display/Module.symvers"
@@ -174,7 +175,8 @@ extbuild "$wlan" WLAN_PLATFORM_ROOT="$external/$wlan" CONFIG_CNSS_OUT_OF_TREE=y 
 	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$secure/smcinvoke/Module.symvers"
 wifi=qcom/opensource/wlan
 cld="$wifi/qcacld-3.0"
-extbuild "$cld" WLAN_PLATFORM_ROOT="$external/$wlan" WLAN_ROOT="$external/$cld" \
+# qcacld uses ANDROID_BUILD_TOP to rebase relative paths. These paths are absolute.
+extbuild "$cld" ANDROID_BUILD_TOP= WLAN_PLATFORM_ROOT="$external/$wlan" WLAN_ROOT="$external/$cld" \
 	WLAN_COMMON_ROOT=cmn WLAN_COMMON_INC="$external/$wifi/qca-wifi-host-cmn" \
 	WLAN_FW_API="$external/$wifi/fw-api" WLAN_PROFILE=kiwi_v2 DYNAMIC_SINGLE_CHIP=kiwi_v2 \
 	DEVNAME=kiwi_v2 WLAN_CTRL_NAME=wlan CONFIG_QCA_CLD_WLAN=m CONFIG_BUS_AUTO_SUSPEND=y \
@@ -222,5 +224,5 @@ for dt in "${dtbs[@]}"; do
 done
 # Kbuild leaves an absolute symlink to the local build tree in modules_install.
 if [[ -L "$stage/lib/modules/$release/build" ]]; then
-	unlink "$stage/lib/modules/$release/build"
+	rm -- "$stage/lib/modules/$release/build"
 fi

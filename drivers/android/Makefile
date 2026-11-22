@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-only
 ccflags-y += -I$(src)			# needed for trace events
 
+# Clang 22.0.2 spends several minutes optimizing binder.o with the GKI profile.
+AUTOFDO_PROFILE_binder.o := n
+
 obj-$(CONFIG_ANDROID_BINDERFS)		+= binderfs.o
 obj-$(CONFIG_ANDROID_BINDER_IPC)	+= binder.o binder_alloc.o binder_netlink.o binder_pick.o
 obj-$(CONFIG_ANDROID_BINDER_ALLOC_KUNIT_TEST)	+= tests/
