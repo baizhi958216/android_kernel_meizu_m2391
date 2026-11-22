@@ -14454,6 +14454,8 @@
 
 		funnel_turing_dup: funnel@10984000 {
 			compatible = "arm,primecell";
+			/* Probing this alias resets m2391. The real funnel is at 10983000. */
+			status = "disabled";
 			arm,primecell-periphid = <0xbb908>;
 			reg = <0x10984000 0x1000 0x10983000 0x1000>;
 			reg-names = "funnel-base-dummy", "funnel-base-real";
