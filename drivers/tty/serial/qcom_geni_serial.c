@@ -1933,6 +1933,28 @@ static void qcom_geni_serial_put_vote(struct qcom_geni_serial_port *port)
 	}
 }
 
+static int qcom_geni_serial_wait_idle(struct qcom_geni_serial_port *port)
+{
+	struct uart_port *uport = &port->uport;
+	bool busy;
+	int iter;
+
+	for (iter = 0; iter < 20; iter++) {
+		uart_port_lock_irq(uport);
+		busy = qcom_geni_serial_busy(port);
+		uart_port_unlock_irq(uport);
+		if (!busy)
+			return 0;
+		usleep_range(100, 150);
+	}
+
+	uart_port_lock_irq(uport);
+	busy = readl(uport->membase + SE_DMA_RX_LEN_IN) != 0;
+	uart_port_unlock_irq(uport);
+
+	return busy ? -EAGAIN : 0;
+}
+
 static int qcom_geni_serial_ioctl(struct uart_port *uport, unsigned int cmd, unsigned long arg)
 {
 	struct qcom_geni_serial_port *port = to_dev_port(uport);
@@ -1954,9 +1976,7 @@ static int qcom_geni_serial_ioctl(struct uart_port *uport, unsigned int cmd, uns
 	case MSM_GENI_SERIAL_TIOCPMPUT:
 		if (!port->user_vote)
 			return -EPERM;
-		uart_port_lock_irq(uport);
-		ret = qcom_geni_serial_busy(port) ? -EAGAIN : 0;
-		uart_port_unlock_irq(uport);
+		ret = qcom_geni_serial_wait_idle(port);
 		if (ret)
 			return ret;
 		port->user_vote = false;
