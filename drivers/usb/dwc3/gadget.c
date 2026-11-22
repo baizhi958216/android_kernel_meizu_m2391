@@ -14,6 +14,7 @@
 #include <linux/spinlock.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/pm_wakeup.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/list.h>
@@ -29,6 +30,29 @@
 
 #define DWC3_ALIGN_FRAME(d, n)	(((d)->frame_number + ((d)->interval * (n))) \
 					& ~((d)->interval - 1))
+
+static struct wakeup_source *dwc3_gadget_ws;
+static DEFINE_SPINLOCK(dwc3_gadget_ws_lock);
+
+static void dwc3_gadget_stay_awake(void)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&dwc3_gadget_ws_lock, flags);
+	if (dwc3_gadget_ws)
+		__pm_stay_awake(dwc3_gadget_ws);
+	spin_unlock_irqrestore(&dwc3_gadget_ws_lock, flags);
+}
+
+static void dwc3_gadget_relax(void)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&dwc3_gadget_ws_lock, flags);
+	if (dwc3_gadget_ws)
+		__pm_relax(dwc3_gadget_ws);
+	spin_unlock_irqrestore(&dwc3_gadget_ws_lock, flags);
+}
 
 /**
  * dwc3_gadget_set_test_mode - enables usb2 test modes
@@ -2765,6 +2789,7 @@ static int dwc3_gadget_soft_disconnect(struct dwc3 *dwc)
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	usb_gadget_set_state(dwc->gadget, USB_STATE_NOTATTACHED);
+	dwc3_gadget_relax();
 
 	return ret;
 }
@@ -4088,6 +4113,7 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 	usb_gadget_set_state(dwc->gadget, USB_STATE_NOTATTACHED);
 
 	dwc3_ep0_reset_state(dwc);
+	dwc3_gadget_relax();
 
 	/*
 	 * Request PM idle to address condition where usage count is
@@ -4312,6 +4338,8 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 		return;
 	}
 
+	dwc3_gadget_stay_awake();
+
 	/*
 	 * Configure PHY via GUSB3PIPECTLn if required.
 	 *
@@ -4324,6 +4352,7 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc, unsigned int evtinfo)
 {
 	dwc->suspended = false;
+	dwc3_gadget_stay_awake();
 
 	/*
 	 * TODO take core out of low power mode when that's
@@ -4425,6 +4454,7 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
 			dwc3_gadget_enable_linksts_evts(dwc, false);
 			dwc3_resume_gadget(dwc);
 			dwc->suspended = false;
+			dwc3_gadget_stay_awake();
 		}
 		break;
 	case DWC3_LINK_STATE_U1:
@@ -4432,11 +4462,15 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
 			dwc3_suspend_gadget(dwc);
 		break;
 	case DWC3_LINK_STATE_U2:
+		dwc3_suspend_gadget(dwc);
+		break;
 	case DWC3_LINK_STATE_U3:
 		dwc3_suspend_gadget(dwc);
+		dwc3_gadget_relax();
 		break;
 	case DWC3_LINK_STATE_RESUME:
 		dwc3_resume_gadget(dwc);
+		dwc3_gadget_stay_awake();
 		break;
 	default:
 		/* do nothing */
@@ -4466,6 +4500,7 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 	if (!dwc->suspended && next == DWC3_LINK_STATE_U3) {
 		dwc->suspended = true;
 		dwc3_suspend_gadget(dwc);
+		dwc3_gadget_relax();
 	}
 
 	dwc->link_state = next;
@@ -4794,6 +4829,16 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 	if (dwc->sys_wakeup)
 		device_wakeup_disable(dwc->sysdev);
 
+	{
+		struct wakeup_source *ws;
+		unsigned long flags;
+
+		ws = wakeup_source_register(dwc->dev, "dwc3-gadget-active");
+		spin_lock_irqsave(&dwc3_gadget_ws_lock, flags);
+		dwc3_gadget_ws = ws;
+		spin_unlock_irqrestore(&dwc3_gadget_ws_lock, flags);
+	}
+
 	return 0;
 
 err5:
@@ -4820,8 +4865,17 @@ err0:
 
 void dwc3_gadget_exit(struct dwc3 *dwc)
 {
+	struct wakeup_source *ws;
+	unsigned long flags;
+
 	if (!dwc->gadget)
 		return;
+
+	spin_lock_irqsave(&dwc3_gadget_ws_lock, flags);
+	ws = dwc3_gadget_ws;
+	dwc3_gadget_ws = NULL;
+	spin_unlock_irqrestore(&dwc3_gadget_ws_lock, flags);
+	wakeup_source_unregister(ws);
 
 	dwc3_enable_susphy(dwc, true);
 	usb_del_gadget(dwc->gadget);
