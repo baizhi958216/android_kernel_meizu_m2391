@@ -861,6 +861,58 @@ int qcom_socinfo_get_adreno(struct qcom_socinfo_adreno *gpu)
 }
 EXPORT_SYMBOL_GPL(qcom_socinfo_get_adreno);
 
+/* Qualcomm NFC and board userspace read the hardware platform name from soc0. */
+static const char *const socinfo_hw_platform[] = {
+	[0]  = "Unknown",
+	[1]  = "Surf",
+	[2]  = "FFA",
+	[3]  = "Fluid",
+	[4]  = "SVLTE_FFA",
+	[5]  = "SLVTE_SURF",
+	[7]  = "MDM_MTP_NO_DISPLAY",
+	[8]  = "MTP",
+	[9]  = "Liquid",
+	[10] = "Dragon",
+	[11] = "QRD",
+	[13] = "HRD",
+	[14] = "DTV",
+	[21] = "RCM",
+	[23] = "STP",
+	[24] = "SBC",
+	[25] = "ADP",
+	[31] = "HDK",
+	[32] = "IOT",
+	[33] = "ATP",
+	[34] = "IDP",
+	[36] = "WDP",
+	[39] = "X100",
+};
+
+static ssize_t hw_platform_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	const struct socinfo *info;
+	size_t size;
+	u32 hw_plat;
+	const char *name;
+
+	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_HW_SW_BUILD_ID, &size);
+	if (IS_ERR(info))
+		return PTR_ERR(info);
+	if (size < offsetofend(struct socinfo, hw_plat) ||
+	    le32_to_cpu(info->fmt) < SOCINFO_VERSION(0, 3))
+		return -ENODATA;
+
+	hw_plat = le32_to_cpu(info->hw_plat);
+	name = hw_plat < ARRAY_SIZE(socinfo_hw_platform) ?
+	       socinfo_hw_platform[hw_plat] : NULL;
+	if (!name)
+		name = "Unknown";
+
+	return sysfs_emit(buf, "%s\n", name);
+}
+static DEVICE_ATTR_RO(hw_platform);
+
 /* Qualcomm display userspace reads a hexadecimal mask of disabled parts. */
 static ssize_t subset_parts_show(struct device *dev, struct device_attribute *attr,
 				 char *buf)
@@ -884,13 +936,40 @@ static ssize_t subset_parts_show(struct device *dev, struct device_attribute *at
 }
 static DEVICE_ATTR_RO(subset_parts);
 
-static struct attribute *socinfo_subset_attrs[] = {
+static umode_t socinfo_attr_is_visible(struct kobject *kobj,
+				       struct attribute *attr, int n)
+{
+	const struct socinfo *info;
+	size_t size;
+	u32 num_parts;
+
+	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_HW_SW_BUILD_ID, &size);
+	if (IS_ERR(info))
+		return 0;
+
+	if (attr == &dev_attr_hw_platform.attr) {
+		if (size >= offsetofend(struct socinfo, hw_plat) &&
+		    le32_to_cpu(info->fmt) >= SOCINFO_VERSION(0, 3))
+			return attr->mode;
+		return 0;
+	}
+
+	if (attr == &dev_attr_subset_parts.attr)
+		return socinfo_subset_table(info, size, &num_parts) ?
+		       attr->mode : 0;
+
+	return attr->mode;
+}
+
+static struct attribute *socinfo_custom_attrs[] = {
+	&dev_attr_hw_platform.attr,
 	&dev_attr_subset_parts.attr,
 	NULL,
 };
 
-static const struct attribute_group socinfo_subset_group = {
-	.attrs = socinfo_subset_attrs,
+static const struct attribute_group socinfo_custom_group = {
+	.attrs = socinfo_custom_attrs,
+	.is_visible = socinfo_attr_is_visible,
 };
 
 static int qcom_socinfo_probe(struct platform_device *pdev)
@@ -898,7 +977,6 @@ static int qcom_socinfo_probe(struct platform_device *pdev)
 	struct qcom_socinfo *qs;
 	struct socinfo *info;
 	size_t item_size;
-	u32 num_parts;
 
 	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_HW_SW_BUILD_ID,
 			      &item_size);
@@ -930,8 +1008,7 @@ static int qcom_socinfo_probe(struct platform_device *pdev)
 			return -ENOMEM;
 	}
 
-	if (socinfo_subset_table(info, item_size, &num_parts))
-		qs->attr.custom_attr_group = &socinfo_subset_group;
+	qs->attr.custom_attr_group = &socinfo_custom_group;
 
 	qs->soc_dev = soc_device_register(&qs->attr);
 	if (IS_ERR(qs->soc_dev))
