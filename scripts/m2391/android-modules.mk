@@ -132,14 +132,15 @@ M2391_ANDROID_VENDOR_MODULES := adsp_sleepmon.ko ai11ba.ko aks-adc-joystick.ko a
     subsystem_sleep_stats.ko swr_ctrl_dlkm.ko swr_dlkm.ko swr_dmic_dlkm.ko \
     swr_haptics_dlkm.ko sync_fence.ko synx-driver.ko sysmon_subsystem_stats.ko \
     tcsrcc-kalama.ko test_rtc_lib.ko thermal_minidump.ko thermal_pause.ko \
-    time_test.ko tmecom-intf.ko tz_log_dlkm.ko ucsi_glink.ko \
-    ufs-qcom.ko usb_f_ccid.ko usb_f_cdev.ko usb_f_diag.ko \
-    usb_f_gsi.ko usb_f_qdss.ko usbmon.ko v4l2loopback.ko \
-    videocc-kalama.ko vl53l1.ko wcd937x_dlkm.ko wcd937x_slave_dlkm.ko \
-    wcd938x_dlkm.ko wcd938x_slave_dlkm.ko wcd939x_dlkm.ko wcd939x_slave_dlkm.ko \
-    wcd9xxx_dlkm.ko wcd_core_dlkm.ko wlan_firmware_service.ko wsa883x_dlkm.ko \
-    wsa884x_dlkm.ko xcharge_chg_interface.ko xcharge_chg_manager.ko xcharge_mbattery_logger.ko \
-    xcharge_notify_subsys.ko xcharge_thermal.ko zram.ko zsmalloc.ko
+    time_test.ko tipc.ko tipc_diag.ko tmecom-intf.ko \
+    tz_log_dlkm.ko ucsi_glink.ko ufs-qcom.ko usb_f_ccid.ko \
+    usb_f_cdev.ko usb_f_diag.ko usb_f_gsi.ko usb_f_qdss.ko \
+    usbmon.ko v4l2loopback.ko videocc-kalama.ko vl53l1.ko \
+    wcd937x_dlkm.ko wcd937x_slave_dlkm.ko wcd938x_dlkm.ko wcd938x_slave_dlkm.ko \
+    wcd939x_dlkm.ko wcd939x_slave_dlkm.ko wcd9xxx_dlkm.ko wcd_core_dlkm.ko \
+    wlan_firmware_service.ko wsa883x_dlkm.ko wsa884x_dlkm.ko xcharge_chg_interface.ko \
+    xcharge_chg_manager.ko xcharge_mbattery_logger.ko xcharge_notify_subsys.ko xcharge_thermal.ko \
+    zram.ko zsmalloc.ko
 M2391_ANDROID_SYSTEM_MODULES := 6lowpan.ko 8021q.ko 9pnet.ko 9pnet_fd.ko \
     aqc111.ko asix.ko aux-bridge.ko aux-hpd-bridge.ko \
     ax88179_178a.ko bluetooth.ko bsd_comp.ko btbcm.ko \
@@ -164,10 +165,10 @@ M2391_ANDROID_SYSTEM_MODULES := 6lowpan.ko 8021q.ko 9pnet.ko 9pnet_fd.ko \
     r8152.ko r8153_ecm.ko regmap-ram.ko regmap-raw-ram.ko \
     rfcomm.ko rfkill.ko rpmsg_char.ko rtl8150.ko \
     slcan.ko slhc.ko soc-usb.ko thunderbolt.ko \
-    tipc.ko tipc_diag.ko usb_f_audio_source.ko usbnet.ko \
-    usbserial.ko vcan.ko vcpu_stall_detector.ko virtio_balloon.ko \
-    virtio_blk.ko virtio_console.ko virtio_pci.ko virtio_pci_legacy_dev.ko \
-    virtio_pci_modern_dev.ko vmw_vsock_virtio_transport.ko wwan.ko
+    usb_f_audio_source.ko usbnet.ko usbserial.ko vcan.ko \
+    vcpu_stall_detector.ko virtio_balloon.ko virtio_blk.ko virtio_console.ko \
+    virtio_pci.ko virtio_pci_legacy_dev.ko virtio_pci_modern_dev.ko vmw_vsock_virtio_transport.ko \
+    wwan.ko
 M2391_ANDROID_RAMDISK_LOAD := qcom-scm.ko qcom_hwspinlock.ko smem.ko cmd-db.ko \
     qcom_rpmh.ko proxy-consumer.ko rpmh-regulator.ko qcom_aoss.ko \
     qcom-ipcc.ko msm_qmp.ko tmecom-intf.ko qcom_ice.ko \
@@ -306,18 +307,18 @@ M2391_ANDROID_VENDOR_LOAD := msm_sysstats.ko mhi.ko mhi_dev_satellite.ko pinctrl
     cs_press_m68.ko haptic_hv.ko pwm_ir.ko ai11ba.ko \
     vl53l1.ko stm_nfc_i2c.ko nxp-nci.ko mz_gesture_ts.ko \
     qts.ko goodix_ts.ko msm_video.ko v4l2loopback.ko \
-    nxp-sr100.ko msm_kgsl.ko meizu-sys.ko mpower_logger.ko \
-    mz_compaction_opt.ko mz_freq_qos.ko mz_kshrink_slabd.ko mz_mrg.ko \
-    xcharge_chg_interface.ko xcharge_mbattery_logger.ko xcharge_notify_subsys.ko xcharge_thermal.ko \
-    arm_smmu.ko bcl_pmic5.ko camcc-kalama.ko clk-rpmh.ko \
-    cmd-db.ko cpu_hotplug.ko dcvs_fp.ko dispcc-kalama.ko \
-    gcc-kalama.ko gdsc-regulator.ko icc-bcm-voter.ko kalama-shmbridge.ko \
-    llcc-qcom.ko mem_buf.ko mem_buf_dev.ko minidump.ko \
-    msm_qmp.ko nvmem_qcom-spmi-sdam.ko phy-qcom-ufs-qmp-v4-kalama.ko pinctrl-kalama.ko \
-    qcom_aoss.ko qcom-cpufreq-hw.ko qcom-dcvs.ko qcom_dma_heaps.ko \
-    qcom_hwspinlock.ko qcom-i2c-pmic.ko qcom-ipcc.ko qcom_llcc_pmu.ko \
-    qcom-pdc.ko qcom-pm8008-split-regulator.ko qcom-reboot-reason.ko qcom_rpmh.ko \
-    qcom-scm.ko qcom-spmi-pmic.ko qcom_tsens.ko qnoc-sm8550.ko \
-    rpmh-regulator.ko rtc-pm8xxx.ko secure_buffer.ko smem.ko \
-    spmi-pmic-arb.ko tcsrcc-kalama.ko thermal_pause.ko tmecom-intf.ko \
-    ufs-qcom.ko videocc-kalama.ko
+    nxp-sr100.ko msm_kgsl.ko tipc.ko meizu-sys.ko \
+    mpower_logger.ko mz_compaction_opt.ko mz_freq_qos.ko mz_kshrink_slabd.ko \
+    mz_mrg.ko xcharge_chg_interface.ko xcharge_mbattery_logger.ko xcharge_notify_subsys.ko \
+    xcharge_thermal.ko arm_smmu.ko bcl_pmic5.ko camcc-kalama.ko \
+    clk-rpmh.ko cmd-db.ko cpu_hotplug.ko dcvs_fp.ko \
+    dispcc-kalama.ko gcc-kalama.ko gdsc-regulator.ko icc-bcm-voter.ko \
+    kalama-shmbridge.ko llcc-qcom.ko mem_buf.ko mem_buf_dev.ko \
+    minidump.ko msm_qmp.ko nvmem_qcom-spmi-sdam.ko phy-qcom-ufs-qmp-v4-kalama.ko \
+    pinctrl-kalama.ko qcom_aoss.ko qcom-cpufreq-hw.ko qcom-dcvs.ko \
+    qcom_dma_heaps.ko qcom_hwspinlock.ko qcom-i2c-pmic.ko qcom-ipcc.ko \
+    qcom_llcc_pmu.ko qcom-pdc.ko qcom-pm8008-split-regulator.ko qcom-reboot-reason.ko \
+    qcom_rpmh.ko qcom-scm.ko qcom-spmi-pmic.ko qcom_tsens.ko \
+    qnoc-sm8550.ko rpmh-regulator.ko rtc-pm8xxx.ko secure_buffer.ko \
+    smem.ko spmi-pmic-arb.ko tcsrcc-kalama.ko thermal_pause.ko \
+    tmecom-intf.ko ufs-qcom.ko videocc-kalama.ko
