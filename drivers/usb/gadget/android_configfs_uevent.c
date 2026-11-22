@@ -248,7 +248,8 @@ static void __android_set_connected(struct android_uevent_opts *opts,
 	// Don't send the uevent if connected state is not changed
 	if (opts->connected != connected) {
 		opts->connected = connected;
-		schedule_work(&opts->work);
+		/* Defer userspace notifications until the suspend freezer thaws. */
+		queue_work(system_freezable_wq, &opts->work);
 	}
 	spin_unlock_irqrestore(&opts_lock, flags);
 }
@@ -262,7 +263,7 @@ static void __android_set_configured(struct android_uevent_opts *opts,
 	// Don't send the uevent if configure state is not changed
 	if (opts->configured != configured) {
 		opts->configured = configured;
-		schedule_work(&opts->work);
+		queue_work(system_freezable_wq, &opts->work);
 	}
 	spin_unlock_irqrestore(&opts_lock, flags);
 }
