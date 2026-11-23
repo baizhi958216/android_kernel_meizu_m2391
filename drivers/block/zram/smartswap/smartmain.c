@@ -7,7 +7,6 @@
 
 #include <linux/slab.h>
 #include <linux/swap.h>
-#include <linux/meizu_vip_task.h>
 #include <linux/cpu.h>
 #include <linux/pagemap.h>
 #include <trace/hooks/mm.h>

@@ -8,7 +8,6 @@
 #include <linux/sched/topology.h>
 #include <linux/sched/walt.h>
 #include <soc/qcom/pmu_lib.h>
-#include <linux/meizu_thermal_boost.h>
 #include <linux/slab.h>
 #include <linux/scmi_plh.h>
 #include <linux/kobject.h>
@@ -203,14 +202,9 @@ static int apply_limit(struct perf_limit *limit, enum perf_constraint kind, s32 
 {
 	int ret;
 
-	if (kind == MINIMUM && IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
-		mz_thermal_boost_request(limit->policy, value);
 	ret = freq_qos_update_request(&limit->request[kind], value);
-	if (ret >= 0) {
+	if (ret >= 0)
 		limit->value[kind] = value;
-		if (kind == MINIMUM && IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
-			mz_thermal_boost_restore(limit->policy, value);
-	}
 	return ret < 0 ? ret : 0;
 }
 

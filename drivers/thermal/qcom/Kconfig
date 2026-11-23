@@ -56,13 +56,9 @@ config QCOM_LMH
 
 source "drivers/thermal/qcom/Kconfig.m2391-sensors"
 
-config MEIZU_THERMAL_BOOST
-	tristate "Meizu thermal boost control"
-	depends on CPU_FREQ && PROC_FS
-
 config QTI_CPUFREQ_CDEV
 	tristate "Qualcomm CPU cluster frequency cooling"
-	depends on CPU_FREQ && OF && (MEIZU_THERMAL_BOOST || !MEIZU_THERMAL_BOOST)
+	depends on CPU_FREQ && OF
 
 config QTI_CPU_VOLTAGE_COOLING_DEVICE
 	tristate "Qualcomm shared CPU rail cooling"

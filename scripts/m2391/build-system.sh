@@ -45,21 +45,11 @@ extbuild qcom/opensource/touch-drivers/mz_gesture \
 	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/system/Module.symvers"
 extbuild meizu/power-notify
 extbuild meizu/storage
-extbuild meizu/bootloader-lock \
-	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/system/Module.symvers $out/m2391-external/meizu/storage/Module.symvers"
-extbuild meizu/bootloader-log
-extbuild meizu/key-value KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/storage/Module.symvers"
-extbuild meizu/reset-info KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/storage/Module.symvers"
-extbuild meizu/reclaim-opt
-extbuild meizu/compaction-opt
-extbuild meizu/kshrink-slabd
-extbuild meizu/multiple-rail-governor
 extbuild meizu/tof-ai11ba KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/system/Module.symvers"
 tof_symbols=("$out/m2391-external/meizu/system/Module.symvers"
              "$out/m2391-external/meizu/storage/Module.symvers"
              "$out/m2391-external/meizu/tof-ai11ba/Module.symvers")
 extbuild meizu/tof-vl53l1 KBUILD_EXTRA_SYMBOLS="${tof_symbols[*]}"
-extbuild meizu/v4l2loopback
 extbuild meizu/pwm-ir
 extbuild meizu/audio-dummy
 extbuild meizu/cs35l45
@@ -95,28 +85,15 @@ secure=qcom/opensource/securemsm-kernel
 extbuild "$secure/smcinvoke"
 extbuild "$secure/qrng"
 extbuild "$secure/crypto-qti"
-extbuild "$secure/tz_log"
-extbuild meizu/rpmb-control KBUILD_EXTRA_SYMBOLS="$out/m2391-external/meizu/storage/Module.symvers"
 extbuild "$secure/hdcp" KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$secure/smcinvoke/Module.symvers"
 
 extbuild meizu/boot-mode
-extbuild meizu/freq-qos
-thermal_symbols=("$out/m2391-external/meizu/system/Module.symvers"
-                 "$out/m2391-external/meizu/boot-mode/Module.symvers")
-extbuild meizu/thermal-log KBUILD_EXTRA_SYMBOLS="${thermal_symbols[*]}"
 input_symbols=("$out/m2391-external/meizu/boot-mode/Module.symvers"
                "$out/m2391-external/meizu/system/Module.symvers"
                "$out/m2391-external/meizu/storage/Module.symvers")
-for path in meizu/haptic-hv meizu/pressure-f71 meizu/pressure-m68; do
-	extbuild "$path" KBUILD_EXTRA_SYMBOLS="${input_symbols[*]}"
-done
-extbuild meizu/aks-adc
-extbuild meizu/aks-joystick
+extbuild meizu/haptic-hv KBUILD_EXTRA_SYMBOLS="${input_symbols[*]}"
 extbuild nxp/opensource/uwb
-extbuild st/opensource/st54se-gpio
-for path in nxp/opensource/driver st/opensource/nfc; do
-	extbuild "$path" KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$secure/smcinvoke/Module.symvers"
-done
+extbuild nxp/opensource/driver KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$secure/smcinvoke/Module.symvers"
 
 mm=qcom/opensource/mm-drivers
 extbuild "$mm/msm_ext_display" MSM_EXT_DISPLAY_ROOT="$external/$mm/"
@@ -134,11 +111,10 @@ display_symbols=("$out/m2391-external/meizu/system/Module.symvers"
 extbuild "$display/msm" DISPLAY_ROOT="$external/$display" KERNEL_SRC="$kernel" \
 	CONFIG_ARCH_KALAMA=y KBUILD_EXTRA_SYMBOLS="${display_symbols[*]}"
 gpu=qcom/opensource/graphics-kernel
-gpu_symbols=("$out/m2391-external/$mm/hw_fence/Module.symvers"
-             "$out/m2391-external/meizu/thermal-log/Module.symvers")
+gpu_symbols=("$out/m2391-external/$mm/hw_fence/Module.symvers")
 # GPU rendering on m2391 must also work with the CoreSight trace modules disabled.
 extbuild "$gpu" KGSL_PATH="$external/$gpu" KERNEL_SRC="$kernel" CONFIG_ARCH_KALAMA=y \
-	CONFIG_QCOM_KGSL=m CONFIG_CORESIGHT= CONFIG_QCOM_KGSL_MEIZU_THERMAL_LOG=y \
+	CONFIG_QCOM_KGSL=m CONFIG_CORESIGHT= \
 	KBUILD_EXTRA_SYMBOLS="${gpu_symbols[*]}"
 
 audio=qcom/opensource/audio-kernel
@@ -186,7 +162,7 @@ extbuild "$cld" ANDROID_BUILD_TOP= WLAN_PLATFORM_ROOT="$external/$wlan" WLAN_ROO
 	BOARD_PLATFORM=kalama MODNAME=kiwi_v2 KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$wlan/Module.symvers"
 bt=qcom/opensource/bt-kernel
 extbuild "$bt" BT_ROOT="$external/$bt" CONFIG_MSM_BT_POWER=m CONFIG_BTFM_SLIM=m \
-	CONFIG_SLIM_BTFM_CODEC=n CONFIG_I2C_RTC6226_QCA=m \
+	CONFIG_SLIM_BTFM_CODEC=n CONFIG_I2C_RTC6226_QCA=n \
 	KBUILD_EXTRA_SYMBOLS="$out/m2391-external/$wlan/Module.symvers"
 
 rmnet=qcom/opensource/datarmnet/core

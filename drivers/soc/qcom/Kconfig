@@ -355,13 +355,6 @@ config QCOM_INLINE_CRYPTO_ENGINE
 	tristate
 	select QCOM_SCM
 
-config MEIZU_FREQ_QOS
-	bool "Meizu frequency QoS diagnostics support"
-	depends on CPU_FREQ && ANDROID_VENDOR_HOOKS && STACKTRACE
-	help
-	  Permit the Meizu frequency diagnostics module to enumerate live
-	  frequency requests while the PM QoS request list is locked.
-
 config MSM_PERFORMANCE
 	tristate "Qualcomm graphics performance events"
 	depends on SYSFS

@@ -7,7 +7,6 @@
 #include <trace/hooks/sched.h>
 
 #include "walt.h"
-#include <linux/meizu_vip_task.h>
 #include "trace.h"
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
 #include <sched_assist/sa_common.h>
@@ -136,18 +135,6 @@ static void walt_rt_energy_aware_wake_cpu(struct task_struct *task, struct cpuma
 		order_index = 0;
 #endif
 
-#ifdef CONFIG_MEIZU_VIP_TASK
-	if (sched_boost_type == FULL_THROTTLE_BOOST && task->pid == task->tgid &&
-	    num_sched_clusters && test_task_vip(task)) {
-		for_each_cpu_and(cpu, lowest_mask, &cpu_array[0][num_sched_clusters - 1]) {
-			if (cpu_active(cpu) && !cpu_halted(cpu) &&
-			    !cpu_partial_halted(cpu) && !sched_cpu_high_irqload(cpu)) {
-				*best_cpu = cpu;
-				return;
-			}
-		}
-	}
-#endif
 	rcu_read_lock();
 
 	if (soc_feat(SOC_ENABLE_SILVER_RT_SPREAD_BIT) && order_index == 0)

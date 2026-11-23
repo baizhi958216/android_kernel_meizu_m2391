@@ -16,7 +16,6 @@
 #include <linux/timekeeping.h>
 #include <linux/suspend.h>
 #include "kalama-watchdog.h"
-#include "mz_enhance_qcom_wdog.h"
 
 /* Flyme 12.6 qcom_wdt_register stores these millisecond values as a pair. */
 #define KALAMA_PET_MS	15360
@@ -88,7 +87,6 @@ static void kalama_wdt_pet(struct kthread_work *work)
 		goto unlock;
 
 	cpus_read_lock();
-	mz_get_cpu_ping_mask(&ping, wdt->idle);
 	cpumask_clear(&ping);
 	cpumask_clear(&wdt->alive);
 	WRITE_ONCE(wdt->dump.acknowledged_cpus, 0);
@@ -144,7 +142,6 @@ static irqreturn_t kalama_wdt_bark(int irq, void *data)
 			  enabled, elapsed);
 	}
 	dev_emerg(wdt->dev, "last CPU acknowledgments %*pbl\n", cpumask_pr_args(&wdt->alive));
-	mz_dump_wdog_cpu(wdt->worker->task);
 	panic("Kalama Gunyah apps watchdog bark");
 }
 

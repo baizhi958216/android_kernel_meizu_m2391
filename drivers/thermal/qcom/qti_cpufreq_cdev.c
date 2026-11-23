@@ -8,7 +8,6 @@
 
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
-#include <linux/meizu_thermal_boost.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
@@ -41,9 +40,6 @@ static int cpufreq_cdev_set_state(struct thermal_cooling_device *cdev,
 	if (freq_qos_request_active(&cdev_data->qos_max_freq_req)) {
 		freq = cdev_data->freq_table[state];
 		pr_debug("cdev:%s Limit:%u\n", cdev->type, freq);
-		if (IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
-			mz_thermal_boost_store(&cdev_data->qos_max_freq_req,
-					cdev_data->policy, &freq);
 		ret = freq_qos_update_request(&cdev_data->qos_max_freq_req,
 						freq);
 		if (ret < 0) {
@@ -90,8 +86,6 @@ static void cpufreq_cdev_release(void *data)
 {
 	struct cpufreq_cdev_device *state = data;
 
-	if (IS_REACHABLE(CONFIG_MEIZU_THERMAL_BOOST))
-		mz_thermal_boost_forget(&state->qos_max_freq_req);
 	freq_qos_remove_request(&state->qos_max_freq_req);
 	cpufreq_cpu_put(state->policy);
 }

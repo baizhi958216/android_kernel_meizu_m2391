@@ -68,11 +68,6 @@ void smartswap_record_fault_latency(s64 ns)
 	/* Original statistics are opt-in below the strict >100000 us slow-fault threshold. */
 	if (!stat || (!READ_ONCE(lat_loglevel) && ns < 100001000))
 		return;
-	#ifdef CONFIG_MEIZU_VIP_TASK
-	if (test_task_vip(current)) {
-		group = 3;
-	} else
-#endif
 	{
 		rcu_read_lock();
 		css = task_css(current, cpuset_cgrp_id);

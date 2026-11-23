@@ -31,12 +31,5 @@ config SCHED_CONSERVATIVE_BOOST_LPM_BIAS
 	  modes on a cpu if conservative boost is active. The cpu
 	  will not enter low power mode for a hysteresis time period,
 	  which can be configured from userspace.
-config MEIZU_VIP_TASK
-	bool "Meizu foreground VIP scheduling"
-	depends on SMP && CGROUP_SCHED && FAIR_GROUP_SCHED && PROC_FS
-	depends on ANDROID_VENDOR_HOOKS && ANDROID_VENDOR_OEM_DATA && !PREEMPT_RT
-	help
-	  Prioritize the Meizu top-app and userspace-selected foreground tasks
-	  on fair runqueues and in the mutex and rwsem waiting queues.
 
 endmenu
