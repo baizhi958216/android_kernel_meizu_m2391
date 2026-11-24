@@ -724,6 +724,8 @@ static inline void gpi_write_ch_db(struct gchan *gchan,
 	struct gpii *gpii = gchan->gpii;
 	phys_addr_t p_wp;
 
+	/* Ensure TRE writes to coherent ring memory complete before ringing DB */
+	wmb();
 	p_wp = to_physical(ring, wp);
 	gpi_write_reg(gpii, gchan->ch_cntxt_db_reg, p_wp);
 }
@@ -734,6 +736,7 @@ static inline void gpi_write_ev_db(struct gpii *gpii,
 {
 	phys_addr_t p_wp;
 
+	wmb();
 	p_wp = ring->phys_addr + (wp - ring->base);
 	gpi_write_reg(gpii, gpii->ev_cntxt_db_reg, p_wp);
 }
@@ -1118,6 +1121,10 @@ static void gpi_process_qup_notif_event(struct gchan *gchan,
 	    !(notif_event->status & GPI_I2C_QUP_ERR_MASK))
 		return;
 
+	dev_warn_ratelimited(gpii->gpi_dev->dev,
+			     "I2C QUP_NOTIF error chid:%u status:0x%x\n",
+			     notif_event->chid, notif_event->status);
+
 	if (unlikely(gchan->pm_state != ACTIVE_STATE))
 		return;
 
@@ -1164,6 +1171,7 @@ static void gpi_process_events(struct gpii *gpii)
 	u32 chid, type;
 
 	cntxt_rp = gpi_read_reg(gpii, gpii->ev_ring_rp_lsb_reg);
+	dma_rmb();
 	rp = to_virtual(ev_ring, cntxt_rp);
 
 	do {
@@ -1207,8 +1215,10 @@ static void gpi_process_events(struct gpii *gpii)
 
 		/* clear pending IEOB events */
 		gpi_write_reg(gpii, gpii->ieob_clr_reg, BIT(0));
+		mb();
 
 		cntxt_rp = gpi_read_reg(gpii, gpii->ev_ring_rp_lsb_reg);
+		dma_rmb();
 		rp = to_virtual(ev_ring, cntxt_rp);
 
 	} while (rp != ev_ring->rp);
@@ -1557,6 +1567,8 @@ static int gpi_terminate_all(struct dma_chan *chan)
 
 	/* stop the channel */
 	for (i = schid; i < echid; i++) {
+		u32 ch_state;
+
 		gchan = &gpii->gchan[i];
 
 		/* disable ch state so no more TRE processing */
@@ -1564,8 +1576,12 @@ static int gpi_terminate_all(struct dma_chan *chan)
 		gchan->pm_state = PREPARE_TERMINATE;
 		write_unlock_irq(&gpii->pm_lock);
 
-		/* send command to Stop the channel */
-		ret = gpi_stop_chan(gchan);
+		ch_state = gpi_read_reg(gpii, gchan->ch_cntxt_base_reg +
+					CNTXT_0_CONFIG);
+		ch_state = FIELD_GET(GPII_n_CH_k_CNTXT_0_CHSTATE, ch_state);
+		if (ch_state == CH_STATE_STARTED ||
+		    ch_state == CH_STATE_STOP_IN_PROC)
+			ret = gpi_stop_chan(gchan);
 	}
 
 	/* reset the channels (clears any pending tre) */

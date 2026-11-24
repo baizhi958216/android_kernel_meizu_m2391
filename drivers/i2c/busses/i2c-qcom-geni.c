@@ -673,7 +673,8 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
 	return num;
 
 err:
-	dev_err(gi2c->se.dev, "GPI transfer failed: %d\n", ret);
+	dev_err(gi2c->se.dev, "GPI transfer failed: %d (msg[%d/%d] flags:0x%x len:%d)\n",
+		ret, i, num, msgs[i].flags, msgs[i].len);
 	dmaengine_terminate_sync(gi2c->tx_c);
 	geni_i2c_gpi_unmap(gi2c, &msgs[i], tx_buf, tx_addr, rx_buf, rx_addr);
 	return ret;
@@ -720,12 +721,12 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
 		return ret;
 	}
 
-	qcom_geni_i2c_conf(gi2c);
-
-	if (gi2c->gpi_mode)
+	if (gi2c->gpi_mode) {
 		ret = geni_i2c_gpi_xfer(gi2c, msgs, num);
-	else
+	} else {
+		qcom_geni_i2c_conf(gi2c);
 		ret = geni_i2c_fifo_xfer(gi2c, msgs, num);
+	}
 
 	pm_runtime_put_autosuspend(gi2c->se.dev);
 	gi2c->cur = NULL;
