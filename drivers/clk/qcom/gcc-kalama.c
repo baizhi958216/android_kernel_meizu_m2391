@@ -3626,7 +3626,11 @@ static void kalama_restore_init_data(void *data)
 			gcc_kalama_clocks[i]->hw.init = gcc->original[i];
 }
 
-/* The downstream binding also names devices whose clocks must stay on. */
+/*
+ * The downstream binding lists devices whose clocks should not be gated as
+ * unused before their drivers probe, while still allowing normal runtime PM
+ * and system sleep clock gating once managed by a driver.
+ */
 static void kalama_keep_device_clocks(struct device_node *provider,
 				      struct device_node *node, struct kalama_gcc *gcc)
 {
@@ -3639,7 +3643,7 @@ static void kalama_keep_device_clocks(struct device_node *provider,
 			continue;
 		if (args.np == provider && args.args_count == 1 &&
 		    args.args[0] < ARRAY_SIZE(gcc->init))
-			gcc->init[args.args[0]].flags |= CLK_IS_CRITICAL;
+			gcc->init[args.args[0]].flags |= CLK_IGNORE_UNUSED;
 		of_node_put(args.np);
 	}
 }
