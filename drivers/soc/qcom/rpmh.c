@@ -371,8 +371,9 @@ int rpmh_write_batch(const struct device *dev, enum rpmh_state state,
 		rpm_msgs[i].completion = compl;
 		ret = rpmh_rsc_send_data(ctrlr_to_drv(ctrlr), &rpm_msgs[i].msg);
 		if (ret) {
-			pr_err("Error(%d) sending RPMH message addr=%#x\n",
-			       ret, rpm_msgs[i].msg.cmds[0].addr);
+			if (ret != -EBUSY)
+				pr_err("Error(%d) sending RPMH message addr=%#x\n",
+				       ret, rpm_msgs[i].msg.cmds[0].addr);
 			break;
 		}
 	}
