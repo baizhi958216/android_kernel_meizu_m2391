@@ -8175,6 +8175,7 @@
 			clocks = <0x3b 0x00 0x31 0x00 0x32 0x00 0x3a 0x00 0x52 0x00 0x53 0x00 0x54 0x00>;
 			clock-names = "xo_clk_src", "camcc", "dispcc", "gcc", "gpucc", "tcsrcc", "videocc";
 			#clock-cells = <0x01>;
+			status = "disabled";
 			phandle = <0x3b3>;
 		};
 
@@ -17697,7 +17698,7 @@
 				pinctrl-names = "default", "sleep";
 				pinctrl-0 = <0x1e3 0x1e4>;
 				pinctrl-1 = <0x1e5>;
-				status = "ok";
+				status = "disabled";
 				phandle = <0x467>;
 			};
 
