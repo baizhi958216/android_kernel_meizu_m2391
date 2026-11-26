@@ -329,7 +329,7 @@ static void pmic_glink_ucsi_callback(const void *data, size_t len, void *priv)
 		pmic_glink_ucsi_write_ack(ucsi, data, len);
 		break;
 	case UC_UCSI_USBC_NOTIFY_IND:
-		schedule_work(&ucsi->notify_work);
+		queue_work(system_freezable_wq, &ucsi->notify_work);
 		break;
 	}
 }
@@ -342,7 +342,7 @@ static void pmic_glink_ucsi_pdr_notify(void *priv, int state)
 	spin_lock_irqsave(&ucsi->state_lock, flags);
 	ucsi->pd_running = (state == SERVREG_SERVICE_STATE_UP);
 	spin_unlock_irqrestore(&ucsi->state_lock, flags);
-	schedule_work(&ucsi->register_work);
+	queue_work(system_freezable_wq, &ucsi->register_work);
 }
 
 static void pmic_glink_ucsi_destroy(void *data)

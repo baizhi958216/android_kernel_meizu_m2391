@@ -292,7 +292,7 @@ static int pm8008_regulator_get_voltage(struct regulator_dev *rdev)
 	u8 vset_raw[2];
 	int rc;
 
-	if (READ_ONCE(pm8008_reg->chip->suspended))
+	if (pm8008_reg->uv > 0 || READ_ONCE(pm8008_reg->chip->suspended))
 		return pm8008_reg->uv;
 
 	rc = pm8008_read(pm8008_reg->regmap,
@@ -328,10 +328,7 @@ static int pm8008_regulator_is_enabled(struct regulator_dev *rdev)
 {
 	struct pm8008_regulator *pm8008_reg = rdev_get_drvdata(rdev);
 
-	if (READ_ONCE(pm8008_reg->chip->suspended))
-		return pm8008_reg->chip_enabled;
-
-	return _pm8008_regulator_is_enabled(pm8008_reg);
+	return pm8008_reg->chip_enabled;
 }
 
 static int pm8008_regulator_enable(struct regulator_dev *rdev)

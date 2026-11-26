@@ -110,6 +110,7 @@ struct dwc3_qcom {
 	void __iomem		*usb_access;
 	struct usb_role_switch	*role_sw;
 	enum usb_role		requested_role;
+	bool			role_pending;
 	bool			data_enabled;
 	struct clk		*core_clk;
 	u32			rate_active, rate_hs, rate_idle;
@@ -862,7 +863,12 @@ static void kalama_update_eud(struct work_struct *work)
 	if (ret < 0)
 		return;
 	mutex_lock(&qcom->role_lock);
-	ret = kalama_update_core(qcom);
+	if (qcom->pm_suspended || qcom->is_suspended) {
+		qcom->role_pending = true;
+		ret = 0;
+	} else {
+		ret = kalama_update_core(qcom);
+	}
 	mutex_unlock(&qcom->role_lock);
 	pm_runtime_put(qcom->dev);
 	if (ret && ret != -EACCES)
@@ -873,7 +879,7 @@ static int kalama_eud_event(struct notifier_block *nb, unsigned long event, void
 {
 	struct dwc3_qcom *qcom = container_of(nb, struct dwc3_qcom, eud_nb);
 
-	schedule_work(&qcom->eud_work);
+	queue_work(system_freezable_wq, &qcom->eud_work);
 	return NOTIFY_OK;
 }
 
@@ -1004,7 +1010,12 @@ static int kalama_set_role(struct usb_role_switch *sw, enum usb_role role)
 		return ret;
 	mutex_lock(&qcom->role_lock);
 	qcom->requested_role = role;
-	ret = kalama_update_core(qcom);
+	if (qcom->pm_suspended || qcom->is_suspended) {
+		qcom->role_pending = true;
+		ret = 0;
+	} else {
+		ret = kalama_update_core(qcom);
+	}
 	mutex_unlock(&qcom->role_lock);
 	pm_runtime_put(qcom->dev);
 
@@ -1346,13 +1357,15 @@ static int __maybe_unused dwc3_qcom_pm_suspend(struct device *dev)
 	bool wakeup = device_may_wakeup(dev);
 	int ret;
 
+	if (qcom->kalama)
+		mutex_lock(&qcom->role_lock);
 	ret = dwc3_qcom_suspend(qcom, wakeup);
-	if (ret)
-		return ret;
+	if (!ret)
+		qcom->pm_suspended = true;
+	if (qcom->kalama)
+		mutex_unlock(&qcom->role_lock);
 
-	qcom->pm_suspended = true;
-
-	return 0;
+	return ret;
 }
 
 static int __maybe_unused dwc3_qcom_pm_resume(struct device *dev)
@@ -1361,13 +1374,20 @@ static int __maybe_unused dwc3_qcom_pm_resume(struct device *dev)
 	bool wakeup = device_may_wakeup(dev);
 	int ret;
 
+	if (qcom->kalama)
+		mutex_lock(&qcom->role_lock);
 	ret = dwc3_qcom_resume(qcom, wakeup);
-	if (ret)
-		return ret;
+	if (!ret) {
+		qcom->pm_suspended = false;
+		if (qcom->kalama && qcom->role_pending) {
+			qcom->role_pending = false;
+			kalama_update_core(qcom);
+		}
+	}
+	if (qcom->kalama)
+		mutex_unlock(&qcom->role_lock);
 
-	qcom->pm_suspended = false;
-
-	return 0;
+	return ret;
 }
 
 static int __maybe_unused dwc3_qcom_runtime_suspend(struct device *dev)
