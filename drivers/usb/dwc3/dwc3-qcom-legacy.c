@@ -113,6 +113,7 @@ struct dwc3_qcom {
 	bool			role_pending;
 	bool			data_enabled;
 	struct clk		*core_clk;
+	struct regulator	*gdsc;
 	u32			rate_active, rate_hs, rate_idle;
 };
 
@@ -473,10 +474,12 @@ static int dwc3_qcom_suspend(struct dwc3_qcom *qcom, bool wakeup)
 	if (qcom->is_suspended)
 		return 0;
 
-	for (i = 0; i < qcom->num_ports; i++) {
-		val = readl(qcom->qscratch_base + pwr_evnt_irq_stat_reg[i]);
-		if (!(val & PWR_EVNT_LPM_IN_L2_MASK))
-			dev_err(qcom->dev, "port-%d HS-PHY not in L2\n", i + 1);
+	if (dwc3_qcom_is_host(qcom)) {
+		for (i = 0; i < qcom->num_ports; i++) {
+			val = readl(qcom->qscratch_base + pwr_evnt_irq_stat_reg[i]);
+			if (!(val & PWR_EVNT_LPM_IN_L2_MASK))
+				dev_err(qcom->dev, "port-%d HS-PHY not in L2\n", i + 1);
+		}
 	}
 
 	for (i = qcom->num_clocks - 1; i >= 0; i--)
@@ -485,6 +488,12 @@ static int dwc3_qcom_suspend(struct dwc3_qcom *qcom, bool wakeup)
 	ret = dwc3_qcom_interconnect_disable(qcom);
 	if (ret)
 		dev_warn(qcom->dev, "failed to disable interconnect: %d\n", ret);
+
+	if (qcom->gdsc) {
+		ret = regulator_disable(qcom->gdsc);
+		if (ret)
+			dev_warn(qcom->dev, "failed to disable USB3 GDSC: %d\n", ret);
+	}
 
 	/*
 	 * The role is stable during suspend as role switching is done from a
@@ -512,11 +521,21 @@ static int dwc3_qcom_resume(struct dwc3_qcom *qcom, bool wakeup)
 	if (dwc3_qcom_is_host(qcom) && wakeup)
 		dwc3_qcom_disable_interrupts(qcom);
 
+	if (qcom->gdsc) {
+		ret = regulator_enable(qcom->gdsc);
+		if (ret) {
+			dev_err(qcom->dev, "failed to enable USB3 GDSC: %d\n", ret);
+			return ret;
+		}
+	}
+
 	for (i = 0; i < qcom->num_clocks; i++) {
 		ret = clk_prepare_enable(qcom->clks[i]);
 		if (ret < 0) {
 			while (--i >= 0)
 				clk_disable_unprepare(qcom->clks[i]);
+			if (qcom->gdsc)
+				regulator_disable(qcom->gdsc);
 			return ret;
 		}
 	}
@@ -1138,12 +1157,17 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 		ret = kalama_get_lane_controls(qcom);
 		if (ret)
 			return dev_err_probe(dev, ret, "USB/DP combo lane controls unavailable\n");
-		ret = devm_regulator_get_enable(dev, "USB3_GDSC");
+		qcom->gdsc = devm_regulator_get(dev, "USB3_GDSC");
+		if (IS_ERR(qcom->gdsc))
+			return dev_err_probe(dev, PTR_ERR(qcom->gdsc), "USB domain unavailable\n");
+		ret = regulator_enable(qcom->gdsc);
 		if (ret)
-			return dev_err_probe(dev, ret, "USB domain unavailable\n");
+			return dev_err_probe(dev, ret, "failed to enable USB domain\n");
 		ret = dwc3_qcom_interconnect_init(qcom);
-		if (ret)
+		if (ret) {
+			regulator_disable(qcom->gdsc);
 			return ret;
+		}
 		mutex_init(&qcom->role_lock);
 	}
 
@@ -1316,6 +1340,8 @@ reset_assert:
 release_icc:
 	if (qcom->kalama)
 		dwc3_qcom_interconnect_exit(qcom);
+	if (qcom->gdsc)
+		regulator_disable(qcom->gdsc);
 	return ret;
 }
 
@@ -1345,6 +1371,8 @@ static void dwc3_qcom_remove(struct platform_device *pdev)
 	qcom->num_clocks = 0;
 
 	dwc3_qcom_interconnect_exit(qcom);
+	if (qcom->gdsc && !qcom->is_suspended)
+		regulator_disable(qcom->gdsc);
 	reset_control_assert(qcom->resets);
 
 	pm_runtime_allow(dev);
