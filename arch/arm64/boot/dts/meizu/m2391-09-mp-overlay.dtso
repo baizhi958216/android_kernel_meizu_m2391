@@ -9519,7 +9519,7 @@
 			status = "okay";
 
 			tof-i2c@01 {
-				status = "okay";
+				status = "disabled";
 				rgltr-cntrl-support;
 				regulator-name = "tof_rgltr";
 				tof_rgltr-supply = <0xffffffff>;
@@ -15730,7 +15730,7 @@
 
 			forcetouch@72 {
 				phandle = <0x1e1>;
-				status = "okay";
+				status = "disabled";
 				panel = <0x1a1>;
 				vdd_2v8-supply = <0xffffffff>;
 				enable1v8_gpio = <0xffffffff 0xa6 0x01>;

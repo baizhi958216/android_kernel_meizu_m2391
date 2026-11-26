@@ -535,7 +535,13 @@ static unsigned int pm8008_regulator_get_mode(struct regulator_dev *rdev)
 	int rc;
 	u8 reg;
 
-	if (READ_ONCE(pm8008_reg->chip->suspended))
+	/*
+	 * Return the cached mode once initialized. Performing an I2C transfer
+	 * here while regulator_list_mutex is held (e.g. regulator_summary)
+	 * resumes the GENI I2C controller, whose clk_vdd_prepare() votes on CX
+	 * and self-deadlocks in regulator_lock_dependent().
+	 */
+	if (pm8008_reg->mode || READ_ONCE(pm8008_reg->chip->suspended))
 		return pm8008_reg->mode;
 
 	rc = pm8008_read(pm8008_reg->regmap,
