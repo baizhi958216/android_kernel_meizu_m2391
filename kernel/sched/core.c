@@ -2697,6 +2697,33 @@ static inline bool is_cpu_allowed(struct task_struct *p, int cpu)
  *    is done.
  */
 
+#ifdef CONFIG_SCHED_PROXY_EXEC
+/*
+ * @p stops donating on @rq: it is woken, or it leaves the runqueue. The
+ * task that runs can still point at @p with blocked_donor until it
+ * schedules, and __mutex_unlock_slowpath() dereferences that pointer.
+ * Meanwhile @p can run on another CPU and exit. So clear the pointer.
+ * The unlock path reads it under the blocked_lock of the running task.
+ */
+static inline void proxy_clear_curr_donor(struct rq *rq, struct task_struct *p)
+{
+	struct task_struct *curr = rq->curr;
+
+	lockdep_assert_rq_held(rq);
+
+	if (READ_ONCE(curr->blocked_donor) != p)
+		return;
+
+	guard(raw_spinlock)(&curr->blocked_lock);
+	if (curr->blocked_donor == p)
+		WRITE_ONCE(curr->blocked_donor, NULL);
+}
+#else /* !CONFIG_SCHED_PROXY_EXEC */
+static inline void proxy_clear_curr_donor(struct rq *rq, struct task_struct *p)
+{
+}
+#endif /* !CONFIG_SCHED_PROXY_EXEC */
+
 /*
  * move_queued_task - move a queued task to new rq.
  *
@@ -2708,6 +2735,7 @@ static struct rq *move_queued_task(struct rq *rq, struct rq_flags *rf,
 	int detached = 0;
 
 	lockdep_assert_rq_held(rq);
+	proxy_clear_curr_donor(rq, p);
 
 	/*
 	 * The vendor hook may drop the lock temporarily, so
@@ -4168,6 +4196,8 @@ static inline bool task_queued_on_rq(struct rq *rq, struct task_struct *task)
 	return task_on_rq_queued(task);
 }
 
+#define MAX_PROXY_CHAIN_DEPTH 1024
+
 /*
  * Returns the unblocked task at the end of the blocked chain starting with p
  * if that chain is composed entirely of tasks enqueued on rq, or NULL otherwise.
@@ -4175,20 +4205,45 @@ static inline bool task_queued_on_rq(struct rq *rq, struct task_struct *task)
 struct task_struct *find_exec_ctx(struct rq *rq, struct task_struct *p)
 {
 	struct task_struct *exec_ctx, *owner;
+	struct task_struct *cycle_checkpoint = p;
+	unsigned int cycle_power = 1;
+	unsigned int cycle_span = 0;
+	int chain_depth = 0;
 
 	if (!sched_proxy_exec())
 		return p;
 
 	lockdep_assert_rq_held(rq);
 
+	if (p->se.sched_delayed)
+		return NULL;
+
 	for (exec_ctx = p; task_is_blocked(exec_ctx) && !task_on_cpu(rq, exec_ctx);
 							exec_ctx = owner) {
+		/* Keep Brent's checkpoint state local to this walk. */
+		if (cycle_span == cycle_power) {
+			cycle_checkpoint = exec_ctx;
+			cycle_power <<= 1;
+			cycle_span = 0;
+		}
 		guard(raw_spinlock)(&exec_ctx->blocked_lock);
 		owner = task_blocked_on_owner(exec_ctx);
 		if (!owner || owner == exec_ctx)
 			break;
 
-		if (!task_queued_on_rq(rq, owner) || task_current_donor(rq, owner)) {
+		if (!task_queued_on_rq(rq, owner) || owner->se.sched_delayed ||
+		    task_current_donor(rq, owner)) {
+			exec_ctx = NULL;
+			break;
+		}
+
+		/*
+		 * Check for cycles, and worst case limit the depth
+		 * we'll proxy to avoid cyclic deadlocks
+		 */
+		cycle_span++;
+		if ((owner == cycle_checkpoint) ||
+		    (++chain_depth > MAX_PROXY_CHAIN_DEPTH)) {
 			exec_ctx = NULL;
 			break;
 		}
@@ -4211,8 +4266,10 @@ void move_queued_task_locked(struct rq *src_rq, struct rq *dst_rq, struct task_s
 
 	while (task) {
 		struct task_struct *owner = NULL;
+		bool blocked;
 
-		if (!task_queued_on_rq(src_rq, task) || task_current_donor(src_rq, task))
+		if (!task_queued_on_rq(src_rq, task) || task->se.sched_delayed ||
+		    task_current_donor(src_rq, task))
 			break;
 		/*
 		 * Never move a task that is running on src_rq (e.g. rq->curr
@@ -4221,10 +4278,19 @@ void move_queued_task_locked(struct rq *src_rq, struct rq *dst_rq, struct task_s
 		if (task_on_cpu(src_rq, task))
 			break;
 
-		if (task_is_blocked(task))
-			owner = task_blocked_on_owner(task);
-
-		__move_queued_task_locked(src_rq, dst_rq, task);
+		proxy_clear_curr_donor(src_rq, task);
+		scoped_guard (raw_spinlock, &task->blocked_lock) {
+			blocked = task_is_blocked(task);
+			if (blocked)
+				owner = task_blocked_on_owner(task);
+		}
+		if (blocked) {
+			deactivate_task(src_rq, task, 0);
+			proxy_set_task_cpu(task, cpu_of(dst_rq));
+			activate_task(dst_rq, task, 0);
+		} else {
+			__move_queued_task_locked(src_rq, dst_rq, task);
+		}
 		if (task == owner)
 			break;
 		task = owner;
@@ -4246,7 +4312,7 @@ int task_is_pushable(struct rq *rq, struct task_struct *p, int cpu)
 	if (!sched_proxy_exec())
 		return __task_is_pushable(rq, p, cpu);
 
-	if (task_rq(p) != rq || !task_on_rq_queued(p))
+	if (task_rq(p) != rq || !task_on_rq_queued(p) || p->se.sched_delayed)
 		return 0;
 
 	exec_ctx = find_exec_ctx(rq, p);
@@ -4282,6 +4348,8 @@ static inline struct task_struct *proxy_resched_idle(struct rq *rq);
  */
 static inline bool proxy_needs_return(struct rq *rq, struct task_struct *p)
 {
+	proxy_clear_curr_donor(rq, p);
+
 	if (!task_is_blocked(p))
 		return false;
 
@@ -5938,6 +6006,12 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 	 */
 	kmap_local_sched_in();
 
+	/*
+	 * Any cached block-layer timestamp (plug->cur_ktime) is stale now,
+	 * invalidate it.
+	 */
+	blk_plug_invalidate_ts();
+
 	fire_sched_in_preempt_notifiers(current);
 	/*
 	 * When switching through a kernel thread, the loop in
@@ -7391,7 +7465,11 @@ static void proxy_migrate_task(struct rq *rq, struct rq_flags *rf,
 	 * before we release the lock.
 	 */
 	proxy_resched_idle(rq);
-	for (; p; p = p->blocked_donor) {
+	while (p && task_on_rq_queued(p)) {
+		struct task_struct *next = p->blocked_donor;
+
+		/* clear blocked_donor so we can't end up in cycles */
+		p->blocked_donor = NULL;
 		WARN_ON(p == rq->curr);
 		deactivate_task(rq, p, DEQUEUE_NOCLOCK);
 		proxy_set_task_cpu(p, target_cpu);
@@ -7401,6 +7479,7 @@ static void proxy_migrate_task(struct rq *rq, struct rq_flags *rf,
 		 * we hold the rq_lock.
 		 */
 		list_add(&p->se.group_node, &migrate_list);
+		p = next;
 	}
 	proxy_release_rq_lock(rq, rf);
 
@@ -7460,8 +7539,6 @@ DEFINE_LOCK_GUARD_1(blocked_on_lock, struct blocked_on_lock,
     lock_blocked_on_lock(_T->lock),
     unlock_blocked_on_lock(_T->lock))
 
-
-#define MAX_PROXY_CHAIN_DEPTH 1024
 
 /*
  * Find runnable lock owner to proxy for mutex blocked donor
@@ -7672,6 +7749,13 @@ find_proxy_task(struct rq *rq, struct task_struct *donor, struct rq_flags *rf)
 		cycle_span++;
 		if ((owner == cycle_checkpoint) ||
 		    (++chain_depth > MAX_PROXY_CHAIN_DEPTH)) {
+			/*
+			 * Never block_task()-deactivate rq->curr in-place
+			 * before it has switched off CPU; switch to rq->idle
+			 * first and break the cycle on the next schedule pass.
+			 */
+			if (curr_in_chain)
+				return proxy_resched_idle(rq);
 			__clear_task_blocked_on(p, NULL);
 			goto deactivate;
 		}
@@ -7993,12 +8077,10 @@ static inline void sched_submit_work(struct task_struct *tsk)
 
 static void sched_update_worker(struct task_struct *tsk)
 {
-	if (tsk->flags & (PF_WQ_WORKER | PF_IO_WORKER | PF_BLOCK_TS)) {
-		if (tsk->flags & PF_BLOCK_TS)
-			blk_plug_invalidate_ts(tsk);
+	if (tsk->flags & (PF_WQ_WORKER | PF_IO_WORKER)) {
 		if (tsk->flags & PF_WQ_WORKER)
 			wq_worker_running(tsk);
-		else if (tsk->flags & PF_IO_WORKER)
+		else
 			io_wq_worker_running(tsk);
 	}
 }

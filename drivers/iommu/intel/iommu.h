@@ -758,6 +758,8 @@ struct dmar_domain {
 
 	atomic_t refcount;
 	unsigned int index;
+	/* pKVM equivalent of the host's iommu_array, indexed by iommu->idx. */
+	struct iommu_domain_info iommu_info[PKVM_MAX_IOMMU_NUM];
 	struct pkvm_memcache mc;
 
 	/* parent page table which the user domain is nested on */
@@ -895,6 +897,7 @@ struct intel_iommu {
 	u64		virta; /* Virtual IRTA register */
 	struct irte	*ir_table; /* VA of hypervisor-protected interrupt remapping table */
 	int		seq_id;	/* sequence id of the iommu */
+	unsigned int	idx;	/* index in the hypervisor's iommu array */
 	int		agaw; /* agaw of this iommu */
 	int		msagaw; /* max sagaw of this iommu */
 	struct q_inval  _qi;    /* Queued invalidation info */
@@ -920,6 +923,9 @@ struct intel_iommu {
 	 */
 	void		*donation_page;
 	pkvm_spinlock_t lock;
+
+	pkvm_spinlock_t did_lock;
+	DECLARE_BITMAP(did_map, PKVM_MAX_DOMAIN_NUM);
 };
 
 /*
@@ -1069,8 +1075,16 @@ static inline struct dmar_domain *to_dmar_domain(struct iommu_domain *dom)
 static inline u16
 domain_id_iommu(struct dmar_domain *domain, struct intel_iommu *iommu)
 {
-	struct iommu_domain_info *info =
-			xa_load(&domain->iommu_array, iommu->seq_id);
+	struct iommu_domain_info *info;
+
+	/*
+	 * Under pKVM, the hypervisor owns domain IDs and the host doesn't
+	 * track them.
+	 */
+	if (pkvm_enabled())
+		return 0;
+
+	info = xa_load(&domain->iommu_array, iommu->seq_id);
 
 	return info->did;
 }
@@ -1643,7 +1657,13 @@ void intel_iommu_disable_iopf(struct device *dev);
 static inline int iopf_for_domain_set(struct iommu_domain *domain,
 				      struct device *dev)
 {
+	struct device_domain_info *info = dev_iommu_priv_get(dev);
+
 	if (!domain || !domain->iopf_handler)
+		return 0;
+
+	/* SVA with non-IOMMU/PRI IOPF handling is allowed. */
+	if (domain->type == IOMMU_DOMAIN_SVA && !info->pri_supported)
 		return 0;
 
 	return intel_iommu_enable_iopf(dev);
@@ -1652,7 +1672,12 @@ static inline int iopf_for_domain_set(struct iommu_domain *domain,
 static inline void iopf_for_domain_remove(struct iommu_domain *domain,
 					  struct device *dev)
 {
+	struct device_domain_info *info = dev_iommu_priv_get(dev);
+
 	if (!domain || !domain->iopf_handler)
+		return;
+
+	if (domain->type == IOMMU_DOMAIN_SVA && !info->pri_supported)
 		return;
 
 	intel_iommu_disable_iopf(dev);

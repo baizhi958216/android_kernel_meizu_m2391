@@ -3307,16 +3307,14 @@ new_request:
 
 	blk_mq_bio_to_request(rq, bio, nr_segs);
 
-	ret = blk_crypto_rq_get_keyslot(rq);
-	if (ret != BLK_STS_OK) {
-		bio->bi_status = ret;
-		bio_endio(bio);
-		blk_mq_free_request(rq);
-		return;
-	}
-
 	if (bio_zone_write_plugging(bio))
 		blk_zone_write_plug_init_request(rq);
+
+	ret = blk_crypto_rq_get_keyslot(rq);
+	if (ret != BLK_STS_OK) {
+		blk_mq_end_request(rq, ret);
+		return;
+	}
 
 	trace_android_rvh_submit_bio_pre(bio, rq);
 
@@ -3393,6 +3391,25 @@ blk_status_t blk_insert_cloned_request(struct request *rq)
 		printk(KERN_ERR "%s: over max segments limit. (%u > %u)\n",
 			__func__, rq->nr_phys_segments, max_segments);
 		return BLK_STS_IOERR;
+	}
+
+	/*
+	 * Integrity segment counting depends on the same queue limits
+	 * (virt_boundary_mask, seg_boundary_mask, max_segment_size) that
+	 * vary across stacked queues, so recompute against the bottom
+	 * queue just like nr_phys_segments above.
+	 */
+	if (blk_integrity_rq(rq) && rq->bio) {
+		unsigned short max_int_segs = queue_max_integrity_segments(q);
+
+		rq->nr_integrity_segments =
+			blk_rq_count_integrity_sg(rq->q, rq->bio);
+		if (rq->nr_integrity_segments > max_int_segs) {
+			printk(KERN_ERR "%s: over max integrity segments limit. (%u > %u)\n",
+				__func__, rq->nr_integrity_segments,
+				max_int_segs);
+			return BLK_STS_IOERR;
+		}
 	}
 
 	if (q->disk && should_fail_request(q->disk->part0, blk_rq_bytes(rq)))

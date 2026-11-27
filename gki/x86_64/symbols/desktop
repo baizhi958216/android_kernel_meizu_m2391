@@ -3369,6 +3369,7 @@
   ucsi_register
   ucsi_resume
   ucsi_set_drvdata
+  ucsi_suspend
   ucsi_sync_control_common
   ucsi_unregister
   __udelay
@@ -3803,6 +3804,7 @@
   xt_register_match
   xt_register_template
   xt_unregister_match
+  xt_unregister_table_pre_exit
   xt_unregister_template
   yield
   zlib_inflate

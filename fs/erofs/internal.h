@@ -59,10 +59,6 @@ enum {
 struct erofs_mount_opts {
 	/* current strategy of how to use managed cache */
 	unsigned char cache_strategy;
-	/* strategy of sync decompression (0 - auto, 1 - force on, 2 - force off) */
-	unsigned int sync_decompress;
-	/* threshold for decompression synchronously */
-	unsigned int max_sync_decompress_pages;
 	unsigned int mount_opt;
 };
 
@@ -74,12 +70,8 @@ struct erofs_dev_context {
 	bool flatdev;
 };
 
-/* all filesystem-wide lz4 configurations */
 struct erofs_sb_lz4_info {
-	/* # of pages needed for EROFS lz4 rolling decompression */
-	u16 max_distance_pages;
-	/* maximum possible blocks for pclusters in the filesystem */
-	u16 max_pclusterblks;
+	u16 max_pclusterblks;	/* maximum physical blocks for LZ4 pclusters */
 };
 
 struct erofs_domain {
@@ -116,6 +108,7 @@ struct erofs_sb_info {
 	/* managed XArray arranged in physical block number */
 	struct xarray managed_pslots;
 
+	unsigned int sync_decompress;	/* strategy for sync decompression */
 	unsigned int shrinker_run_no;
 	u16 available_compr_algs;
 

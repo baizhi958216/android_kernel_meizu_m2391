@@ -41,6 +41,7 @@
 
 #include <linux/kernel_stat.h>
 #include <linux/mm.h>
+#include <linux/ptshare.h>
 #include <linux/mm_inline.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/numa_balancing.h>
@@ -196,6 +197,10 @@ static void free_pte_range(struct mmu_gather *tlb, pmd_t *pmd,
 {
 	pgtable_t token = pmd_pgtable(*pmd);
 	pmd_clear(pmd);
+
+	if (ptshare_free_pte_range(tlb, token, addr))
+		return;
+
 	pte_free_tlb(tlb, token, addr);
 	mm_dec_nr_ptes(tlb->mm);
 }
@@ -1486,17 +1491,15 @@ static bool
 vma_needs_copy(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
 {
 	/*
-	 * Always copy pgtables when dst_vma has uffd-wp enabled even if it's
-	 * file-backed (e.g. shmem). Because when uffd-wp is enabled, pgtable
-	 * contains uffd-wp protection information, that's something we can't
-	 * retrieve from page cache, and skip copying will lose those info.
+	 * We check against dst_vma as while sane VMA flags will have been
+	 * copied, VM_UFFD_WP may be set only on dst_vma.
 	 */
-	if (userfaultfd_wp(dst_vma))
+	if (dst_vma->vm_flags & VM_COPY_ON_FORK)
 		return true;
-
-	if (src_vma->vm_flags & (VM_PFNMAP | VM_MIXEDMAP))
-		return true;
-
+	/*
+	 * The presence of an anon_vma indicates an anonymous VMA has page
+	 * tables which naturally cannot be reconstituted on page fault.
+	 */
 	if (src_vma->anon_vma)
 		return true;
 
@@ -2036,6 +2039,8 @@ void unmap_page_range(struct mmu_gather *tlb,
 	unsigned long next;
 
 	BUG_ON(addr >= end);
+	if (unlikely(vma_is_ptshare_client(vma)))
+		return;
 	tlb_start_vma(tlb, vma);
 	pgd = pgd_offset(vma->vm_mm, addr);
 	do {
@@ -6219,7 +6224,7 @@ split:
  * The mmap_lock may have been released depending on flags and our return value.
  * See filemap_fault() and __folio_lock_or_retry().
  */
-static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
+vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 {
 	pte_t entry;
 
@@ -6372,6 +6377,13 @@ retry_pud:
 	/* Huge pud page fault raced with pmd_alloc? */
 	if (pud_trans_unstable(vmf.pud))
 		goto retry_pud;
+
+	if (unlikely(vma_is_ptshare_client(vma))) {
+		ret = ptshare_handle_mm_fault(&vmf);
+		if (fault_drops_lock(ret, flags))
+			release_fault_lock(&vmf);
+		return ret;
+	}
 
 	if (pmd_none(*vmf.pmd) &&
 	    thp_vma_allowable_order(vma, vm_flags, TVA_PAGEFAULT, PMD_ORDER)) {
@@ -6929,7 +6941,7 @@ static int __access_remote_vm(struct mm_struct *mm, unsigned long addr,
 		void *maddr;
 		struct folio *folio;
 		struct vm_area_struct *vma = NULL;
-		struct page *page = get_user_page_vma_remote(mm, addr,
+		struct page *page = ptshare_get_user_page_vma_remote(mm, addr,
 							     gup_flags, &vma);
 
 		if (IS_ERR(page)) {
