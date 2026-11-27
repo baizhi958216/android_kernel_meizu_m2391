@@ -153,6 +153,9 @@ int qcom_scm_shm_bridge_enable(struct device *scm_dev);
 #define QCOM_SCM_ES_PREPARE_ICE_KEY	0x09
 #define QCOM_SCM_ES_IMPORT_ICE_KEY	0x0a
 
+#define QCOM_SCM_SVC_OEM_POWER		0x09
+#define QCOM_SCM_OEM_POWER_REBOOT	0x22
+
 #define QCOM_SCM_SVC_HDCP		0x11
 #define QCOM_SCM_HDCP_INVOKE		0x01
 

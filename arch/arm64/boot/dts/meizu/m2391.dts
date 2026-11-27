@@ -410,7 +410,7 @@
 		phandle = <0x2e0>;
 
 		qcom_scm {
-			compatible = "qcom,scm";
+			compatible = "meizu,m2391-scm", "qcom,scm";
 			qcom,dload-mode = <0x02 0x19000>;
 			memory-region = <&scm_dma_pool>;
 		};

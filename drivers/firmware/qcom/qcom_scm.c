@@ -26,6 +26,7 @@
 #include <linux/of_platform.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/platform_device.h>
+#include <linux/reboot.h>
 #include <linux/reset-controller.h>
 #include <linux/sizes.h>
 #include <linux/types.h>
@@ -49,6 +50,7 @@ struct qcom_scm {
 	int scm_vote_count;
 
 	u64 dload_mode_addr;
+	struct notifier_block edl_reboot_nb;
 
 	struct qcom_tzmem_pool *mempool;
 };
@@ -124,6 +126,7 @@ static const u8 qcom_scm_cpu_warm_bits[QCOM_SCM_BOOT_MAX_CPUS] = {
 
 #define QCOM_SMC_WAITQ_FLAG_WAKE_ONE	BIT(0)
 
+#define QCOM_DLOAD_EDL		BIT(0)
 #define QCOM_DLOAD_MASK		GENMASK(5, 4)
 #define QCOM_DLOAD_NODUMP	0
 #define QCOM_DLOAD_FULLDUMP	1
@@ -571,6 +574,68 @@ static void qcom_scm_set_download_mode(u32 dload_mode)
 
 	if (ret)
 		dev_err(__scm->dev, "failed to set download mode: %d\n", ret);
+}
+
+/* M2391 firmware samples the EDL cookie across an OEM warm reset. */
+static int m2391_edl_prepare(struct notifier_block *nb, unsigned long event, void *cmd)
+{
+	struct qcom_scm *scm = container_of(nb, struct qcom_scm, edl_reboot_nb);
+	int ret;
+
+	if (event != SYS_RESTART || !cmd || strcmp(cmd, "edl"))
+		return NOTIFY_DONE;
+
+	reboot_mode = REBOOT_WARM;
+	ret = qcom_scm_io_writel(scm->dload_mode_addr, QCOM_DLOAD_EDL);
+	if (ret)
+		dev_warn(scm->dev, "failed to prepare EDL cookie: %d\n", ret);
+
+	return NOTIFY_DONE;
+}
+
+static int m2391_edl_restart(struct sys_off_data *data)
+{
+	const struct qcom_scm_desc reset = {
+		.owner = ARM_SMCCC_OWNER_OEM,
+		.svc = QCOM_SCM_SVC_OEM_POWER,
+		.cmd = QCOM_SCM_OEM_POWER_REBOOT,
+	};
+	struct qcom_scm *scm = data->cb_data;
+	int ret;
+
+	if (!data->cmd || strcmp(data->cmd, "edl"))
+		return NOTIFY_DONE;
+
+	/* Reassert the cookie after device shutdown, immediately before reset. */
+	ret = qcom_scm_io_writel(scm->dload_mode_addr, QCOM_DLOAD_EDL);
+	if (ret)
+		dev_err(scm->dev, "failed to set EDL cookie: %d\n", ret);
+	else {
+		ret = qcom_scm_call_atomic(scm->dev, &reset, NULL);
+		dev_warn(scm->dev, "OEM warm reset returned: %d\n", ret);
+	}
+
+	/* PSCI also needs a warm reset if the OEM call returns. */
+	reboot_mode = REBOOT_WARM;
+	return NOTIFY_DONE;
+}
+
+static int m2391_register_edl(struct qcom_scm *scm)
+{
+	int ret;
+
+	if (!scm->dload_mode_addr)
+		return -EINVAL;
+
+	/* Run just before PSCI (priority 129). */
+	ret = devm_register_sys_off_handler(scm->dev, SYS_OFF_MODE_RESTART, 130,
+					    m2391_edl_restart, scm);
+	if (ret)
+		return ret;
+
+	scm->edl_reboot_nb.notifier_call = m2391_edl_prepare;
+	scm->edl_reboot_nb.priority = 255;
+	return devm_register_reboot_notifier(scm->dev, &scm->edl_reboot_nb);
 }
 
 /**
@@ -2984,6 +3049,12 @@ static int qcom_scm_probe(struct platform_device *pdev)
 
 	/* Initialize the QTEE object interface. */
 	qcom_scm_qtee_init(scm);
+
+	if (of_device_is_compatible(scm->dev->of_node, "meizu,m2391-scm")) {
+		ret = m2391_register_edl(scm);
+		if (ret)
+			dev_warn(scm->dev, "failed to register EDL handlers: %d\n", ret);
+	}
 
 	return 0;
 }
