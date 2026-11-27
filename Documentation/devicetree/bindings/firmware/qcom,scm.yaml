@@ -21,6 +21,7 @@ properties:
   compatible:
     items:
       - enum:
+          - meizu,m2391-scm
           - qcom,scm-apq8064
           - qcom,scm-apq8084
           - qcom,scm-ipq4019
@@ -123,6 +124,15 @@ properties:
     description: TCSR hardware block
 
 allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: meizu,m2391-scm
+    then:
+      required:
+        - qcom,dload-mode
+
   # Clocks
   - if:
       properties:
@@ -216,6 +226,7 @@ allOf:
           compatible:
             contains:
               enum:
+                - meizu,m2391-scm
                 - qcom,scm-sa8255p
                 - qcom,scm-sa8775p
     then:
